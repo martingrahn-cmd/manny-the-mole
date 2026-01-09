@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manny the Mole - Level Editor</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: #1a1a2e;
+            color: white;
+            font-family: 'Courier New', monospace;
+            padding: 20px;
+        }
+        
+        .container {
+            display: flex;
+            gap: 20px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        .editor-panel {
+            flex: 0 0 auto;
+        }
+        
+        .tools-panel {
+            flex: 1;
+            background: #16213e;
+            padding: 20px;
+            border-radius: 8px;
+            max-width: 350px;
+        }
+        
+        h1 {
+            color: #ffd700;
+            margin-bottom: 10px;
+            font-size: 24px;
+        }
+        
+        h2 {
+            color: #00c8ff;
+            margin: 20px 0 10px 0;
+            font-size: 16px;
+        }
+        
+        #levelCanvas {
+            border: 2px solid #00c8ff;
+            cursor: crosshair;
+            display: block;
+        }
+        
+        .tool-btn {
+            display: inline-block;
+            padding: 10px 15px;
+            margin: 5px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 14px;
+            transition: transform 0.1s;
+        }
+        
+        .tool-btn:hover {
+            transform: scale(1.05);
+        }
+        
+        .tool-btn.active {
+            outline: 3px solid #fff;
+        }
+        
+        .tool-btn.empty { background: #333; color: #fff; }
+        .tool-btn.blue { background: #4488ff; color: #fff; }
+        .tool-btn.red { background: #ff4444; color: #fff; }
+        .tool-btn.yellow { background: #ffdd00; color: #000; }
+        .tool-btn.green { background: #44cc44; color: #fff; }
+        .tool-btn.pink { background: #ff66cc; color: #fff; }
+        .tool-btn.xblock { background: #8B4513; color: #ffff00; }
+        .tool-btn.oxygen { background: #00c8ff; color: #fff; }
+        .tool-btn.safe { background: #ffd700; color: #000; }
+        .tool-btn.player { background: #4a4a4a; color: #ffb6c1; }
+        
+        .action-btn {
+            display: block;
+            width: 100%;
+            padding: 12px;
+            margin: 8px 0;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 14px;
+            font-weight: bold;
+        }
+        
+        .action-btn.primary { background: #ffd700; color: #000; }
+        .action-btn.secondary { background: #00c8ff; color: #000; }
+        .action-btn.danger { background: #ff4444; color: #fff; }
+        
+        #coordDisplay {
+            background: #0a0a0a;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            font-size: 14px;
+        }
+        
+        #jsonOutput {
+            width: 100%;
+            height: 150px;
+            background: #0a0a0a;
+            color: #00ff00;
+            border: 1px solid #333;
+            border-radius: 5px;
+            padding: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+            resize: vertical;
+        }
+        
+        .level-select {
+            width: 100%;
+            padding: 10px;
+            background: #0a0a0a;
+            color: #fff;
+            border: 1px solid #333;
+            border-radius: 5px;
+            font-family: inherit;
+            font-size: 14px;
+            margin: 5px 0;
+        }
+        
+        .info-text {
+            font-size: 12px;
+            color: #888;
+            margin: 5px 0;
+        }
+        
+        .row-labels {
+            display: inline-block;
+            vertical-align: top;
+            padding-top: 20px;
+            text-align: right;
+            padding-right: 5px;
+            font-size: 10px;
+            color: #666;
+        }
+        
+        .col-labels {
+            margin-left: 25px;
+            font-size: 10px;
+            color: #666;
+        }
+        
+        .group-info {
+            background: #0a0a0a;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            font-size: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔨 Manny the Mole - Level Editor</h1>
+    
+    <div class="container">
+        <div class="editor-panel">
+            <div class="col-labels" id="colLabels"></div>
+            <div style="display: flex;">
+                <div class="row-labels" id="rowLabels"></div>
+                <canvas id="levelCanvas"></canvas>
+            </div>
+        </div>
+        
+        <div class="tools-panel">
+            <h2>📍 Koordinat</h2>
+            <div id="coordDisplay">Hovra över griden...</div>
+            
+            <h2>🎨 Block-typer</h2>
+            <button class="tool-btn empty active" data-tool="empty">⬜ Tom</button>
+            <button class="tool-btn blue" data-tool="blue">🟦 Blå</button>
+            <button class="tool-btn red" data-tool="red">🟥 Röd</button>
+            <button class="tool-btn yellow" data-tool="yellow">🟨 Gul</button>
+            <button class="tool-btn green" data-tool="green">🟩 Grön</button>
+            <button class="tool-btn pink" data-tool="pink">🟪 Rosa</button>
+            <button class="tool-btn xblock" data-tool="xblock">❌ X-Block</button>
+            
+            <h2>🎯 Special</h2>
+            <button class="tool-btn oxygen" data-tool="oxygen">💨 Oxygen</button>
+            <button class="tool-btn safe" data-tool="safe">💰 Safe</button>
+            <button class="tool-btn player" data-tool="player">🐀 Start</button>
+            
+            <h2>🔗 Grupp-läge</h2>
+            <p class="info-text">Shift+klick för att lägga till i samma grupp</p>
+            <div class="group-info" id="groupInfo">Inga grupper än...</div>
+            
+            <h2>📁 Level</h2>
+            <select class="level-select" id="levelSelect">
+                <option value="new">-- Ny bana --</option>
+                <option value="1">Level 1</option>
+                <option value="2">Level 2</option>
+                <option value="3">Level 3</option>
+                <option value="4">Level 4</option>
+                <option value="5">Level 5</option>
+                <option value="6">Level 6</option>
+                <option value="7">Level 7</option>
+                <option value="8">Level 8</option>
+                <option value="9">Level 9</option>
+                <option value="10">Level 10</option>
+            </select>
+            
+            <button class="action-btn secondary" onclick="generateLevel()">🎲 Auto-generera</button>
+            <button class="action-btn danger" onclick="clearLevel()">🗑️ Rensa</button>
+            <button class="action-btn primary" onclick="exportLevel()">💾 Exportera JSON</button>
+            <button class="action-btn secondary" onclick="copyAllLevels()">📋 Kopiera alla levels</button>
+            
+            <h2>📤 JSON Output</h2>
+            <textarea id="jsonOutput" readonly></textarea>
+            <button class="action-btn secondary" onclick="importLevel()">📥 Importera JSON</button>
+        </div>
+    </div>
+    
+    <script>
+        const GRID_SIZE = 20; // Smaller for editor
+        const GRID_WIDTH = 10;
+        const GRID_HEIGHT = 40;
+        
+        const canvas = document.getElementById('levelCanvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = GRID_WIDTH * GRID_SIZE;
+        canvas.height = GRID_HEIGHT * GRID_SIZE;
+        
+        // Level data
+        let grid = [];
+        let groups = []; // Array of {color, cells: [{x, y}]}
+        let oxygenTubes = [];
+        let playerStart = { x: 5, y: 2 };
+        let safePos = { x: 3, y: GRID_HEIGHT - 5 };
+        let xBlocks = [];
+        
+        let currentTool = 'empty';
+        let currentGroupId = null;
+        let groupIdCounter = 0;
+        
+        // All saved levels
+        let allLevels = {};
+        
+        // Color mapping
+        const COLORS = {
+            empty: null,
+            blue: { color: '#4488ff', highlight: '#66aaff', shadow: '#2266cc', index: 0 },
+            red: { color: '#ff4444', highlight: '#ff6666', shadow: '#cc2222', index: 1 },
+            yellow: { color: '#ffdd00', highlight: '#ffee55', shadow: '#ccaa00', index: 2 },
+            green: { color: '#44cc44', highlight: '#66ee66', shadow: '#22aa22', index: 3 },
+            pink: { color: '#ff66cc', highlight: '#ff99dd', shadow: '#cc4499', index: 4 },
+        };
+        
+        // Initialize grid
+        function initGrid() {
+            grid = [];
+            for (let y = 0; y < GRID_HEIGHT; y++) {
+                grid[y] = [];
+                for (let x = 0; x < GRID_WIDTH; x++) {
+                    grid[y][x] = { type: 'empty', groupId: null };
+                }
+            }
+            groups = [];
+            xBlocks = [];
+            oxygenTubes = [];
+            groupIdCounter = 0;
+            currentGroupId = null;
+        }
+        
+        // Generate coordinate labels
+        function generateLabels() {
+            const colLabels = document.getElementById('colLabels');
+            const rowLabels = document.getElementById('rowLabels');
+            
+            // Column labels (A-J)
+            let colHtml = '';
+            for (let x = 0; x < GRID_WIDTH; x++) {
+                colHtml += `<span style="display:inline-block;width:${GRID_SIZE}px;text-align:center;">${String.fromCharCode(65 + x)}</span>`;
+            }
+            colLabels.innerHTML = colHtml;
+            
+            // Row labels (1-40)
+            let rowHtml = '';
+            for (let y = 0; y < GRID_HEIGHT; y++) {
+                rowHtml += `<div style="height:${GRID_SIZE}px;line-height:${GRID_SIZE}px;">${y + 1}</div>`;
+            }
+            rowLabels.innerHTML = rowHtml;
+        }
+        
+        // Get coordinate string (e.g., "A1", "B15")
+        function getCoordString(x, y) {
+            return String.fromCharCode(65 + x) + (y + 1);
+        }
+        
+        // Parse coordinate string
+        function parseCoord(str) {
+            const match = str.match(/^([A-J])(\d+)$/i);
+            if (match) {
+                return {
+                    x: match[1].toUpperCase().charCodeAt(0) - 65,
+                    y: parseInt(match[2]) - 1
+                };
+            }
+            return null;
+        }
+        
+        // Render
+        function render() {
+            ctx.fillStyle = '#1a0f0a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw grid lines
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 0.5;
+            for (let x = 0; x <= GRID_WIDTH; x++) {
+                ctx.beginPath();
+                ctx.moveTo(x * GRID_SIZE, 0);
+                ctx.lineTo(x * GRID_SIZE, canvas.height);
+                ctx.stroke();
+            }
+            for (let y = 0; y <= GRID_HEIGHT; y++) {
+                ctx.beginPath();
+                ctx.moveTo(0, y * GRID_SIZE);
+                ctx.lineTo(canvas.width, y * GRID_SIZE);
+                ctx.stroke();
+            }
+            
+            // Draw groups
+            for (const group of groups) {
+                const colorData = Object.values(COLORS).find(c => c && c.index === group.colorIndex);
+                if (!colorData) continue;
+                
+                const cellSet = new Set(group.cells.map(c => `${c.x},${c.y}`));
+                
+                for (const cell of group.cells) {
+                    const sx = cell.x * GRID_SIZE;
+                    const sy = cell.y * GRID_SIZE;
+                    
+                    ctx.fillStyle = colorData.color;
+                    ctx.fillRect(sx, sy, GRID_SIZE, GRID_SIZE);
+                    
+                    // Borders only on exposed edges
+                    const hasTop = cellSet.has(`${cell.x},${cell.y - 1}`);
+                    const hasBottom = cellSet.has(`${cell.x},${cell.y + 1}`);
+                    const hasLeft = cellSet.has(`${cell.x - 1},${cell.y}`);
+                    const hasRight = cellSet.has(`${cell.x + 1},${cell.y}`);
+                    
+                    ctx.fillStyle = colorData.highlight;
+                    if (!hasTop) ctx.fillRect(sx, sy, GRID_SIZE, 2);
+                    if (!hasLeft) ctx.fillRect(sx, sy, 2, GRID_SIZE);
+                    
+                    ctx.fillStyle = colorData.shadow;
+                    if (!hasBottom) ctx.fillRect(sx, sy + GRID_SIZE - 2, GRID_SIZE, 2);
+                    if (!hasRight) ctx.fillRect(sx + GRID_SIZE - 2, sy, 2, GRID_SIZE);
+                }
+            }
+            
+            // Draw X-blocks
+            for (const xb of xBlocks) {
+                const sx = xb.x * GRID_SIZE;
+                const sy = xb.y * GRID_SIZE;
+                
+                ctx.fillStyle = '#8B4513';
+                ctx.fillRect(sx, sy, GRID_SIZE, GRID_SIZE);
+                
+                ctx.strokeStyle = '#ffff00';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(sx + 4, sy + 4);
+                ctx.lineTo(sx + GRID_SIZE - 4, sy + GRID_SIZE - 4);
+                ctx.moveTo(sx + GRID_SIZE - 4, sy + 4);
+                ctx.lineTo(sx + 4, sy + GRID_SIZE - 4);
+                ctx.stroke();
+            }
+            
+            // Draw oxygen tubes
+            for (const tube of oxygenTubes) {
+                ctx.fillStyle = '#00c8ff';
+                ctx.beginPath();
+                ctx.arc(tube.x * GRID_SIZE + GRID_SIZE/2, tube.y * GRID_SIZE + GRID_SIZE/2, 6, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            
+            // Draw safe
+            ctx.fillStyle = '#ffd700';
+            ctx.fillRect(safePos.x * GRID_SIZE, safePos.y * GRID_SIZE, GRID_SIZE * 3, GRID_SIZE * 3);
+            ctx.strokeStyle = '#ff8c00';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(safePos.x * GRID_SIZE, safePos.y * GRID_SIZE, GRID_SIZE * 3, GRID_SIZE * 3);
+            ctx.fillStyle = '#000';
+            ctx.font = '12px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('$', safePos.x * GRID_SIZE + GRID_SIZE * 1.5, safePos.y * GRID_SIZE + GRID_SIZE * 1.7);
+            
+            // Draw player start
+            ctx.fillStyle = '#4a4a4a';
+            ctx.fillRect(playerStart.x * GRID_SIZE + 2, playerStart.y * GRID_SIZE + 2, GRID_SIZE - 4, GRID_SIZE - 4);
+            ctx.fillStyle = '#ffb6c1';
+            ctx.fillRect(playerStart.x * GRID_SIZE + 6, playerStart.y * GRID_SIZE + 6, 8, 8);
+            
+            updateGroupInfo();
+        }
+        
+        // Update group info panel
+        function updateGroupInfo() {
+            const info = document.getElementById('groupInfo');
+            if (groups.length === 0) {
+                info.innerHTML = 'Inga grupper än...';
+                return;
+            }
+            
+            let html = '';
+            for (const group of groups) {
+                const colorName = ['Blå', 'Röd', 'Gul', 'Grön', 'Rosa'][group.colorIndex];
+                const coords = group.cells.map(c => getCoordString(c.x, c.y)).join(', ');
+                html += `<div><strong>${colorName} (${group.cells.length}):</strong> ${coords}</div>`;
+            }
+            info.innerHTML = html;
+        }
+        
+        // Tool selection
+        document.querySelectorAll('.tool-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                currentTool = btn.dataset.tool;
+                currentGroupId = null; // Reset group when changing tool
+            });
+        });
+        
+        // Mouse handling
+        let isDrawing = false;
+        
+        canvas.addEventListener('mousedown', (e) => {
+            isDrawing = true;
+            handleClick(e);
+        });
+        
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = Math.floor((e.clientX - rect.left) / GRID_SIZE);
+            const y = Math.floor((e.clientY - rect.top) / GRID_SIZE);
+            
+            if (x >= 0 && x < GRID_WIDTH && y >= 0 && y < GRID_HEIGHT) {
+                document.getElementById('coordDisplay').innerHTML = 
+                    `<strong>${getCoordString(x, y)}</strong> (x:${x}, y:${y})`;
+            }
+            
+            if (isDrawing && !['oxygen', 'safe', 'player'].includes(currentTool)) {
+                handleClick(e);
+            }
+        });
+        
+        canvas.addEventListener('mouseup', () => {
+            isDrawing = false;
+            if (!canvas.shiftKey) currentGroupId = null;
+        });
+        
+        canvas.addEventListener('mouseleave', () => {
+            isDrawing = false;
+        });
+        
+        function handleClick(e) {
+            const rect = canvas.getBoundingClientRect();
+            const x = Math.floor((e.clientX - rect.left) / GRID_SIZE);
+            const y = Math.floor((e.clientY - rect.top) / GRID_SIZE);
+            
+            if (x < 0 || x >= GRID_WIDTH || y < 0 || y >= GRID_HEIGHT) return;
+            
+            const shiftHeld = e.shiftKey;
+            
+            // Remove from any existing group first
+            removeFromGroups(x, y);
+            xBlocks = xBlocks.filter(xb => !(xb.x === x && xb.y === y));
+            oxygenTubes = oxygenTubes.filter(t => !(t.x === x && t.y === y));
+            
+            if (currentTool === 'empty') {
+                grid[y][x] = { type: 'empty', groupId: null };
+            } else if (currentTool === 'xblock') {
+                xBlocks.push({ x, y });
+                grid[y][x] = { type: 'xblock', groupId: null };
+            } else if (currentTool === 'oxygen') {
+                oxygenTubes.push({ x, y });
+            } else if (currentTool === 'safe') {
+                safePos = { x: Math.min(x, GRID_WIDTH - 3), y: Math.min(y, GRID_HEIGHT - 3) };
+            } else if (currentTool === 'player') {
+                playerStart = { x, y };
+            } else if (COLORS[currentTool]) {
+                // Colored block
+                const colorIndex = COLORS[currentTool].index;
+                
+                if (shiftHeld && currentGroupId !== null) {
+                    // Add to existing group
+                    const group = groups.find(g => g.id === currentGroupId);
+                    if (group && group.colorIndex === colorIndex) {
+                        group.cells.push({ x, y });
+                        grid[y][x] = { type: 'colored', groupId: currentGroupId };
+                    }
+                } else {
+                    // Create new group
+                    const newGroup = {
+                        id: groupIdCounter++,
+                        colorIndex: colorIndex,
+                        cells: [{ x, y }]
+                    };
+                    groups.push(newGroup);
+                    currentGroupId = newGroup.id;
+                    grid[y][x] = { type: 'colored', groupId: newGroup.id };
+                }
+            }
+            
+            render();
+        }
+        
+        function removeFromGroups(x, y) {
+            for (const group of groups) {
+                group.cells = group.cells.filter(c => !(c.x === x && c.y === y));
+            }
+            groups = groups.filter(g => g.cells.length > 0);
+        }
+        
+        // Generate level procedurally
+        function generateLevel() {
+            initGrid();
+            
+            const midX = Math.floor(GRID_WIDTH / 2);
+            
+            for (let y = 4; y < GRID_HEIGHT - 5; y++) {
+                for (let x = 0; x < GRID_WIDTH; x++) {
+                    // Skip safe area
+                    if (y >= GRID_HEIGHT - 8 && y < GRID_HEIGHT - 5 &&
+                        x >= safePos.x && x < safePos.x + 3) continue;
+                    
+                    // Air pockets
+                    if (Math.random() < 0.05) continue;
+                    
+                    // X-blocks
+                    const depthFactor = y / GRID_HEIGHT;
+                    const isMiddle = Math.abs(x - midX) <= 1;
+                    const isBarrierRow = y % 8 < 2;
+                    
+                    let xBlockChance = 0.03 + depthFactor * 0.08;
+                    if (isMiddle) xBlockChance += 0.1;
+                    if (isBarrierRow) xBlockChance += 0.15;
+                    
+                    if (Math.random() < xBlockChance) {
+                        xBlocks.push({ x, y });
+                        grid[y][x] = { type: 'xblock', groupId: null };
+                        continue;
+                    }
+                    
+                    // Try to join adjacent group
+                    let joined = false;
+                    const colorIndex = Math.floor(Math.random() * 5);
+                    
+                    // Check above
+                    if (y > 4 && grid[y-1][x].type === 'colored' && Math.random() < 0.5) {
+                        const aboveGroup = groups.find(g => g.id === grid[y-1][x].groupId);
+                        if (aboveGroup && aboveGroup.colorIndex === colorIndex && aboveGroup.cells.length < 6) {
+                            aboveGroup.cells.push({ x, y });
+                            grid[y][x] = { type: 'colored', groupId: aboveGroup.id };
+                            joined = true;
+                        }
+                    }
+                    
+                    // Check left
+                    if (!joined && x > 0 && grid[y][x-1].type === 'colored' && Math.random() < 0.5) {
+                        const leftGroup = groups.find(g => g.id === grid[y][x-1].groupId);
+                        if (leftGroup && leftGroup.colorIndex === colorIndex && leftGroup.cells.length < 6) {
+                            leftGroup.cells.push({ x, y });
+                            grid[y][x] = { type: 'colored', groupId: leftGroup.id };
+                            joined = true;
+                        }
+                    }
+                    
+                    // New group
+                    if (!joined) {
+                        const newGroup = {
+                            id: groupIdCounter++,
+                            colorIndex: colorIndex,
+                            cells: [{ x, y }]
+                        };
+                        groups.push(newGroup);
+                        grid[y][x] = { type: 'colored', groupId: newGroup.id };
+                    }
+                }
+            }
+            
+            // Add oxygen tubes
+            for (let i = 0; i < 10; i++) {
+                const tubeY = 6 + Math.floor(i * (GRID_HEIGHT - 15) / 10);
+                const tubeX = Math.random() < 0.7 ?
+                    (Math.random() < 0.5 ? Math.floor(Math.random() * 3) : GRID_WIDTH - 1 - Math.floor(Math.random() * 3)) :
+                    Math.floor(Math.random() * GRID_WIDTH);
+                oxygenTubes.push({ x: tubeX, y: tubeY });
+            }
+            
+            render();
+        }
+        
+        // Clear level
+        function clearLevel() {
+            if (confirm('Rensa hela banan?')) {
+                initGrid();
+                render();
+            }
+        }
+        
+        // Export level to JSON
+        function exportLevel() {
+            const levelData = {
+                playerStart: playerStart,
+                safePos: safePos,
+                groups: groups.map(g => ({
+                    colorIndex: g.colorIndex,
+                    cells: g.cells.map(c => getCoordString(c.x, c.y))
+                })),
+                xBlocks: xBlocks.map(xb => getCoordString(xb.x, xb.y)),
+                oxygenTubes: oxygenTubes.map(t => getCoordString(t.x, t.y))
+            };
+            
+            const json = JSON.stringify(levelData, null, 2);
+            document.getElementById('jsonOutput').value = json;
+            
+            // Save to current level
+            const levelNum = document.getElementById('levelSelect').value;
+            if (levelNum !== 'new') {
+                allLevels[levelNum] = levelData;
+            }
+            
+            return levelData;
+        }
+        
+        // Import level from JSON
+        function importLevel() {
+            const json = prompt('Klistra in level JSON:');
+            if (!json) return;
+            
+            try {
+                const data = JSON.parse(json);
+                loadLevelData(data);
+            } catch (e) {
+                alert('Ogiltig JSON: ' + e.message);
+            }
+        }
+        
+        // Load level data
+        function loadLevelData(data) {
+            initGrid();
+            
+            playerStart = data.playerStart || { x: 5, y: 2 };
+            safePos = data.safePos || { x: 3, y: GRID_HEIGHT - 5 };
+            
+            // Load groups
+            for (const g of (data.groups || [])) {
+                const newGroup = {
+                    id: groupIdCounter++,
+                    colorIndex: g.colorIndex,
+                    cells: []
+                };
+                
+                for (const coordStr of g.cells) {
+                    const coord = parseCoord(coordStr);
+                    if (coord) {
+                        newGroup.cells.push(coord);
+                        grid[coord.y][coord.x] = { type: 'colored', groupId: newGroup.id };
+                    }
+                }
+                
+                if (newGroup.cells.length > 0) {
+                    groups.push(newGroup);
+                }
+            }
+            
+            // Load X-blocks
+            for (const coordStr of (data.xBlocks || [])) {
+                const coord = parseCoord(coordStr);
+                if (coord) {
+                    xBlocks.push(coord);
+                    grid[coord.y][coord.x] = { type: 'xblock', groupId: null };
+                }
+            }
+            
+            // Load oxygen tubes
+            for (const coordStr of (data.oxygenTubes || [])) {
+                const coord = parseCoord(coordStr);
+                if (coord) {
+                    oxygenTubes.push(coord);
+                }
+            }
+            
+            render();
+        }
+        
+        // Copy all levels as JS module
+        function copyAllLevels() {
+            // Export current level first
+            const levelNum = document.getElementById('levelSelect').value;
+            if (levelNum !== 'new') {
+                exportLevel();
+            }
+            
+            const output = `// Auto-generated level data for Manny the Mole
+const LEVELS = ${JSON.stringify(allLevels, null, 2)};
+
+export default LEVELS;`;
+            
+            navigator.clipboard.writeText(output).then(() => {
+                alert('Alla levels kopierade till urklipp!');
+            });
+        }
+        
+        // Level select
+        document.getElementById('levelSelect').addEventListener('change', (e) => {
+            const levelNum = e.target.value;
+            if (levelNum === 'new') {
+                initGrid();
+                render();
+            } else if (allLevels[levelNum]) {
+                loadLevelData(allLevels[levelNum]);
+            } else {
+                initGrid();
+                render();
+            }
+        });
+        
+        // Initialize
+        initGrid();
+        generateLabels();
+        render();
+    </script>
+</body>
+</html>
