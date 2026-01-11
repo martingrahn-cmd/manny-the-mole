@@ -68,13 +68,13 @@ function loadAssets() {
     });
 }
 
-// Block colors - used as tint for dirt sprites
+// Block colors - bright Mr. Driller style colors
 const BLOCK_COLORS = [
-    { name: 'blue', hue: 210 },
-    { name: 'red', hue: 0 },
-    { name: 'yellow', hue: 50 },
-    { name: 'green', hue: 120 },
-    { name: 'pink', hue: 320 },
+    { name: 'blue', color: '#4488ff', highlight: '#88bbff', shadow: '#2266cc' },
+    { name: 'red', color: '#ff4444', highlight: '#ff8888', shadow: '#cc2222' },
+    { name: 'yellow', color: '#ffdd00', highlight: '#ffee66', shadow: '#ccaa00' },
+    { name: 'green', color: '#44cc44', highlight: '#88ee88', shadow: '#22aa22' },
+    { name: 'pink', color: '#ff66cc', highlight: '#ffaadd', shadow: '#cc4499' },
 ];
 
 const BLOCK_TYPES = {
@@ -249,6 +249,7 @@ class Game {
         this.cameraY = 0;
         
         this.oxygenTubes = [];
+        this.treasures = []; // Coins, bags, chests
         this.safe = null;
         
         this.keys = {};
@@ -495,6 +496,52 @@ class Game {
                 fallTimer: 0
             });
         }
+        
+        // Treasures - scattered throughout
+        // Coins (common) - 50 points
+        for (let i = 0; i < 20; i++) {
+            const treasureY = 8 + Math.floor(Math.random() * (GRID_HEIGHT - 20));
+            const treasureX = Math.floor(Math.random() * GRID_WIDTH);
+            
+            this.treasures.push({
+                x: treasureX * GRID_SIZE + GRID_SIZE / 2,
+                y: treasureY * GRID_SIZE + GRID_SIZE / 2,
+                type: 'coin',
+                value: 50,
+                collected: false,
+                fallTimer: 0
+            });
+        }
+        
+        // Money bags (uncommon) - 200 points
+        for (let i = 0; i < 8; i++) {
+            const treasureY = 15 + Math.floor(Math.random() * (GRID_HEIGHT - 25));
+            const treasureX = Math.floor(Math.random() * GRID_WIDTH);
+            
+            this.treasures.push({
+                x: treasureX * GRID_SIZE + GRID_SIZE / 2,
+                y: treasureY * GRID_SIZE + GRID_SIZE / 2,
+                type: 'bag',
+                value: 200,
+                collected: false,
+                fallTimer: 0
+            });
+        }
+        
+        // Treasure chests (rare) - 500 points
+        for (let i = 0; i < 3; i++) {
+            const treasureY = 30 + Math.floor(Math.random() * (GRID_HEIGHT - 40));
+            const treasureX = Math.floor(Math.random() * GRID_WIDTH);
+            
+            this.treasures.push({
+                x: treasureX * GRID_SIZE + GRID_SIZE / 2,
+                y: treasureY * GRID_SIZE + GRID_SIZE / 2,
+                type: 'chest',
+                value: 500,
+                collected: false,
+                fallTimer: 0
+            });
+        }
     }
     
     getInput() {
@@ -573,6 +620,7 @@ class Game {
         if (input.left) this.player.facing = 'left';
         else if (input.right) this.player.facing = 'right';
         else if (input.down) this.player.facing = 'down';
+        else if (input.up) this.player.facing = 'up';
         
         // DIG ACTION - can dig WITHOUT moving!
         if (input.digJustPressed && this.player.digCooldown <= 0) {
@@ -585,6 +633,8 @@ class Game {
                 digX = gridX + 1;
             } else if (this.player.facing === 'down') {
                 digY = gridY + 1;
+            } else if (this.player.facing === 'up' && gridY > 0) {
+                digY = gridY - 1; // Dig UP but don't move up
             }
             
             // Try to dig
@@ -845,12 +895,32 @@ class Game {
             }
         });
         
+        // Treasures fall
+        this.treasures.forEach(treasure => {
+            if (treasure.collected) return;
+            
+            const treasureGridX = Math.floor(treasure.x / GRID_SIZE);
+            const treasureGridY = Math.floor(treasure.y / GRID_SIZE);
+            
+            const blockBelow = this.grid[treasureGridY + 1]?.[treasureGridX];
+            if (blockBelow === BLOCK_TYPES.EMPTY && treasureGridY < GRID_HEIGHT - 2) {
+                treasure.fallTimer = (treasure.fallTimer || 0) + deltaTime;
+                if (treasure.fallTimer >= 0.08) {
+                    treasure.y += GRID_SIZE;
+                    treasure.fallTimer = 0;
+                }
+            } else {
+                treasure.fallTimer = 0;
+            }
+        });
+        
         // Cleanup
         this.blockGroups = this.blockGroups.filter(g => g.cells.length > 0);
         this.xBlocks = this.xBlocks.filter(b => !b.destroyed);
     }
     
     updateOxygen(deltaTime) {
+        // Collect oxygen tubes
         this.oxygenTubes.forEach(tube => {
             if (!tube.collected) {
                 const dist = Math.sqrt(
@@ -861,6 +931,20 @@ class Game {
                     tube.collected = true;
                     this.oxygen = Math.min(this.maxOxygen, this.oxygen + 20);
                     this.score += 100;
+                }
+            }
+        });
+        
+        // Collect treasures
+        this.treasures.forEach(treasure => {
+            if (!treasure.collected) {
+                const dist = Math.sqrt(
+                    Math.pow(this.player.x + PLAYER_SIZE/2 - treasure.x, 2) + 
+                    Math.pow(this.player.y + PLAYER_SIZE/2 - treasure.y, 2)
+                );
+                if (dist < GRID_SIZE * 0.8) {
+                    treasure.collected = true;
+                    this.score += treasure.value;
                 }
             }
         });
@@ -905,6 +989,7 @@ class Game {
         this.depth = 0;
         this.cameraY = 0;
         this.oxygenTubes = [];
+        this.treasures = [];
         this.gameState = 'countdown';
         this.countdownTimer = 0;
         this.countdownNumber = 3;
@@ -986,6 +1071,16 @@ class Game {
                         this.ctx.arc(tube.x, screenY, 14, 0, Math.PI * 2);
                         this.ctx.fill();
                     }
+                }
+            }
+        });
+        
+        // Render treasures
+        this.treasures.forEach(treasure => {
+            if (!treasure.collected) {
+                const screenY = treasure.y - this.cameraY;
+                if (screenY > -GRID_SIZE && screenY < CANVAS_HEIGHT) {
+                    this.renderTreasure(treasure.x, screenY, treasure.type);
                 }
             }
         });
@@ -1156,45 +1251,147 @@ class Game {
         }
     }
     
+    renderTreasure(x, y, type) {
+        const ctx = this.ctx;
+        const size = GRID_SIZE * 0.6;
+        const offset = (GRID_SIZE - size) / 2;
+        
+        if (type === 'coin') {
+            // Gold coin
+            ctx.fillStyle = '#ffd700';
+            ctx.beginPath();
+            ctx.arc(x, y, 8, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#b8860b';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            // $ symbol
+            ctx.fillStyle = '#b8860b';
+            ctx.font = 'bold 10px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('$', x, y);
+        } else if (type === 'bag') {
+            // Money bag
+            ctx.fillStyle = '#8b4513';
+            ctx.beginPath();
+            ctx.moveTo(x - 8, y + 10);
+            ctx.lineTo(x - 10, y - 2);
+            ctx.lineTo(x - 4, y - 8);
+            ctx.lineTo(x + 4, y - 8);
+            ctx.lineTo(x + 10, y - 2);
+            ctx.lineTo(x + 8, y + 10);
+            ctx.closePath();
+            ctx.fill();
+            ctx.strokeStyle = '#5a3510';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            // Tie
+            ctx.fillStyle = '#daa520';
+            ctx.fillRect(x - 3, y - 10, 6, 4);
+            // $ symbol
+            ctx.fillStyle = '#ffd700';
+            ctx.font = 'bold 12px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('$', x, y + 2);
+        } else if (type === 'chest') {
+            // Treasure chest
+            // Base
+            ctx.fillStyle = '#8b4513';
+            ctx.fillRect(x - 12, y - 4, 24, 14);
+            // Lid
+            ctx.fillStyle = '#a0522d';
+            ctx.fillRect(x - 12, y - 10, 24, 8);
+            // Gold trim
+            ctx.fillStyle = '#ffd700';
+            ctx.fillRect(x - 12, y - 4, 24, 2);
+            ctx.fillRect(x - 2, y - 10, 4, 16);
+            // Lock
+            ctx.fillStyle = '#ffd700';
+            ctx.beginPath();
+            ctx.arc(x, y - 2, 4, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    }
+    
     renderManny(x, y, facing, isDrilling) {
         const ctx = this.ctx;
         
-        // Choose sprite based on state
+        // Get current input to show drilling animation when holding direction
+        const input = this.getInput();
+        const holdingDirection = input.down || input.left || input.right || input.up;
+        
+        // Determine which sprite to use
         let sprite = ASSETS.mole;
         let frameWidth = 32;
         let frameIndex = 0;
+        let flipH = false;
         
-        if (isDrilling) {
-            // Get drilling animation sprite
+        // Jump/bounce effect when drilling down
+        let offsetY = 0;
+        let scaleX = 1;
+        let scaleY = 1;
+        
+        if (isDrilling && facing === 'down') {
+            // Bounce effect - jump up then squash down
+            const progress = this.player.drillAnimTimer / 0.2; // 0 to 1
+            if (progress > 0.5) {
+                // First half - jump up
+                offsetY = -8 * (progress - 0.5) * 2;
+                scaleY = 1.1;
+                scaleX = 0.9;
+            } else {
+                // Second half - squash down
+                offsetY = 2 * (1 - progress * 2);
+                scaleY = 0.85;
+                scaleX = 1.15;
+            }
+        }
+        
+        if (isDrilling || holdingDirection) {
+            // Show drilling animation when actually drilling OR holding direction
             if (facing === 'down' && ASSETS.mole_drilling_down) {
                 sprite = ASSETS.mole_drilling_down;
-                frameWidth = 32;
-                frameIndex = Math.floor(this.player.drillAnimFrame || 0);
+                frameIndex = isDrilling ? Math.floor(this.player.drillAnimFrame || 0) : 0;
             } else if (facing === 'left' && ASSETS.mole_drilling_left) {
                 sprite = ASSETS.mole_drilling_left;
-                frameWidth = 32;
-                frameIndex = Math.floor(this.player.drillAnimFrame || 0);
+                frameIndex = isDrilling ? Math.floor(this.player.drillAnimFrame || 0) : 0;
             } else if (facing === 'right' && ASSETS.mole_drilling_right) {
                 sprite = ASSETS.mole_drilling_right;
-                frameWidth = 32;
-                frameIndex = Math.floor(this.player.drillAnimFrame || 0);
+                frameIndex = isDrilling ? Math.floor(this.player.drillAnimFrame || 0) : 0;
             } else if (facing === 'up' && ASSETS.mole_drilling_up) {
                 sprite = ASSETS.mole_drilling_up;
-                frameWidth = 32;
-                frameIndex = Math.floor(this.player.drillAnimFrame || 0);
+                frameIndex = isDrilling ? Math.floor(this.player.drillAnimFrame || 0) : 0;
+            }
+        } else {
+            // Idle - flip based on last horizontal facing
+            if (facing === 'left') {
+                flipH = true;
             }
         }
         
         if (sprite) {
-            // Draw from spritesheet
             const srcX = frameIndex * frameWidth;
+            
+            ctx.save();
+            
+            // Apply transformations for bounce effect
+            const centerX = x + GRID_SIZE / 2;
+            const centerY = y + GRID_SIZE / 2;
+            ctx.translate(centerX, centerY + offsetY);
+            ctx.scale(flipH ? -scaleX : scaleX, scaleY);
+            ctx.translate(-GRID_SIZE / 2, -GRID_SIZE / 2);
+            
             ctx.drawImage(
                 sprite,
-                srcX, 0, frameWidth, 32,  // Source rect
-                x, y, GRID_SIZE, GRID_SIZE  // Dest rect
+                srcX, 0, frameWidth, 32,
+                0, 0, GRID_SIZE, GRID_SIZE
             );
+            
+            ctx.restore();
         } else {
-            // Fallback to colored rectangle
+            // Fallback
             ctx.fillStyle = '#8B4513';
             ctx.fillRect(x + 4, y + 4, GRID_SIZE - 8, GRID_SIZE - 8);
         }
