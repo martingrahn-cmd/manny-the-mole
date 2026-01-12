@@ -1,9 +1,9 @@
 // Game constants
-const GRID_SIZE = 32; // Match sprite size
-const PLAYER_SIZE = 32;
-const GRID_WIDTH = 10; // More columns with smaller blocks
-const GRID_HEIGHT = 80;
-const VIEWPORT_HEIGHT = 20;
+const GRID_SIZE = 64; // Double size - scale up 32px sprites
+const PLAYER_SIZE = 64;
+const GRID_WIDTH = 7; // Like Mr. Driller / Tetris
+const GRID_HEIGHT = 50;
+const VIEWPORT_HEIGHT = 11;
 const FALL_DELAY = 1.2;
 const FALL_SPEED = 0.1;
 const SHAKE_DURATION = 0.5;
@@ -19,11 +19,10 @@ const ASSETS = {
     mole_drilling_left: null,
     mole_drilling_right: null,
     mole_drilling_up: null,
-    dirt: null,
-    rock: null,
     bedrock: null,
     x_block: null,
     oxygen_tube: null,
+    gold: null, // Treasure spritesheet by Clint Bellanger (CC-BY 3.0)
     loaded: false
 };
 
@@ -35,11 +34,10 @@ function loadAssets() {
             ['mole_drilling_left', 'assets/mole_drilling_left.png'],
             ['mole_drilling_right', 'assets/mole_drilling_right.png'],
             ['mole_drilling_up', 'assets/mole_drilling_up.png'],
-            ['dirt', 'assets/dirt.png'],
-            ['rock', 'assets/rock.png'],
             ['bedrock', 'assets/bedrock.png'],
             ['x_block', 'assets/x_block.png'],
             ['oxygen_tube', 'assets/oxygen_tube.png'],
+            ['gold', 'assets/gold.png'], // Clint Bellanger CC-BY 3.0
         ];
         
         let loadedCount = 0;
@@ -82,6 +80,7 @@ const BLOCK_TYPES = {
     COLORED: 1,
     XBLOCK: 10,
     BEDROCK: 11,
+    ITEM: 12, // Treasures and oxygen - blocks can't fall through them
 };
 
 // Block Group class
@@ -179,39 +178,94 @@ class XBlock {
 class GamepadHandler {
     constructor() {
         this.lastButtons = {};
-        this.lastAxes = {};
+        this.lastDirections = { left: false, right: false, up: false, down: false };
         this.deadzone = 0.3;
+        this.preferredIndex = null;
+    }
+    
+    getGamepadList() {
+        const gamepads = navigator.getGamepads();
+        const list = [];
+        for (let i = 0; i < gamepads.length; i++) {
+            if (gamepads[i]) {
+                list.push({
+                    index: i,
+                    id: gamepads[i].id,
+                    isLikelyController: this.isLikelyController(gamepads[i])
+                });
+            }
+        }
+        return list;
+    }
+    
+    isLikelyController(gp) {
+        const id = gp.id.toLowerCase();
+        const audioKeywords = ['audio', 'headset', 'headphone', 'speaker', 'microphone', 'sound'];
+        if (audioKeywords.some(kw => id.includes(kw))) return false;
+        if (gp.buttons.length >= 4 && gp.axes.length >= 2) return true;
+        return false;
+    }
+    
+    findBestGamepad() {
+        const gamepads = navigator.getGamepads();
+        
+        if (this.preferredIndex !== null && gamepads[this.preferredIndex]) {
+            return gamepads[this.preferredIndex];
+        }
+        
+        for (let i = 0; i < gamepads.length; i++) {
+            if (gamepads[i] && this.isLikelyController(gamepads[i])) {
+                return gamepads[i];
+            }
+        }
+        
+        for (let i = 0; i < gamepads.length; i++) {
+            if (gamepads[i]) return gamepads[i];
+        }
+        
+        return null;
+    }
+    
+    setPreferredGamepad(index) {
+        this.preferredIndex = index;
     }
     
     getInput() {
-        const gamepads = navigator.getGamepads();
-        const gp = gamepads[0];
+        const gp = this.findBestGamepad();
         
         if (!gp) return null;
         
+        // Current state
+        const left = gp.buttons[14]?.pressed || gp.axes[0] < -this.deadzone;
+        const right = gp.buttons[15]?.pressed || gp.axes[0] > this.deadzone;
+        const up = gp.buttons[12]?.pressed || gp.axes[1] < -this.deadzone;
+        const down = gp.buttons[13]?.pressed || gp.axes[1] > this.deadzone;
+        const digPressed = gp.buttons[0]?.pressed || gp.buttons[2]?.pressed;
+        
         const input = {
-            left: false,
-            right: false,
-            up: false,
-            down: false,
-            dig: false,
-            digJustPressed: false,
+            left,
+            right,
+            up,
+            down,
+            dig: digPressed,
+            digJustPressed: digPressed && !this.lastButtons.dig,
+            // Direction just pressed (for facing)
+            leftJustPressed: left && !this.lastDirections.left,
+            rightJustPressed: right && !this.lastDirections.right,
+            upJustPressed: up && !this.lastDirections.up,
+            downJustPressed: down && !this.lastDirections.down,
         };
         
-        // D-pad (buttons 12-15) or left stick
-        input.left = gp.buttons[14]?.pressed || gp.axes[0] < -this.deadzone;
-        input.right = gp.buttons[15]?.pressed || gp.axes[0] > this.deadzone;
-        input.up = gp.buttons[12]?.pressed || gp.axes[1] < -this.deadzone;
-        input.down = gp.buttons[13]?.pressed || gp.axes[1] > this.deadzone;
-        
-        // A/X button for dig (buttons 0 and 2)
-        const digPressed = gp.buttons[0]?.pressed || gp.buttons[2]?.pressed;
-        input.dig = digPressed;
-        input.digJustPressed = digPressed && !this.lastButtons.dig;
-        
+        // Save state for next frame
         this.lastButtons.dig = digPressed;
+        this.lastDirections = { left, right, up, down };
         
         return input;
+    }
+    
+    getCurrentGamepadName() {
+        const gp = this.findBestGamepad();
+        return gp ? gp.id : 'None';
     }
 }
 
@@ -260,6 +314,9 @@ class Game {
         this.countdownTimer = 0;
         this.countdownNumber = 3;
         this.hasPlayerDug = false; // Physics paused until first dig
+        
+        this.gamepadMessage = null;
+        this.gamepadMessageTime = 0;
         
         this.resize();
         window.addEventListener('resize', () => this.resize());
@@ -316,6 +373,11 @@ class Game {
             if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(e.key)) {
                 e.preventDefault();
             }
+            
+            // G key to cycle through gamepads
+            if (e.key === 'g' || e.key === 'G') {
+                this.cycleGamepad();
+            }
         });
         
         window.addEventListener('keyup', e => {
@@ -326,77 +388,96 @@ class Game {
     }
     
     generateLevel() {
-        const safeStartY = GRID_HEIGHT - 5;
+        const safeStartY = GRID_HEIGHT - 4;
         const safeStartX = Math.floor((GRID_WIDTH - 2) / 2);
         const midX = Math.floor(GRID_WIDTH / 2);
         
-        // Define block shapes (like Tetris pieces)
-        const SHAPES = [
-            // Single
-            [[0, 0]],
-            // Horizontal 2
-            [[0, 0], [1, 0]],
-            // Horizontal 3
-            [[0, 0], [1, 0], [2, 0]],
-            // Vertical 2
-            [[0, 0], [0, 1]],
-            // Vertical 3
-            [[0, 0], [0, 1], [0, 2]],
-            // Square 2x2
-            [[0, 0], [1, 0], [0, 1], [1, 1]],
-            // L shape
-            [[0, 0], [0, 1], [0, 2], [1, 2]],
-            // Reverse L
-            [[1, 0], [1, 1], [1, 2], [0, 2]],
-            // T shape
-            [[0, 0], [1, 0], [2, 0], [1, 1]],
-            // S shape
-            [[1, 0], [2, 0], [0, 1], [1, 1]],
-            // Z shape
-            [[0, 0], [1, 0], [1, 1], [2, 1]],
-            // Big L
-            [[0, 0], [0, 1], [0, 2], [1, 2], [2, 2]],
-            // Plus shape
-            [[1, 0], [0, 1], [1, 1], [2, 1], [1, 2]],
-        ];
-        
         // Track which cells are filled
         const filled = new Set();
+        const airPockets = [];
         
-        // Helper to check if shape fits
+        // Mark safe area
+        for (let sy = safeStartY; sy < safeStartY + 2; sy++) {
+            for (let sx = safeStartX; sx < safeStartX + 2; sx++) {
+                filled.add(`${sx},${sy}`);
+            }
+        }
+        
+        // Define shapes - Mr. Driller style (mostly 2x2 and small)
+        const SHAPES = [
+            // 2x2 square (most common - classic Mr. Driller)
+            { cells: [[0,0], [1,0], [0,1], [1,1]], weight: 50 },
+            // Single blocks (creates variety)
+            { cells: [[0,0]], weight: 20 },
+            // Horizontal 2-bar
+            { cells: [[0,0], [1,0]], weight: 15 },
+            // Vertical 2-bar
+            { cells: [[0,0], [0,1]], weight: 10 },
+            // Horizontal 3-bar (occasional)
+            { cells: [[0,0], [1,0], [2,0]], weight: 5 },
+        ];
+        
+        // Calculate total weight
+        const totalWeight = SHAPES.reduce((sum, s) => sum + s.weight, 0);
+        
+        // Pick random shape by weight
+        const pickShape = () => {
+            let r = Math.random() * totalWeight;
+            for (const shape of SHAPES) {
+                r -= shape.weight;
+                if (r <= 0) return shape.cells;
+            }
+            return SHAPES[0].cells;
+        };
+        
+        // Check if shape fits
         const shapeFits = (shape, startX, startY) => {
             for (const [dx, dy] of shape) {
                 const x = startX + dx;
                 const y = startY + dy;
-                
-                if (x < 0 || x >= GRID_WIDTH || y < 4 || y >= GRID_HEIGHT - 3) return false;
+                if (x < 0 || x >= GRID_WIDTH) return false;
+                if (y < 4 || y >= GRID_HEIGHT - 3) return false;
                 if (filled.has(`${x},${y}`)) return false;
-                
-                // Don't overlap safe area
-                if (y >= safeStartY && y < safeStartY + 2 &&
-                    x >= safeStartX && x < safeStartX + 2) return false;
             }
             return true;
         };
         
-        // Place shapes
+        // Generate blocks row by row
         for (let y = 4; y < GRID_HEIGHT - 3; y++) {
             for (let x = 0; x < GRID_WIDTH; x++) {
                 if (filled.has(`${x},${y}`)) continue;
                 
-                // Random chance for air pocket
+                // Air pocket chance
                 const distFromMid = Math.abs(x - midX);
-                const airChance = distFromMid <= 1 ? 0.03 : 0.1;
-                if (Math.random() < airChance) continue;
+                const airChance = distFromMid <= 1 ? 0.05 : 0.10;
                 
-                // Pick a random shape that fits
-                const shuffledShapes = [...SHAPES].sort(() => Math.random() - 0.5);
+                if (Math.random() < airChance) {
+                    airPockets.push({ x, y });
+                    this.grid[y][x] = BLOCK_TYPES.EMPTY;
+                    filled.add(`${x},${y}`);
+                    continue;
+                }
+                
+                // X-block chance (increases with depth)
+                const depthFactor = y / GRID_HEIGHT;
+                const xBlockChance = 0.06 + depthFactor * 0.10;
+                
+                if (Math.random() < xBlockChance) {
+                    const xBlock = new XBlock(x, y);
+                    this.xBlocks.push(xBlock);
+                    this.grid[y][x] = BLOCK_TYPES.XBLOCK;
+                    filled.add(`${x},${y}`);
+                    continue;
+                }
+                
+                // Try to place a shape
                 let placed = false;
                 
-                for (const shape of shuffledShapes) {
-                    // Try different rotations (simplified - just try original)
+                // Try a few random shapes
+                for (let attempt = 0; attempt < 5; attempt++) {
+                    const shape = pickShape();
+                    
                     if (shapeFits(shape, x, y)) {
-                        // Create group with this shape
                         const colorIndex = Math.floor(Math.random() * BLOCK_COLORS.length);
                         const group = new BlockGroup(this.groupIdCounter++, colorIndex);
                         
@@ -414,12 +495,8 @@ class Game {
                     }
                 }
                 
-                // If no shape fits, try single block
+                // Fallback: single block
                 if (!placed && !filled.has(`${x},${y}`)) {
-                    // Skip safe area
-                    if (y >= safeStartY && y < safeStartY + 2 &&
-                        x >= safeStartX && x < safeStartX + 2) continue;
-                    
                     const colorIndex = Math.floor(Math.random() * BLOCK_COLORS.length);
                     const group = new BlockGroup(this.groupIdCounter++, colorIndex);
                     group.addCell(x, y);
@@ -430,117 +507,64 @@ class Game {
             }
         }
         
-        // Place X-block barriers to block middle path
-        for (let y = 10; y < GRID_HEIGHT - 10; y += 8) {
-            const barrierWidth = 2 + Math.floor(Math.random() * 2);
-            const barrierStart = midX - Math.floor(barrierWidth / 2);
-            
-            for (let bx = barrierStart; bx < barrierStart + barrierWidth && bx < GRID_WIDTH; bx++) {
-                if (bx >= 0 && bx < GRID_WIDTH) {
-                    // Remove from any group
-                    for (const group of this.blockGroups) {
-                        group.cells = group.cells.filter(c => !(c.x === bx && c.y === y));
-                    }
-                    
-                    const xBlock = new XBlock(bx, y);
-                    this.xBlocks.push(xBlock);
-                    this.grid[y][bx] = BLOCK_TYPES.XBLOCK;
-                }
-            }
-            
-            // Ensure there's a path on alternating sides
-            const gapSide = (y % 16 < 8) ? 0 : GRID_WIDTH - 1;
-            if (this.grid[y][gapSide] === BLOCK_TYPES.XBLOCK) {
-                const idx = this.xBlocks.findIndex(xb => xb.x === gapSide && xb.y === y);
-                if (idx >= 0) this.xBlocks.splice(idx, 1);
-            }
-            // Clear path
-            for (const group of this.blockGroups) {
-                group.cells = group.cells.filter(c => !(c.x === gapSide && c.y === y));
-            }
-            this.grid[y][gapSide] = BLOCK_TYPES.EMPTY;
-        }
-        
-        // Scatter some X-blocks
-        for (let y = 6; y < GRID_HEIGHT - 6; y++) {
-            for (let x = 0; x < GRID_WIDTH; x++) {
-                if (this.grid[y][x] === BLOCK_TYPES.XBLOCK) continue;
-                if (this.grid[y][x] === BLOCK_TYPES.EMPTY) continue;
-                
-                const depthFactor = y / GRID_HEIGHT;
-                if (Math.random() < 0.015 + depthFactor * 0.02) {
-                    for (const group of this.blockGroups) {
-                        group.cells = group.cells.filter(c => !(c.x === x && c.y === y));
-                    }
-                    const xBlock = new XBlock(x, y);
-                    this.xBlocks.push(xBlock);
-                    this.grid[y][x] = BLOCK_TYPES.XBLOCK;
-                }
-            }
-        }
-        
         // Clean up empty groups
         this.blockGroups = this.blockGroups.filter(g => g.cells.length > 0);
         
-        // Oxygen tubes on edges
-        for (let i = 0; i < 12; i++) {
-            const tubeY = 6 + Math.floor(i * (GRID_HEIGHT - 14) / 12);
-            const tubeX = Math.random() < 0.8 ?
-                (Math.random() < 0.5 ? 0 : GRID_WIDTH - 1) :
-                Math.floor(Math.random() * GRID_WIDTH);
-            
+        // Place items ONLY in air pockets
+        const shuffledPockets = [...airPockets].sort(() => Math.random() - 0.5);
+        
+        // Oxygen tubes
+        const oxygenCount = Math.min(8, Math.floor(shuffledPockets.length * 0.25));
+        for (let i = 0; i < oxygenCount && i < shuffledPockets.length; i++) {
+            const pocket = shuffledPockets[i];
             this.oxygenTubes.push({
-                x: tubeX * GRID_SIZE + GRID_SIZE / 2,
-                y: tubeY * GRID_SIZE + GRID_SIZE / 2,
+                x: pocket.x * GRID_SIZE + GRID_SIZE / 2,
+                y: pocket.y * GRID_SIZE + GRID_SIZE / 2,
+                gridX: pocket.x,
+                gridY: pocket.y,
                 collected: false,
                 fallTimer: 0
             });
+            // Mark in grid so blocks don't fall through
+            this.grid[pocket.y][pocket.x] = BLOCK_TYPES.ITEM;
         }
         
-        // Treasures - scattered throughout
-        // Coins (common) - 50 points
-        for (let i = 0; i < 20; i++) {
-            const treasureY = 8 + Math.floor(Math.random() * (GRID_HEIGHT - 20));
-            const treasureX = Math.floor(Math.random() * GRID_WIDTH);
-            
+        // Treasures
+        const treasurePockets = shuffledPockets.slice(oxygenCount);
+        
+        // Helper to add treasure
+        const addTreasure = (pocket, type, value) => {
             this.treasures.push({
-                x: treasureX * GRID_SIZE + GRID_SIZE / 2,
-                y: treasureY * GRID_SIZE + GRID_SIZE / 2,
-                type: 'coin',
-                value: 50,
+                x: pocket.x * GRID_SIZE + GRID_SIZE / 2,
+                y: pocket.y * GRID_SIZE + GRID_SIZE / 2,
+                gridX: pocket.x,
+                gridY: pocket.y,
+                type,
+                value,
                 collected: false,
                 fallTimer: 0
             });
+            // Mark in grid so blocks don't fall through
+            this.grid[pocket.y][pocket.x] = BLOCK_TYPES.ITEM;
+        };
+        
+        // Coins
+        const coinCount = Math.min(12, Math.floor(treasurePockets.length * 0.4));
+        for (let i = 0; i < coinCount && i < treasurePockets.length; i++) {
+            addTreasure(treasurePockets[i], 'coin', 50);
         }
         
-        // Money bags (uncommon) - 200 points
-        for (let i = 0; i < 8; i++) {
-            const treasureY = 15 + Math.floor(Math.random() * (GRID_HEIGHT - 25));
-            const treasureX = Math.floor(Math.random() * GRID_WIDTH);
-            
-            this.treasures.push({
-                x: treasureX * GRID_SIZE + GRID_SIZE / 2,
-                y: treasureY * GRID_SIZE + GRID_SIZE / 2,
-                type: 'bag',
-                value: 200,
-                collected: false,
-                fallTimer: 0
-            });
+        // Money bags
+        const bagStart = coinCount;
+        const bagCount = Math.min(4, Math.floor((treasurePockets.length - bagStart) * 0.3));
+        for (let i = 0; i < bagCount && (bagStart + i) < treasurePockets.length; i++) {
+            addTreasure(treasurePockets[bagStart + i], 'bag', 200);
         }
         
-        // Treasure chests (rare) - 500 points
-        for (let i = 0; i < 3; i++) {
-            const treasureY = 30 + Math.floor(Math.random() * (GRID_HEIGHT - 40));
-            const treasureX = Math.floor(Math.random() * GRID_WIDTH);
-            
-            this.treasures.push({
-                x: treasureX * GRID_SIZE + GRID_SIZE / 2,
-                y: treasureY * GRID_SIZE + GRID_SIZE / 2,
-                type: 'chest',
-                value: 500,
-                collected: false,
-                fallTimer: 0
-            });
+        // Chests (deep only)
+        const deepPockets = treasurePockets.filter(p => p.y > GRID_HEIGHT / 2);
+        for (let i = 0; i < 2 && i < deepPockets.length; i++) {
+            addTreasure(deepPockets[i], 'chest', 500);
         }
     }
     
@@ -555,6 +579,11 @@ class Game {
             down: this.keys['ArrowDown'] || this.keys['s'] || gp?.down,
             dig: this.keys[' '] || gp?.dig,
             digJustPressed: this.keysJustPressed[' '] || gp?.digJustPressed,
+            // Direction just pressed (for facing changes)
+            leftJustPressed: this.keysJustPressed['ArrowLeft'] || this.keysJustPressed['a'] || gp?.leftJustPressed,
+            rightJustPressed: this.keysJustPressed['ArrowRight'] || this.keysJustPressed['d'] || gp?.rightJustPressed,
+            upJustPressed: this.keysJustPressed['ArrowUp'] || this.keysJustPressed['w'] || gp?.upJustPressed,
+            downJustPressed: this.keysJustPressed['ArrowDown'] || this.keysJustPressed['s'] || gp?.downJustPressed,
         };
     }
     
@@ -597,9 +626,12 @@ class Game {
         this.player.x = gridX * GRID_SIZE;
         this.player.y = gridY * GRID_SIZE;
         
-        // Check if grounded
+        // Check if grounded - player falls through ITEM cells
         const blockBelow = this.grid[gridY + 1]?.[gridX];
-        this.player.isGrounded = (blockBelow !== undefined && blockBelow !== BLOCK_TYPES.EMPTY) || gridY >= GRID_HEIGHT - 1;
+        const isBlockSolid = blockBelow !== undefined && 
+                             blockBelow !== BLOCK_TYPES.EMPTY && 
+                             blockBelow !== BLOCK_TYPES.ITEM;
+        this.player.isGrounded = isBlockSolid || gridY >= GRID_HEIGHT - 1;
         
         // Gravity
         if (!this.player.isGrounded) {
@@ -607,7 +639,7 @@ class Game {
             if (this.player.fallTimer >= this.player.fallSpeed) {
                 this.player.fallTimer = 0;
                 this.player.y += GRID_SIZE;
-                this.player.facing = 'down';
+                // Don't change facing when falling
             }
             return;
         }
@@ -616,13 +648,19 @@ class Game {
         this.player.moveTimer += deltaTime;
         this.player.digCooldown -= deltaTime;
         
-        // Determine facing direction
-        if (input.left) this.player.facing = 'left';
-        else if (input.right) this.player.facing = 'right';
-        else if (input.down) this.player.facing = 'down';
-        else if (input.up) this.player.facing = 'up';
+        // Determine facing direction - change when direction key/stick is NEWLY pressed
+        // Only change facing, don't revert when released
+        if (input.leftJustPressed) {
+            this.player.facing = 'left';
+        } else if (input.rightJustPressed) {
+            this.player.facing = 'right';
+        } else if (input.downJustPressed) {
+            this.player.facing = 'down';
+        } else if (input.upJustPressed) {
+            this.player.facing = 'up';
+        }
         
-        // DIG ACTION - can dig WITHOUT moving!
+        // DIG ACTION - dig in facing direction, don't move
         if (input.digJustPressed && this.player.digCooldown <= 0) {
             let digX = gridX;
             let digY = gridY;
@@ -634,7 +672,7 @@ class Game {
             } else if (this.player.facing === 'down') {
                 digY = gridY + 1;
             } else if (this.player.facing === 'up' && gridY > 0) {
-                digY = gridY - 1; // Dig UP but don't move up
+                digY = gridY - 1;
             }
             
             // Try to dig
@@ -643,9 +681,11 @@ class Game {
                 if (targetBlock !== BLOCK_TYPES.EMPTY && targetBlock !== BLOCK_TYPES.BEDROCK) {
                     const didDig = this.digBlock(digX, digY);
                     if (didDig) {
-                        this.player.digCooldown = 0.15;
+                        this.player.digCooldown = 0.2;
                         this.player.isDrilling = true;
-                        this.player.drillAnimTimer = 0.2; // Animation duration
+                        this.player.drillAnimTimer = 0.25;
+                        // Don't move after digging - stay in place
+                        this.player.moveTimer = 0;
                     }
                 }
             }
@@ -659,9 +699,11 @@ class Game {
                 this.player.isDrilling = false;
                 this.player.drillAnimFrame = 0;
             }
+            // Don't allow movement while drilling
+            return;
         }
         
-        // MOVEMENT - separate from digging
+        // MOVEMENT - only when NOT drilling
         if (this.player.moveTimer >= this.player.moveCooldown) {
             let dx = 0;
             
@@ -674,19 +716,22 @@ class Game {
                 if (newGridX >= 0 && newGridX < GRID_WIDTH) {
                     const targetBlock = this.grid[gridY]?.[newGridX];
                     
-                    if (targetBlock === BLOCK_TYPES.EMPTY) {
+                    // Can move through EMPTY and ITEM cells
+                    if (targetBlock === BLOCK_TYPES.EMPTY || targetBlock === BLOCK_TYPES.ITEM) {
                         this.player.x = newGridX * GRID_SIZE;
                         this.player.moveTimer = 0;
+                        // Don't change facing here - only on key press
                     }
                 }
             }
             
-            // Move down if pressing down and block below is empty
+            // Move down if pressing down and block below is empty or item
             if (input.down) {
                 const belowBlock = this.grid[gridY + 1]?.[gridX];
-                if (belowBlock === BLOCK_TYPES.EMPTY) {
+                if (belowBlock === BLOCK_TYPES.EMPTY || belowBlock === BLOCK_TYPES.ITEM) {
                     this.player.y += GRID_SIZE;
                     this.player.moveTimer = 0;
+                    // Don't change facing here - only on key press
                 }
             }
         }
@@ -753,6 +798,11 @@ class Game {
             return { type: 'bedrock' };
         }
         
+        // Items (treasures/oxygen) - can't be dug, player walks through
+        if (blockType === BLOCK_TYPES.ITEM) {
+            return null; // Don't block digging or movement
+        }
+        
         for (const group of this.blockGroups) {
             if (group.hasCell(x, y)) {
                 return { type: 'group', group };
@@ -766,8 +816,15 @@ class Game {
         // Don't run physics until player has dug something
         if (!this.hasPlayerDug) return;
         
+        // Sort block groups by lowest cell (bottom-up processing)
+        const sortedGroups = [...this.blockGroups].sort((a, b) => {
+            const aMaxY = Math.max(...a.cells.map(c => c.y));
+            const bMaxY = Math.max(...b.cells.map(c => c.y));
+            return bMaxY - aMaxY; // Higher Y (lower on screen) first
+        });
+        
         // Update block groups
-        for (const group of this.blockGroups) {
+        for (const group of sortedGroups) {
             if (group.cells.length === 0) continue;
             
             if (group.isFalling) {
@@ -887,7 +944,16 @@ class Game {
             if (blockBelow === BLOCK_TYPES.EMPTY && tubeGridY < GRID_HEIGHT - 2) {
                 tube.fallTimer = (tube.fallTimer || 0) + deltaTime;
                 if (tube.fallTimer >= 0.08) {
+                    // Clear old position
+                    if (this.grid[tubeGridY]?.[tubeGridX] === BLOCK_TYPES.ITEM) {
+                        this.grid[tubeGridY][tubeGridX] = BLOCK_TYPES.EMPTY;
+                    }
                     tube.y += GRID_SIZE;
+                    // Set new position
+                    const newGridY = Math.floor(tube.y / GRID_SIZE);
+                    if (this.grid[newGridY]) {
+                        this.grid[newGridY][tubeGridX] = BLOCK_TYPES.ITEM;
+                    }
                     tube.fallTimer = 0;
                 }
             } else {
@@ -906,7 +972,16 @@ class Game {
             if (blockBelow === BLOCK_TYPES.EMPTY && treasureGridY < GRID_HEIGHT - 2) {
                 treasure.fallTimer = (treasure.fallTimer || 0) + deltaTime;
                 if (treasure.fallTimer >= 0.08) {
+                    // Clear old position
+                    if (this.grid[treasureGridY]?.[treasureGridX] === BLOCK_TYPES.ITEM) {
+                        this.grid[treasureGridY][treasureGridX] = BLOCK_TYPES.EMPTY;
+                    }
                     treasure.y += GRID_SIZE;
+                    // Set new position
+                    const newGridY = Math.floor(treasure.y / GRID_SIZE);
+                    if (this.grid[newGridY]) {
+                        this.grid[newGridY][treasureGridX] = BLOCK_TYPES.ITEM;
+                    }
                     treasure.fallTimer = 0;
                 }
             } else {
@@ -931,6 +1006,12 @@ class Game {
                     tube.collected = true;
                     this.oxygen = Math.min(this.maxOxygen, this.oxygen + 20);
                     this.score += 100;
+                    // Clear from grid
+                    const gx = Math.floor(tube.x / GRID_SIZE);
+                    const gy = Math.floor(tube.y / GRID_SIZE);
+                    if (this.grid[gy]?.[gx] === BLOCK_TYPES.ITEM) {
+                        this.grid[gy][gx] = BLOCK_TYPES.EMPTY;
+                    }
                 }
             }
         });
@@ -945,6 +1026,12 @@ class Game {
                 if (dist < GRID_SIZE * 0.8) {
                     treasure.collected = true;
                     this.score += treasure.value;
+                    // Clear from grid
+                    const gx = Math.floor(treasure.x / GRID_SIZE);
+                    const gy = Math.floor(treasure.y / GRID_SIZE);
+                    if (this.grid[gy]?.[gx] === BLOCK_TYPES.ITEM) {
+                        this.grid[gy][gx] = BLOCK_TYPES.EMPTY;
+                    }
                 }
             }
         });
@@ -1128,10 +1215,14 @@ class Game {
         const shakeOffset = group.getShakeOffset();
         
         const cellSet = new Set(group.cells.map(c => `${c.x},${c.y}`));
+        const ctx = this.ctx;
+        const padding = 2; // Small gap between cells for Mr. Driller look
+        const radius = 6; // Corner radius
         
         for (const cell of group.cells) {
-            const screenX = cell.x * GRID_SIZE + shakeOffset;
-            const screenY = cell.y * GRID_SIZE - this.cameraY + fallOffset;
+            const screenX = cell.x * GRID_SIZE + shakeOffset + padding;
+            const screenY = cell.y * GRID_SIZE - this.cameraY + fallOffset + padding;
+            const size = GRID_SIZE - padding * 2;
             
             if (screenY < -GRID_SIZE || screenY > CANVAS_HEIGHT + GRID_SIZE) continue;
             
@@ -1140,72 +1231,55 @@ class Game {
             const hasLeft = cellSet.has(`${cell.x - 1},${cell.y}`);
             const hasRight = cellSet.has(`${cell.x + 1},${cell.y}`);
             
-            // Main fill
-            this.ctx.fillStyle = color.color;
-            this.ctx.fillRect(screenX, screenY, GRID_SIZE, GRID_SIZE);
+            // Determine which corners should be rounded
+            const tl = !hasTop && !hasLeft ? radius : 0;
+            const tr = !hasTop && !hasRight ? radius : 0;
+            const bl = !hasBottom && !hasLeft ? radius : 0;
+            const br = !hasBottom && !hasRight ? radius : 0;
             
-            // Borders on exposed edges
-            const borderSize = 4;
+            // Draw rounded rectangle
+            ctx.beginPath();
+            ctx.moveTo(screenX + tl, screenY);
+            ctx.lineTo(screenX + size - tr, screenY);
+            if (tr) ctx.arcTo(screenX + size, screenY, screenX + size, screenY + tr, tr);
+            else ctx.lineTo(screenX + size, screenY);
+            ctx.lineTo(screenX + size, screenY + size - br);
+            if (br) ctx.arcTo(screenX + size, screenY + size, screenX + size - br, screenY + size, br);
+            else ctx.lineTo(screenX + size, screenY + size);
+            ctx.lineTo(screenX + bl, screenY + size);
+            if (bl) ctx.arcTo(screenX, screenY + size, screenX, screenY + size - bl, bl);
+            else ctx.lineTo(screenX, screenY + size);
+            ctx.lineTo(screenX, screenY + tl);
+            if (tl) ctx.arcTo(screenX, screenY, screenX + tl, screenY, tl);
+            else ctx.lineTo(screenX, screenY);
+            ctx.closePath();
             
-            if (!hasTop) {
-                this.ctx.fillStyle = color.highlight;
-                this.ctx.fillRect(screenX, screenY, GRID_SIZE, borderSize);
-            }
-            if (!hasLeft) {
-                this.ctx.fillStyle = color.highlight;
-                this.ctx.fillRect(screenX, screenY, borderSize, GRID_SIZE);
-            }
-            if (!hasBottom) {
-                this.ctx.fillStyle = color.shadow;
-                this.ctx.fillRect(screenX, screenY + GRID_SIZE - borderSize, GRID_SIZE, borderSize);
-            }
-            if (!hasRight) {
-                this.ctx.fillStyle = color.shadow;
-                this.ctx.fillRect(screenX + GRID_SIZE - borderSize, screenY, borderSize, GRID_SIZE);
-            }
+            // Main fill with gradient
+            const gradient = ctx.createLinearGradient(screenX, screenY, screenX, screenY + size);
+            gradient.addColorStop(0, color.highlight);
+            gradient.addColorStop(0.3, color.color);
+            gradient.addColorStop(1, color.shadow);
+            ctx.fillStyle = gradient;
+            ctx.fill();
             
-            // Shine
+            // Dark outline
+            ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            
+            // Inner highlight (top-left)
             if (!hasTop && !hasLeft) {
-                this.ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
-                this.ctx.beginPath();
-                this.ctx.arc(screenX + 10, screenY + 10, 5, 0, Math.PI * 2);
-                this.ctx.fill();
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+                ctx.beginPath();
+                ctx.ellipse(screenX + 8, screenY + 8, 5, 4, -0.3, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Secondary smaller shine
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+                ctx.beginPath();
+                ctx.ellipse(screenX + 14, screenY + 12, 3, 2, -0.3, 0, Math.PI * 2);
+                ctx.fill();
             }
-        }
-        
-        // Outline
-        this.ctx.strokeStyle = 'rgba(0, 0, 0, 0.4)';
-        this.ctx.lineWidth = 1;
-        
-        for (const cell of group.cells) {
-            const screenX = cell.x * GRID_SIZE + shakeOffset;
-            const screenY = cell.y * GRID_SIZE - this.cameraY + fallOffset;
-            
-            if (screenY < -GRID_SIZE || screenY > CANVAS_HEIGHT + GRID_SIZE) continue;
-            
-            const hasTop = cellSet.has(`${cell.x},${cell.y - 1}`);
-            const hasBottom = cellSet.has(`${cell.x},${cell.y + 1}`);
-            const hasLeft = cellSet.has(`${cell.x - 1},${cell.y}`);
-            const hasRight = cellSet.has(`${cell.x + 1},${cell.y}`);
-            
-            this.ctx.beginPath();
-            if (!hasTop) {
-                this.ctx.moveTo(screenX, screenY);
-                this.ctx.lineTo(screenX + GRID_SIZE, screenY);
-            }
-            if (!hasBottom) {
-                this.ctx.moveTo(screenX, screenY + GRID_SIZE);
-                this.ctx.lineTo(screenX + GRID_SIZE, screenY + GRID_SIZE);
-            }
-            if (!hasLeft) {
-                this.ctx.moveTo(screenX, screenY);
-                this.ctx.lineTo(screenX, screenY + GRID_SIZE);
-            }
-            if (!hasRight) {
-                this.ctx.moveTo(screenX + GRID_SIZE, screenY);
-                this.ctx.lineTo(screenX + GRID_SIZE, screenY + GRID_SIZE);
-            }
-            this.ctx.stroke();
         }
     }
     
@@ -1253,72 +1327,60 @@ class Game {
     
     renderTreasure(x, y, type) {
         const ctx = this.ctx;
-        const size = GRID_SIZE * 0.6;
-        const offset = (GRID_SIZE - size) / 2;
         
-        if (type === 'coin') {
-            // Gold coin
-            ctx.fillStyle = '#ffd700';
-            ctx.beginPath();
-            ctx.arc(x, y, 8, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.strokeStyle = '#b8860b';
-            ctx.lineWidth = 2;
-            ctx.stroke();
-            // $ symbol
-            ctx.fillStyle = '#b8860b';
-            ctx.font = 'bold 10px Arial';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText('$', x, y);
-        } else if (type === 'bag') {
-            // Money bag
-            ctx.fillStyle = '#8b4513';
-            ctx.beginPath();
-            ctx.moveTo(x - 8, y + 10);
-            ctx.lineTo(x - 10, y - 2);
-            ctx.lineTo(x - 4, y - 8);
-            ctx.lineTo(x + 4, y - 8);
-            ctx.lineTo(x + 10, y - 2);
-            ctx.lineTo(x + 8, y + 10);
-            ctx.closePath();
-            ctx.fill();
-            ctx.strokeStyle = '#5a3510';
-            ctx.lineWidth = 2;
-            ctx.stroke();
-            // Tie
-            ctx.fillStyle = '#daa520';
-            ctx.fillRect(x - 3, y - 10, 6, 4);
-            // $ symbol
-            ctx.fillStyle = '#ffd700';
-            ctx.font = 'bold 12px Arial';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText('$', x, y + 2);
-        } else if (type === 'chest') {
-            // Treasure chest
-            // Base
-            ctx.fillStyle = '#8b4513';
-            ctx.fillRect(x - 12, y - 4, 24, 14);
-            // Lid
-            ctx.fillStyle = '#a0522d';
-            ctx.fillRect(x - 12, y - 10, 24, 8);
-            // Gold trim
-            ctx.fillStyle = '#ffd700';
-            ctx.fillRect(x - 12, y - 4, 24, 2);
-            ctx.fillRect(x - 2, y - 10, 4, 16);
-            // Lock
-            ctx.fillStyle = '#ffd700';
-            ctx.beginPath();
-            ctx.arc(x, y - 2, 4, 0, Math.PI * 2);
-            ctx.fill();
+        // Use gold spritesheet by Clint Bellanger (CC-BY 3.0)
+        // Layout 4x4 grid, 32x32 each:
+        // Row 0: [palette takes 2 tiles], empty, empty
+        // Row 1: coin-stack, coin-pile, chalice, gold bars
+        // Row 2: chest-closed, chest-open?, crown, sword-pile
+        // Row 3: more items...
+        
+        if (ASSETS.gold) {
+            let srcX = 0, srcY = 32; // Default: first item on row 1
+            
+            if (type === 'coin') {
+                srcX = 0; srcY = 32; // Coin stack (row 1, col 0)
+            } else if (type === 'bag') {
+                srcX = 32; srcY = 32; // Coin pile (row 1, col 1)
+            } else if (type === 'chest') {
+                srcX = 0; srcY = 64; // Treasure chest (row 2, col 0)
+            }
+            
+            ctx.drawImage(
+                ASSETS.gold,
+                srcX, srcY, 32, 32,
+                x - GRID_SIZE/2, y - GRID_SIZE/2, GRID_SIZE, GRID_SIZE
+            );
+        } else {
+            // Fallback procedural rendering
+            const scale = GRID_SIZE / 32;
+            
+            if (type === 'coin') {
+                ctx.fillStyle = '#ffd700';
+                ctx.beginPath();
+                ctx.arc(x, y, 10 * scale, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.strokeStyle = '#b8860b';
+                ctx.lineWidth = 2 * scale;
+                ctx.stroke();
+            } else if (type === 'bag') {
+                ctx.fillStyle = '#ffd700';
+                ctx.beginPath();
+                ctx.arc(x, y, 12 * scale, 0, Math.PI * 2);
+                ctx.fill();
+            } else if (type === 'chest') {
+                ctx.fillStyle = '#8b4513';
+                ctx.fillRect(x - 14*scale, y - 10*scale, 28*scale, 20*scale);
+                ctx.fillStyle = '#ffd700';
+                ctx.fillRect(x - 3*scale, y - 10*scale, 6*scale, 20*scale);
+            }
         }
     }
     
     renderManny(x, y, facing, isDrilling) {
         const ctx = this.ctx;
         
-        // Get current input to show drilling animation when holding direction
+        // Get current input to check if holding a direction (for drill animation)
         const input = this.getInput();
         const holdingDirection = input.down || input.left || input.right || input.up;
         
@@ -1335,39 +1397,41 @@ class Game {
         
         if (isDrilling && facing === 'down') {
             // Bounce effect - jump up then squash down
-            const progress = this.player.drillAnimTimer / 0.2; // 0 to 1
+            const progress = this.player.drillAnimTimer / 0.25;
             if (progress > 0.5) {
-                // First half - jump up
                 offsetY = -8 * (progress - 0.5) * 2;
                 scaleY = 1.1;
                 scaleX = 0.9;
             } else {
-                // Second half - squash down
                 offsetY = 2 * (1 - progress * 2);
                 scaleY = 0.85;
                 scaleX = 1.15;
             }
         }
         
-        if (isDrilling || holdingDirection) {
-            // Show drilling animation when actually drilling OR holding direction
-            if (facing === 'down' && ASSETS.mole_drilling_down) {
+        // Always show direction-appropriate sprite based on facing
+        // Show animated drill when actually drilling OR holding direction key
+        const showDrillAnim = isDrilling || holdingDirection;
+        
+        if (facing === 'down') {
+            if (ASSETS.mole_drilling_down) {
                 sprite = ASSETS.mole_drilling_down;
-                frameIndex = isDrilling ? Math.floor(this.player.drillAnimFrame || 0) : 0;
-            } else if (facing === 'left' && ASSETS.mole_drilling_left) {
-                sprite = ASSETS.mole_drilling_left;
-                frameIndex = isDrilling ? Math.floor(this.player.drillAnimFrame || 0) : 0;
-            } else if (facing === 'right' && ASSETS.mole_drilling_right) {
-                sprite = ASSETS.mole_drilling_right;
-                frameIndex = isDrilling ? Math.floor(this.player.drillAnimFrame || 0) : 0;
-            } else if (facing === 'up' && ASSETS.mole_drilling_up) {
-                sprite = ASSETS.mole_drilling_up;
-                frameIndex = isDrilling ? Math.floor(this.player.drillAnimFrame || 0) : 0;
+                frameIndex = showDrillAnim ? Math.floor(this.player.drillAnimFrame || 0) : 0;
             }
-        } else {
-            // Idle - flip based on last horizontal facing
-            if (facing === 'left') {
-                flipH = true;
+        } else if (facing === 'left') {
+            if (ASSETS.mole_drilling_left) {
+                sprite = ASSETS.mole_drilling_left;
+                frameIndex = showDrillAnim ? Math.floor(this.player.drillAnimFrame || 0) : 0;
+            }
+        } else if (facing === 'right') {
+            if (ASSETS.mole_drilling_right) {
+                sprite = ASSETS.mole_drilling_right;
+                frameIndex = showDrillAnim ? Math.floor(this.player.drillAnimFrame || 0) : 0;
+            }
+        } else if (facing === 'up') {
+            if (ASSETS.mole_drilling_up) {
+                sprite = ASSETS.mole_drilling_up;
+                frameIndex = showDrillAnim ? Math.floor(this.player.drillAnimFrame || 0) : 0;
             }
         }
         
@@ -1449,6 +1513,41 @@ class Game {
         this.ctx.font = 'bold 12px Arial';
         this.ctx.textAlign = 'center';
         this.ctx.fillText(Math.floor(this.oxygen) + '%', oxygenX + barWidth/2, 37);
+        
+        // Show gamepad info if connected (small text at bottom)
+        if (this.gamepadMessage) {
+            this.ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+            this.ctx.fillRect(0, CANVAS_HEIGHT - 25, CANVAS_WIDTH, 25);
+            this.ctx.fillStyle = '#0f0';
+            this.ctx.font = '11px Arial';
+            this.ctx.textAlign = 'center';
+            this.ctx.fillText(this.gamepadMessage, CANVAS_WIDTH / 2, CANVAS_HEIGHT - 10);
+            
+            // Clear message after 3 seconds
+            if (Date.now() - this.gamepadMessageTime > 3000) {
+                this.gamepadMessage = null;
+            }
+        }
+    }
+    
+    cycleGamepad() {
+        const gamepads = this.gamepad.getGamepadList();
+        if (gamepads.length === 0) {
+            this.gamepadMessage = 'No gamepads connected';
+            this.gamepadMessageTime = Date.now();
+            return;
+        }
+        
+        // Find current index
+        let currentIdx = this.gamepad.preferredIndex || 0;
+        
+        // Cycle to next
+        currentIdx = (currentIdx + 1) % gamepads.length;
+        this.gamepad.setPreferredGamepad(gamepads[currentIdx].index);
+        
+        const name = gamepads[currentIdx].id.substring(0, 40);
+        this.gamepadMessage = `Gamepad ${currentIdx + 1}/${gamepads.length}: ${name}`;
+        this.gamepadMessageTime = Date.now();
     }
     
     renderOverlay(text, color) {
