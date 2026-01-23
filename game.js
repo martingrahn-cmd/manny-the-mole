@@ -4,9 +4,9 @@ const PLAYER_SIZE = 64;
 const GRID_WIDTH = 7; // Like Mr. Driller / Tetris
 const GRID_HEIGHT = 50;
 const VIEWPORT_HEIGHT = 11;
-const FALL_DELAY = 1.2;
-const FALL_SPEED = 0.1;
-const SHAKE_DURATION = 0.5;
+const FALL_DELAY = 1.0; // Time before falling
+const FALL_SPEED = 0.08; // Speed of falling animation
+const SHAKE_DURATION = 0.4; // Shake warning before fall
 
 let CANVAS_WIDTH = GRID_WIDTH * GRID_SIZE;
 let CANVAS_HEIGHT = VIEWPORT_HEIGHT * GRID_SIZE;
@@ -19,6 +19,9 @@ const ASSETS = {
     mole_drilling_left: null,
     mole_drilling_right: null,
     mole_drilling_up: null,
+    mole_walk_left: null,
+    mole_walk_right: null,
+    mole_falling: null,
     bedrock: null,
     x_block: null,
     oxygen_tube: null,
@@ -34,6 +37,9 @@ function loadAssets() {
             ['mole_drilling_left', 'assets/mole_drilling_left.png'],
             ['mole_drilling_right', 'assets/mole_drilling_right.png'],
             ['mole_drilling_up', 'assets/mole_drilling_up.png'],
+            ['mole_walk_left', 'assets/mole_walk_left.png'],
+            ['mole_walk_right', 'assets/mole_walk_right.png'],
+            ['mole_falling', 'assets/mole_falling.png'],
             ['bedrock', 'assets/bedrock.png'],
             ['x_block', 'assets/x_block.png'],
             ['oxygen_tube', 'assets/oxygen_tube.png'],
@@ -282,18 +288,37 @@ class Game {
         this.groupIdCounter = 0;
         
         this.player = {
-            x: Math.floor(GRID_WIDTH / 2) * GRID_SIZE,
-            y: 2 * GRID_SIZE,
+            // Grid position (logical)
+            gridX: Math.floor(GRID_WIDTH / 2),
+            gridY: 2,
+            // Visual position (for smooth interpolation)
+            visualX: Math.floor(GRID_WIDTH / 2) * GRID_SIZE,
+            visualY: 2 * GRID_SIZE,
+            // Legacy x/y for compatibility
+            get x() { return this.visualX; },
+            set x(val) { this.visualX = val; this.gridX = Math.round(val / GRID_SIZE); },
+            get y() { return this.visualY; },
+            set y(val) { this.visualY = val; this.gridY = Math.round(val / GRID_SIZE); },
+            
             facing: 'down',
             isGrounded: false,
+            isFalling: false,
+            fallVelocity: 0,
+            fallStartY: 0,
+            fallDistance: 0,
+            
+            // Movement
             moveTimer: 0,
-            moveCooldown: 0.08,
-            fallTimer: 0,
-            fallSpeed: 0.04,
+            moveCooldown: 0.12, // Slower, more deliberate movement
+            isMoving: false,
+            moveAnimFrame: 0,
+            
+            // Drilling
             digCooldown: 0,
             isDrilling: false,
             drillAnimFrame: 0,
             drillAnimTimer: 0,
+            showDrill: false, // True when facing a block
         };
         
         this.oxygen = 100;
@@ -619,128 +644,222 @@ class Game {
     
     updatePlayer(deltaTime) {
         const input = this.getInput();
+        const p = this.player;
         
-        const gridX = Math.round(this.player.x / GRID_SIZE);
-        const gridY = Math.round(this.player.y / GRID_SIZE);
+        const WALK_SPEED = 380; // Pixels per second
+        const FALL_THRESHOLD = 0.4; // How centered you need to be to fall (0.5 = perfectly centered)
         
-        this.player.x = gridX * GRID_SIZE;
-        this.player.y = gridY * GRID_SIZE;
+        // Current grid cell (based on center of player)
+        const centerX = p.visualX + GRID_SIZE / 2;
+        const currentGridX = Math.floor(centerX / GRID_SIZE);
+        const currentGridY = Math.floor(p.visualY / GRID_SIZE);
         
-        // Check if grounded - player falls through ITEM cells
-        const blockBelow = this.grid[gridY + 1]?.[gridX];
+        // How far into the current cell (0-1, 0.5 = centered)
+        const cellOffsetX = (centerX % GRID_SIZE) / GRID_SIZE;
+        const isCentered = cellOffsetX > FALL_THRESHOLD && cellOffsetX < (1 - FALL_THRESHOLD);
+        
+        // Check block below current position
+        const blockBelow = this.grid[currentGridY + 1]?.[currentGridX];
         const isBlockSolid = blockBelow !== undefined && 
                              blockBelow !== BLOCK_TYPES.EMPTY && 
                              blockBelow !== BLOCK_TYPES.ITEM;
-        this.player.isGrounded = isBlockSolid || gridY >= GRID_HEIGHT - 1;
+        const atBottom = currentGridY >= GRID_HEIGHT - 1;
         
-        // Gravity
-        if (!this.player.isGrounded) {
-            this.player.fallTimer += deltaTime;
-            if (this.player.fallTimer >= this.player.fallSpeed) {
-                this.player.fallTimer = 0;
-                this.player.y += GRID_SIZE;
-                // Don't change facing when falling
+        // Only fall if centered enough over the hole
+        const shouldFall = !isBlockSolid && !atBottom && isCentered;
+        
+        p.isGrounded = !shouldFall;
+        p.gridX = currentGridX;
+        p.gridY = currentGridY;
+        
+        // FALLING
+        if (shouldFall) {
+            // Track how far we've fallen (in pixels for smoother detection)
+            if (!p.isFalling) {
+                p.fallStartY = p.visualY; // Remember where we started falling (in pixels)
+            }
+            p.isFalling = true;
+            p.isMoving = false;
+            p.showDrill = false;
+            
+            // Snap X to center of cell when starting to fall
+            const targetX = currentGridX * GRID_SIZE;
+            p.visualX += (targetX - p.visualX) * 0.3; // Smooth snap
+            
+            // Accelerate falling
+            p.fallVelocity += deltaTime * 1500;
+            p.fallVelocity = Math.min(p.fallVelocity, 800);
+            
+            // Move down
+            p.visualY += p.fallVelocity * deltaTime;
+            
+            // Animate
+            p.moveAnimFrame = (p.moveAnimFrame + deltaTime * 10) % 4;
+            
+            // Update grid Y as we fall
+            p.gridY = Math.floor(p.visualY / GRID_SIZE);
+            
+            // Calculate fall distance in grid cells
+            p.fallDistance = (p.visualY - p.fallStartY) / GRID_SIZE;
+            
+            // Check if landed
+            const blockAtGridY = this.grid[p.gridY + 1]?.[currentGridX];
+            const solidAtGrid = blockAtGridY !== undefined && 
+                               blockAtGridY !== BLOCK_TYPES.EMPTY && 
+                               blockAtGridY !== BLOCK_TYPES.ITEM;
+            
+            if (solidAtGrid || p.gridY >= GRID_HEIGHT - 1) {
+                p.visualY = p.gridY * GRID_SIZE;
+                p.visualX = currentGridX * GRID_SIZE; // Snap X when landing
+                p.isFalling = false;
+                p.fallVelocity = 0;
+                // Don't reset fallDistance here - keep it for one more frame
             }
             return;
         }
         
-        this.player.fallTimer = 0;
-        this.player.moveTimer += deltaTime;
-        this.player.digCooldown -= deltaTime;
+        // Reset fall distance when grounded
+        p.fallDistance = 0;
         
-        // Determine facing direction - change when direction key/stick is NEWLY pressed
-        // Only change facing, don't revert when released
-        if (input.leftJustPressed) {
-            this.player.facing = 'left';
-        } else if (input.rightJustPressed) {
-            this.player.facing = 'right';
-        } else if (input.downJustPressed) {
-            this.player.facing = 'down';
-        } else if (input.upJustPressed) {
-            this.player.facing = 'up';
-        }
+        // GROUNDED
+        p.isFalling = false;
+        p.fallVelocity = 0;
+        p.visualY = currentGridY * GRID_SIZE; // Keep Y snapped to grid
         
-        // DIG ACTION - dig in facing direction, don't move
-        if (input.digJustPressed && this.player.digCooldown <= 0) {
-            let digX = gridX;
-            let digY = gridY;
-            
-            if (this.player.facing === 'left' && gridX > 0) {
-                digX = gridX - 1;
-            } else if (this.player.facing === 'right' && gridX < GRID_WIDTH - 1) {
-                digX = gridX + 1;
-            } else if (this.player.facing === 'down') {
-                digY = gridY + 1;
-            } else if (this.player.facing === 'up' && gridY > 0) {
-                digY = gridY - 1;
-            }
-            
-            // Try to dig
-            if (digY < GRID_HEIGHT && digY >= 0 && digX >= 0 && digX < GRID_WIDTH) {
-                const targetBlock = this.grid[digY]?.[digX];
-                if (targetBlock !== BLOCK_TYPES.EMPTY && targetBlock !== BLOCK_TYPES.BEDROCK) {
-                    const didDig = this.digBlock(digX, digY);
-                    if (didDig) {
-                        this.player.digCooldown = 0.2;
-                        this.player.isDrilling = true;
-                        this.player.drillAnimTimer = 0.25;
-                        // Don't move after digging - stay in place
-                        this.player.moveTimer = 0;
-                    }
-                }
-            }
-        }
+        p.moveTimer += deltaTime;
+        p.digCooldown -= deltaTime;
+        
+        // Reset states
+        p.showDrill = false;
         
         // Update drill animation
-        if (this.player.isDrilling) {
-            this.player.drillAnimTimer -= 0.016;
-            this.player.drillAnimFrame = (this.player.drillAnimFrame + 0.3) % 3;
-            if (this.player.drillAnimTimer <= 0) {
-                this.player.isDrilling = false;
-                this.player.drillAnimFrame = 0;
+        if (p.isDrilling) {
+            p.drillAnimTimer -= deltaTime;
+            p.drillAnimFrame = (p.drillAnimFrame + deltaTime * 20) % 3;
+            if (p.drillAnimTimer <= 0) {
+                p.isDrilling = false;
+                p.drillAnimFrame = 0;
             }
-            // Don't allow movement while drilling
+            // Snap to grid while drilling
+            const targetX = currentGridX * GRID_SIZE;
+            p.visualX += (targetX - p.visualX) * 0.3;
             return;
         }
         
-        // MOVEMENT - only when NOT drilling
-        if (this.player.moveTimer >= this.player.moveCooldown) {
-            let dx = 0;
+        // Check what's in each direction (from current grid cell)
+        const blockLeft = this.grid[currentGridY]?.[currentGridX - 1];
+        const blockRight = this.grid[currentGridY]?.[currentGridX + 1];
+        const blockDown = this.grid[currentGridY + 1]?.[currentGridX];
+        const blockUp = this.grid[currentGridY - 1]?.[currentGridX];
+        
+        const canMoveLeft = currentGridX > 0 && (blockLeft === BLOCK_TYPES.EMPTY || blockLeft === BLOCK_TYPES.ITEM);
+        const canMoveRight = currentGridX < GRID_WIDTH - 1 && (blockRight === BLOCK_TYPES.EMPTY || blockRight === BLOCK_TYPES.ITEM);
+        const canMoveDown = (blockDown === BLOCK_TYPES.EMPTY || blockDown === BLOCK_TYPES.ITEM);
+        
+        const hasBlockLeft = currentGridX > 0 && blockLeft !== BLOCK_TYPES.EMPTY && blockLeft !== BLOCK_TYPES.ITEM && blockLeft !== undefined;
+        const hasBlockRight = currentGridX < GRID_WIDTH - 1 && blockRight !== BLOCK_TYPES.EMPTY && blockRight !== BLOCK_TYPES.ITEM && blockRight !== undefined;
+        const hasBlockDown = blockDown !== BLOCK_TYPES.EMPTY && blockDown !== BLOCK_TYPES.ITEM && blockDown !== undefined;
+        const hasBlockUp = currentGridY > 0 && blockUp !== BLOCK_TYPES.EMPTY && blockUp !== BLOCK_TYPES.ITEM && blockUp !== undefined;
+        
+        // MOVEMENT
+        p.isMoving = false;
+        
+        if (input.left) {
+            p.facing = 'left';
             
-            if (input.left) dx = -1;
-            else if (input.right) dx = 1;
-            
-            if (dx !== 0) {
-                const newGridX = gridX + dx;
-                
-                if (newGridX >= 0 && newGridX < GRID_WIDTH) {
-                    const targetBlock = this.grid[gridY]?.[newGridX];
-                    
-                    // Can move through EMPTY and ITEM cells
-                    if (targetBlock === BLOCK_TYPES.EMPTY || targetBlock === BLOCK_TYPES.ITEM) {
-                        this.player.x = newGridX * GRID_SIZE;
-                        this.player.moveTimer = 0;
-                        // Don't change facing here - only on key press
-                    }
-                }
+            // Check if there's a block directly to our left in current cell
+            if (hasBlockLeft) {
+                // There's a wall to the left
+                p.showDrill = true;
+                // Snap towards center
+                const targetX = currentGridX * GRID_SIZE;
+                p.visualX += (targetX - p.visualX) * 0.2;
+            } else {
+                // No wall, free to move
+                p.visualX -= WALK_SPEED * deltaTime;
+                p.visualX = Math.max(0, p.visualX);
+                p.isMoving = true;
+                p.moveAnimFrame = (p.moveAnimFrame + deltaTime * 8) % 4;
             }
+        }
+        else if (input.right) {
+            p.facing = 'right';
             
-            // Move down if pressing down and block below is empty or item
-            if (input.down) {
-                const belowBlock = this.grid[gridY + 1]?.[gridX];
-                if (belowBlock === BLOCK_TYPES.EMPTY || belowBlock === BLOCK_TYPES.ITEM) {
-                    this.player.y += GRID_SIZE;
-                    this.player.moveTimer = 0;
-                    // Don't change facing here - only on key press
+            // Check if there's a block directly to our right in current cell
+            if (hasBlockRight) {
+                // There's a wall to the right
+                p.showDrill = true;
+                // Snap towards center
+                const targetX = currentGridX * GRID_SIZE;
+                p.visualX += (targetX - p.visualX) * 0.2;
+            } else {
+                // No wall, free to move
+                p.visualX += WALK_SPEED * deltaTime;
+                p.visualX = Math.min((GRID_WIDTH - 1) * GRID_SIZE, p.visualX);
+                p.isMoving = true;
+                p.moveAnimFrame = (p.moveAnimFrame + deltaTime * 8) % 4;
+            }
+        }
+        else if (input.down) {
+            p.facing = 'down';
+            if (canMoveDown && isCentered) {
+                // Drop down
+                p.gridY = currentGridY + 1;
+                p.fallVelocity = 200;
+            } else if (hasBlockDown) {
+                p.showDrill = true;
+                // Snap to center for drilling
+                const targetX = currentGridX * GRID_SIZE;
+                p.visualX += (targetX - p.visualX) * 0.2;
+            } else if (canMoveDown && !isCentered) {
+                // Need to center first
+                const targetX = currentGridX * GRID_SIZE;
+                p.visualX += (targetX - p.visualX) * 0.15;
+            }
+        }
+        else if (input.up) {
+            p.facing = 'up';
+            if (hasBlockUp) {
+                p.showDrill = true;
+                // Snap to center for drilling
+                const targetX = currentGridX * GRID_SIZE;
+                p.visualX += (targetX - p.visualX) * 0.2;
+            }
+        }
+        
+        // DIG ACTION - requires being reasonably centered
+        if (input.digJustPressed && p.digCooldown <= 0) {
+            // Snap to center for digging
+            p.visualX = currentGridX * GRID_SIZE;
+            
+            let digX = currentGridX;
+            let digY = currentGridY;
+            
+            if (p.facing === 'left' && currentGridX > 0) digX = currentGridX - 1;
+            else if (p.facing === 'right' && currentGridX < GRID_WIDTH - 1) digX = currentGridX + 1;
+            else if (p.facing === 'down') digY = currentGridY + 1;
+            else if (p.facing === 'up' && currentGridY > 0) digY = currentGridY - 1;
+            
+            if (digY < GRID_HEIGHT && digY >= 0 && digX >= 0 && digX < GRID_WIDTH) {
+                const targetBlock = this.grid[digY]?.[digX];
+                if (targetBlock !== BLOCK_TYPES.EMPTY && 
+                    targetBlock !== BLOCK_TYPES.ITEM && 
+                    targetBlock !== BLOCK_TYPES.BEDROCK) {
+                    const didDig = this.digBlock(digX, digY);
+                    if (didDig) {
+                        p.digCooldown = 0.15;
+                        p.isDrilling = true;
+                        p.drillAnimTimer = 0.2;
+                    }
                 }
             }
         }
         
         // Win condition
-        if (this.player.x < this.safe.x + this.safe.width &&
-            this.player.x + PLAYER_SIZE > this.safe.x &&
-            this.player.y < this.safe.y + this.safe.height &&
-            this.player.y + PLAYER_SIZE > this.safe.y) {
+        if (p.visualX < this.safe.x + this.safe.width &&
+            p.visualX + PLAYER_SIZE > this.safe.x &&
+            p.visualY < this.safe.y + this.safe.height &&
+            p.visualY + PLAYER_SIZE > this.safe.y) {
             this.gameState = 'won';
         }
     }
@@ -816,15 +935,32 @@ class Game {
         // Don't run physics until player has dug something
         if (!this.hasPlayerDug) return;
         
-        // Sort block groups by lowest cell (bottom-up processing)
-        const sortedGroups = [...this.blockGroups].sort((a, b) => {
-            const aMaxY = Math.max(...a.cells.map(c => c.y));
-            const bMaxY = Math.max(...b.cells.map(c => c.y));
-            return bMaxY - aMaxY; // Higher Y (lower on screen) first
-        });
+        // STEP 1: Mark all blocks that will eventually fall
+        // A block will fall if there's empty space anywhere below it (directly or through other falling blocks)
+        
+        // First, find all groups that can fall RIGHT NOW (empty directly below)
+        const canFallNow = new Set();
+        for (const group of this.blockGroups) {
+            if (group.cells.length === 0) continue;
+            if (group.canFall(this.grid)) {
+                canFallNow.add(group);
+            }
+        }
+        
+        // Also check x-blocks
+        const xBlocksCanFall = new Set();
+        for (const xBlock of this.xBlocks) {
+            if (xBlock.destroyed) continue;
+            if (xBlock.canFall(this.grid)) {
+                xBlocksCanFall.add(xBlock);
+            }
+        }
+        
+        // STEP 2: If ANY block starts shaking, all blocks above it should also start shaking
+        // This creates the "chain reaction" effect where everything falls together
         
         // Update block groups
-        for (const group of sortedGroups) {
+        for (const group of this.blockGroups) {
             if (group.cells.length === 0) continue;
             
             if (group.isFalling) {
@@ -859,7 +995,38 @@ class Game {
                     }
                 }
             } else {
-                if (group.canFall(this.grid)) {
+                // Check if this group can fall (empty below) OR if it's above a falling/shaking group
+                let shouldStartFalling = canFallNow.has(group);
+                
+                if (!shouldStartFalling) {
+                    // Check if any block below us is shaking/falling
+                    for (const cell of group.cells) {
+                        const belowY = cell.y + 1;
+                        // Check if there's a shaking/falling group below
+                        for (const otherGroup of this.blockGroups) {
+                            if (otherGroup === group) continue;
+                            if (otherGroup.isShaking || otherGroup.isFalling) {
+                                if (otherGroup.hasCell(cell.x, belowY)) {
+                                    shouldStartFalling = true;
+                                    break;
+                                }
+                            }
+                        }
+                        // Check x-blocks below
+                        for (const xBlock of this.xBlocks) {
+                            if (xBlock.destroyed) continue;
+                            if (xBlock.isShaking || xBlock.isFalling) {
+                                if (xBlock.x === cell.x && xBlock.y === belowY) {
+                                    shouldStartFalling = true;
+                                    break;
+                                }
+                            }
+                        }
+                        if (shouldStartFalling) break;
+                    }
+                }
+                
+                if (shouldStartFalling) {
                     if (!group.isShaking) {
                         group.isShaking = true;
                         group.shakeTimer = 0;
@@ -870,8 +1037,11 @@ class Game {
                     if (group.shakeTimer >= SHAKE_DURATION) {
                         group.fallTimer += deltaTime;
                         if (group.fallTimer >= FALL_DELAY - SHAKE_DURATION) {
-                            group.isFalling = true;
-                            group.fallProgress = 0;
+                            // Only actually start falling if there's space
+                            if (group.canFall(this.grid)) {
+                                group.isFalling = true;
+                                group.fallProgress = 0;
+                            }
                         }
                     }
                 } else {
@@ -882,7 +1052,7 @@ class Game {
             }
         }
         
-        // Update X-blocks
+        // Update X-blocks with same logic
         for (const xBlock of this.xBlocks) {
             if (xBlock.destroyed) continue;
             
@@ -910,7 +1080,32 @@ class Game {
                     }
                 }
             } else {
-                if (xBlock.canFall(this.grid)) {
+                let shouldStartFalling = xBlocksCanFall.has(xBlock);
+                
+                if (!shouldStartFalling) {
+                    const belowY = xBlock.y + 1;
+                    // Check if there's a shaking/falling group below
+                    for (const group of this.blockGroups) {
+                        if (group.isShaking || group.isFalling) {
+                            if (group.hasCell(xBlock.x, belowY)) {
+                                shouldStartFalling = true;
+                                break;
+                            }
+                        }
+                    }
+                    // Check other x-blocks below
+                    for (const otherXBlock of this.xBlocks) {
+                        if (otherXBlock === xBlock || otherXBlock.destroyed) continue;
+                        if (otherXBlock.isShaking || otherXBlock.isFalling) {
+                            if (otherXBlock.x === xBlock.x && otherXBlock.y === belowY) {
+                                shouldStartFalling = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+                
+                if (shouldStartFalling) {
                     if (!xBlock.isShaking) {
                         xBlock.isShaking = true;
                         xBlock.shakeTimer = 0;
@@ -921,8 +1116,10 @@ class Game {
                     if (xBlock.shakeTimer >= SHAKE_DURATION) {
                         xBlock.fallTimer += deltaTime;
                         if (xBlock.fallTimer >= FALL_DELAY - SHAKE_DURATION) {
-                            xBlock.isFalling = true;
-                            xBlock.fallProgress = 0;
+                            if (xBlock.canFall(this.grid)) {
+                                xBlock.isFalling = true;
+                                xBlock.fallProgress = 0;
+                            }
                         }
                     }
                 } else {
@@ -1044,10 +1241,10 @@ class Game {
     }
     
     updateCamera() {
-        const targetCameraY = this.player.y - CANVAS_HEIGHT / 2 + GRID_SIZE;
-        this.cameraY += (targetCameraY - this.cameraY) * 0.1;
+        const targetCameraY = this.player.visualY - CANVAS_HEIGHT / 2 + GRID_SIZE;
+        this.cameraY += (targetCameraY - this.cameraY) * 0.15; // Slightly faster camera follow
         this.cameraY = Math.max(0, Math.min(this.cameraY, GRID_HEIGHT * GRID_SIZE - CANVAS_HEIGHT));
-        this.depth = Math.max(0, Math.floor((this.player.y / GRID_SIZE) - 2));
+        this.depth = Math.max(0, Math.floor((this.player.visualY / GRID_SIZE) - 2));
     }
     
     restart() {
@@ -1057,18 +1254,32 @@ class Game {
         this.groupIdCounter = 0;
         
         this.player = {
-            x: Math.floor(GRID_WIDTH / 2) * GRID_SIZE,
-            y: 2 * GRID_SIZE,
+            gridX: Math.floor(GRID_WIDTH / 2),
+            gridY: 2,
+            visualX: Math.floor(GRID_WIDTH / 2) * GRID_SIZE,
+            visualY: 2 * GRID_SIZE,
+            get x() { return this.visualX; },
+            set x(val) { this.visualX = val; this.gridX = Math.round(val / GRID_SIZE); },
+            get y() { return this.visualY; },
+            set y(val) { this.visualY = val; this.gridY = Math.round(val / GRID_SIZE); },
+            
             facing: 'down',
             isGrounded: false,
+            isFalling: false,
+            fallVelocity: 0,
+            fallStartY: 0,
+            fallDistance: 0,
+            
             moveTimer: 0,
-            moveCooldown: 0.08,
-            fallTimer: 0,
-            fallSpeed: 0.04,
+            moveCooldown: 0.12,
+            isMoving: false,
+            moveAnimFrame: 0,
+            
             digCooldown: 0,
             isDrilling: false,
             drillAnimFrame: 0,
             drillAnimTimer: 0,
+            showDrill: false,
         };
         
         this.oxygen = 100;
@@ -1190,8 +1401,8 @@ class Game {
         }
         
         // Render player
-        const playerScreenY = this.player.y - this.cameraY;
-        this.renderManny(this.player.x, playerScreenY, this.player.facing, this.player.isDrilling);
+        const playerScreenY = this.player.visualY - this.cameraY;
+        this.renderManny(this.player.visualX, playerScreenY, this.player.facing, this.player.isDrilling);
         
         // Render HUD
         this.renderHUD();
@@ -1216,9 +1427,10 @@ class Game {
         
         const cellSet = new Set(group.cells.map(c => `${c.x},${c.y}`));
         const ctx = this.ctx;
-        const padding = 2; // Small gap between cells for Mr. Driller look
-        const radius = 6; // Corner radius
+        const padding = 2;
+        const radius = 6;
         
+        // First pass: draw all cells
         for (const cell of group.cells) {
             const screenX = cell.x * GRID_SIZE + shakeOffset + padding;
             const screenY = cell.y * GRID_SIZE - this.cameraY + fallOffset + padding;
@@ -1262,23 +1474,61 @@ class Game {
             ctx.fillStyle = gradient;
             ctx.fill();
             
-            // Dark outline
-            ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
-            ctx.lineWidth = 2;
-            ctx.stroke();
-            
-            // Inner highlight (top-left)
+            // Inner highlight (top-left corner shine)
             if (!hasTop && !hasLeft) {
                 ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
                 ctx.beginPath();
                 ctx.ellipse(screenX + 8, screenY + 8, 5, 4, -0.3, 0, Math.PI * 2);
                 ctx.fill();
                 
-                // Secondary smaller shine
                 ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
                 ctx.beginPath();
                 ctx.ellipse(screenX + 14, screenY + 12, 3, 2, -0.3, 0, Math.PI * 2);
                 ctx.fill();
+            }
+        }
+        
+        // Second pass: draw dark outlines only on OUTER edges
+        for (const cell of group.cells) {
+            const screenX = cell.x * GRID_SIZE + shakeOffset + padding;
+            const screenY = cell.y * GRID_SIZE - this.cameraY + fallOffset + padding;
+            const size = GRID_SIZE - padding * 2;
+            
+            if (screenY < -GRID_SIZE || screenY > CANVAS_HEIGHT + GRID_SIZE) continue;
+            
+            const hasTop = cellSet.has(`${cell.x},${cell.y - 1}`);
+            const hasBottom = cellSet.has(`${cell.x},${cell.y + 1}`);
+            const hasLeft = cellSet.has(`${cell.x - 1},${cell.y}`);
+            const hasRight = cellSet.has(`${cell.x + 1},${cell.y}`);
+            
+            ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
+            ctx.lineWidth = 3;
+            ctx.lineCap = 'round';
+            
+            // Only draw edges that are on the outside of the group
+            if (!hasTop) {
+                ctx.beginPath();
+                ctx.moveTo(screenX, screenY);
+                ctx.lineTo(screenX + size, screenY);
+                ctx.stroke();
+            }
+            if (!hasBottom) {
+                ctx.beginPath();
+                ctx.moveTo(screenX, screenY + size);
+                ctx.lineTo(screenX + size, screenY + size);
+                ctx.stroke();
+            }
+            if (!hasLeft) {
+                ctx.beginPath();
+                ctx.moveTo(screenX, screenY);
+                ctx.lineTo(screenX, screenY + size);
+                ctx.stroke();
+            }
+            if (!hasRight) {
+                ctx.beginPath();
+                ctx.moveTo(screenX + size, screenY);
+                ctx.lineTo(screenX + size, screenY + size);
+                ctx.stroke();
             }
         }
     }
@@ -1379,25 +1629,20 @@ class Game {
     
     renderManny(x, y, facing, isDrilling) {
         const ctx = this.ctx;
-        
-        // Get current input to check if holding a direction (for drill animation)
-        const input = this.getInput();
-        const holdingDirection = input.down || input.left || input.right || input.up;
+        const p = this.player;
         
         // Determine which sprite to use
-        let sprite = ASSETS.mole;
+        let sprite = null;
         let frameWidth = 32;
         let frameIndex = 0;
-        let flipH = false;
         
-        // Jump/bounce effect when drilling down
+        // Bounce effect when drilling down
         let offsetY = 0;
         let scaleX = 1;
         let scaleY = 1;
         
         if (isDrilling && facing === 'down') {
-            // Bounce effect - jump up then squash down
-            const progress = this.player.drillAnimTimer / 0.25;
+            const progress = p.drillAnimTimer / 0.2;
             if (progress > 0.5) {
                 offsetY = -8 * (progress - 0.5) * 2;
                 scaleY = 1.1;
@@ -1409,29 +1654,76 @@ class Game {
             }
         }
         
-        // Always show direction-appropriate sprite based on facing
-        // Show animated drill when actually drilling OR holding direction key
-        const showDrillAnim = isDrilling || holdingDirection;
+        // Priority: Falling > Drilling > ShowDrill > Walking / Idle
         
-        if (facing === 'down') {
-            if (ASSETS.mole_drilling_down) {
+        if (p.isFalling) {
+            if (p.fallDistance >= 1.5 && ASSETS.mole_falling) {
+                // LONG FALL (1.5+ cells) - use falling sprite with animation
+                sprite = ASSETS.mole_falling;
+                frameIndex = Math.floor(p.moveAnimFrame) % 4;
+            } else {
+                // SHORT FALL - use falling sprite but frame 0 (still)
+                if (ASSETS.mole_falling) {
+                    sprite = ASSETS.mole_falling;
+                    frameIndex = 0;
+                } else if (facing === 'left' && ASSETS.mole_walk_left) {
+                    sprite = ASSETS.mole_walk_left;
+                    frameIndex = 0;
+                } else if (ASSETS.mole_walk_right) {
+                    sprite = ASSETS.mole_walk_right;
+                    frameIndex = 0;
+                }
+            }
+            
+        } else if (isDrilling) {
+            // ACTIVELY DRILLING (dig animation)
+            if (facing === 'down' && ASSETS.mole_drilling_down) {
                 sprite = ASSETS.mole_drilling_down;
-                frameIndex = showDrillAnim ? Math.floor(this.player.drillAnimFrame || 0) : 0;
-            }
-        } else if (facing === 'left') {
-            if (ASSETS.mole_drilling_left) {
+                frameIndex = Math.floor(p.drillAnimFrame) % 3;
+            } else if (facing === 'left' && ASSETS.mole_drilling_left) {
                 sprite = ASSETS.mole_drilling_left;
-                frameIndex = showDrillAnim ? Math.floor(this.player.drillAnimFrame || 0) : 0;
-            }
-        } else if (facing === 'right') {
-            if (ASSETS.mole_drilling_right) {
+                frameIndex = Math.floor(p.drillAnimFrame) % 3;
+            } else if (facing === 'right' && ASSETS.mole_drilling_right) {
                 sprite = ASSETS.mole_drilling_right;
-                frameIndex = showDrillAnim ? Math.floor(this.player.drillAnimFrame || 0) : 0;
-            }
-        } else if (facing === 'up') {
-            if (ASSETS.mole_drilling_up) {
+                frameIndex = Math.floor(p.drillAnimFrame) % 3;
+            } else if (facing === 'up' && ASSETS.mole_drilling_up) {
                 sprite = ASSETS.mole_drilling_up;
-                frameIndex = showDrillAnim ? Math.floor(this.player.drillAnimFrame || 0) : 0;
+                frameIndex = Math.floor(p.drillAnimFrame) % 3;
+            }
+            
+        } else if (p.showDrill) {
+            // FACING A BLOCK - show drill raised (frame 0 only, no animation)
+            if (facing === 'down' && ASSETS.mole_drilling_down) {
+                sprite = ASSETS.mole_drilling_down;
+                frameIndex = 0;
+            } else if (facing === 'left' && ASSETS.mole_drilling_left) {
+                sprite = ASSETS.mole_drilling_left;
+                frameIndex = 0;
+            } else if (facing === 'right' && ASSETS.mole_drilling_right) {
+                sprite = ASSETS.mole_drilling_right;
+                frameIndex = 0;
+            } else if (facing === 'up' && ASSETS.mole_drilling_up) {
+                sprite = ASSETS.mole_drilling_up;
+                frameIndex = 0;
+            }
+            
+        } else {
+            // IDLE or WALKING - use walk sprite based on facing direction
+            if (facing === 'left' && ASSETS.mole_walk_left) {
+                sprite = ASSETS.mole_walk_left;
+                frameIndex = p.isMoving ? Math.floor(p.moveAnimFrame) % 4 : 0;
+            } else if (facing === 'right' && ASSETS.mole_walk_right) {
+                sprite = ASSETS.mole_walk_right;
+                frameIndex = p.isMoving ? Math.floor(p.moveAnimFrame) % 4 : 0;
+            } else if (facing === 'down' && ASSETS.mole_drilling_down) {
+                sprite = ASSETS.mole_drilling_down;
+                frameIndex = 0;
+            } else if (facing === 'up' && ASSETS.mole_drilling_up) {
+                sprite = ASSETS.mole_drilling_up;
+                frameIndex = 0;
+            } else {
+                sprite = ASSETS.mole;
+                frameIndex = 0;
             }
         }
         
@@ -1440,11 +1732,10 @@ class Game {
             
             ctx.save();
             
-            // Apply transformations for bounce effect
             const centerX = x + GRID_SIZE / 2;
             const centerY = y + GRID_SIZE / 2;
             ctx.translate(centerX, centerY + offsetY);
-            ctx.scale(flipH ? -scaleX : scaleX, scaleY);
+            ctx.scale(scaleX, scaleY);
             ctx.translate(-GRID_SIZE / 2, -GRID_SIZE / 2);
             
             ctx.drawImage(

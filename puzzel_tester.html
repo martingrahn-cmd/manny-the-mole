@@ -1,0 +1,1563 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manny the Mole - Safe Cracking</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #fff;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        h1 {
+            color: #ffd700;
+            margin-bottom: 20px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            font-size: 28px;
+        }
+        
+        .puzzle-selector {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .puzzle-btn {
+            padding: 12px 25px;
+            font-size: 16px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-weight: bold;
+        }
+        
+        .puzzle-btn:hover {
+            transform: scale(1.05);
+        }
+        
+        .puzzle-btn.keypad {
+            background: linear-gradient(135deg, #2d5a27, #1e3d1a);
+            color: #4ade80;
+            border: 2px solid #4ade80;
+        }
+        
+        .puzzle-btn.dial {
+            background: linear-gradient(135deg, #5a4a27, #3d351a);
+            color: #ffd700;
+            border: 2px solid #ffd700;
+        }
+        
+        .puzzle-btn.pipes {
+            background: linear-gradient(135deg, #27445a, #1a2d3d);
+            color: #44aaff;
+            border: 2px solid #44aaff;
+        }
+        
+        .puzzle-btn.active {
+            box-shadow: 0 0 20px currentColor;
+        }
+        
+        .difficulty-selector {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 25px;
+        }
+        
+        .diff-btn {
+            padding: 8px 18px;
+            border: 2px solid #666;
+            background: transparent;
+            color: #aaa;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .diff-btn:hover {
+            border-color: #ffd700;
+            color: #ffd700;
+        }
+        
+        .diff-btn.active {
+            background: #ffd700;
+            color: #1a1a2e;
+            border-color: #ffd700;
+        }
+        
+        #puzzle-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        /* ============ DIGITAL KEYPAD SAFE ============ */
+        .safe-door {
+            width: 340px;
+            height: 420px;
+            background: linear-gradient(145deg, #4a4a5a, #2a2a3a);
+            border-radius: 20px;
+            padding: 25px;
+            box-shadow: 
+                0 20px 60px rgba(0,0,0,0.6),
+                inset 0 2px 0 rgba(255,255,255,0.1),
+                inset 0 -2px 0 rgba(0,0,0,0.3);
+            border: 3px solid #3a3a4a;
+            position: relative;
+        }
+        
+        .safe-door::before {
+            content: '';
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            right: 10px;
+            bottom: 10px;
+            border: 2px solid #555;
+            border-radius: 15px;
+            pointer-events: none;
+        }
+        
+        .safe-handle {
+            position: absolute;
+            right: -25px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 20px;
+            height: 80px;
+            background: linear-gradient(90deg, #666, #888, #666);
+            border-radius: 5px;
+            box-shadow: 2px 2px 10px rgba(0,0,0,0.5);
+        }
+        
+        .keypad-display {
+            background: #0a0a0a;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+            border: 3px solid #333;
+            box-shadow: inset 0 2px 10px rgba(0,0,0,0.8);
+        }
+        
+        .display-label {
+            color: #666;
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 8px;
+        }
+        
+        .display-code {
+            font-family: 'Courier New', monospace;
+            font-size: 36px;
+            color: #4ade80;
+            text-shadow: 0 0 10px #4ade80;
+            letter-spacing: 8px;
+            min-height: 44px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .display-code.showing {
+            animation: flicker 0.1s infinite;
+        }
+        
+        .display-code.error {
+            color: #ff4444;
+            text-shadow: 0 0 10px #ff4444;
+        }
+        
+        .display-code.success {
+            color: #ffd700;
+            text-shadow: 0 0 20px #ffd700;
+        }
+        
+        @keyframes flicker {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.8; }
+        }
+        
+        .keypad-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+        }
+        
+        .key-btn {
+            width: 70px;
+            height: 55px;
+            border: none;
+            border-radius: 8px;
+            font-size: 24px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.1s;
+            background: linear-gradient(145deg, #3a3a4a, #2a2a3a);
+            color: #ccc;
+            box-shadow: 
+                0 4px 0 #1a1a2a,
+                0 6px 10px rgba(0,0,0,0.3);
+            font-family: 'Courier New', monospace;
+        }
+        
+        .key-btn:hover {
+            background: linear-gradient(145deg, #4a4a5a, #3a3a4a);
+            color: #fff;
+        }
+        
+        .key-btn:active {
+            transform: translateY(3px);
+            box-shadow: 
+                0 1px 0 #1a1a2a,
+                0 2px 5px rgba(0,0,0,0.3);
+        }
+        
+        .key-btn.flash {
+            background: #4ade80;
+            color: #000;
+            box-shadow: 
+                0 4px 0 #2d8a4e,
+                0 0 20px #4ade80;
+        }
+        
+        .key-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .keypad-status {
+            margin-top: 15px;
+            font-size: 12px;
+            color: #888;
+            text-align: center;
+            min-height: 20px;
+        }
+        
+        /* ============ ANALOG DIAL SAFE ============ */
+        .dial-safe-door {
+            width: 380px;
+            height: 380px;
+            background: linear-gradient(145deg, #5a5a6a, #3a3a4a);
+            border-radius: 25px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 
+                0 20px 60px rgba(0,0,0,0.6),
+                inset 0 2px 0 rgba(255,255,255,0.1);
+            border: 4px solid #4a4a5a;
+            position: relative;
+        }
+        
+        .dial-safe-door::before {
+            content: '';
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            right: 12px;
+            bottom: 12px;
+            border: 2px solid #666;
+            border-radius: 20px;
+            pointer-events: none;
+        }
+        
+        .dial-brand {
+            position: absolute;
+            top: 30px;
+            font-size: 14px;
+            letter-spacing: 4px;
+            color: #888;
+            text-transform: uppercase;
+        }
+        
+        .dial-container {
+            position: relative;
+            width: 220px;
+            height: 220px;
+        }
+        
+        .dial-outer {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background: linear-gradient(145deg, #2a2a3a, #1a1a2a);
+            box-shadow: 
+                0 8px 30px rgba(0,0,0,0.5),
+                inset 0 2px 0 rgba(255,255,255,0.1);
+            position: relative;
+            border: 4px solid #444;
+        }
+        
+        .dial-ring {
+            position: absolute;
+            top: 15px;
+            left: 15px;
+            right: 15px;
+            bottom: 15px;
+            border-radius: 50%;
+            background: linear-gradient(145deg, #c0c0c0, #909090);
+            box-shadow: 
+                inset 0 4px 10px rgba(0,0,0,0.3),
+                0 2px 0 rgba(255,255,255,0.5);
+        }
+        
+        .dial-numbers {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+        }
+        
+        .dial-number {
+            position: absolute;
+            font-size: 14px;
+            font-weight: bold;
+            color: #333;
+            transform: translate(-50%, -50%);
+        }
+        
+        .dial-ticks {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+        }
+        
+        .dial-tick {
+            position: absolute;
+            width: 2px;
+            height: 8px;
+            background: #555;
+            transform-origin: center 95px;
+            left: calc(50% - 1px);
+            top: 10px;
+        }
+        
+        .dial-tick.major {
+            height: 12px;
+            width: 3px;
+            background: #333;
+        }
+        
+        .dial-knob {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background: linear-gradient(145deg, #ffd700, #b8860b);
+            box-shadow: 
+                0 4px 15px rgba(0,0,0,0.4),
+                inset 0 2px 0 rgba(255,255,255,0.4);
+            cursor: grab;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .dial-knob:active {
+            cursor: grabbing;
+        }
+        
+        .dial-knob-center {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: linear-gradient(145deg, #ffd700, #b8860b);
+            box-shadow: 
+                0 4px 15px rgba(0,0,0,0.4),
+                inset 0 2px 0 rgba(255,255,255,0.4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+        }
+        
+        .dial-knob-center .dial-knob-inner {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            background: linear-gradient(145deg, #333, #222);
+            box-shadow: inset 0 2px 5px rgba(0,0,0,0.5);
+        }
+        
+        .dial-marker-arm {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 4px;
+            height: 80px;
+            background: linear-gradient(to top, #ff4444 0%, #ff6666 80%, transparent 100%);
+            transform-origin: bottom center;
+            transform: translateX(-50%) rotate(-90deg);
+            border-radius: 2px;
+            z-index: 5;
+        }
+        
+        .dial-marker-tip {
+            position: absolute;
+            top: 0px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 0;
+            height: 0;
+            border-left: 6px solid transparent;
+            border-right: 6px solid transparent;
+            border-bottom: 10px solid #ff6666;
+            filter: drop-shadow(0 0 4px rgba(255, 68, 68, 0.8));
+        }
+        
+        .dial-knob-inner {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: linear-gradient(145deg, #333, #222);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: inset 0 2px 5px rgba(0,0,0,0.5);
+        }
+        
+        .dial-knob-grip {
+            width: 20px;
+            height: 4px;
+            background: #ffd700;
+            border-radius: 2px;
+        }
+        
+        .dial-pointer {
+            position: absolute;
+            top: -8px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 0;
+            height: 0;
+            border-left: 10px solid transparent;
+            border-right: 10px solid transparent;
+            border-top: 16px solid #ff4444;
+            filter: drop-shadow(0 2px 3px rgba(0,0,0,0.5));
+        }
+        
+        .dial-sweetspot {
+            position: absolute;
+            top: 15px;
+            left: 15px;
+            right: 15px;
+            bottom: 15px;
+            border-radius: 50%;
+            pointer-events: none;
+        }
+        
+        .sweetspot-arc {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+        }
+        
+        .dial-display {
+            margin-top: 20px;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+        
+        .dial-value {
+            font-family: 'Courier New', monospace;
+            font-size: 28px;
+            color: #ffd700;
+            text-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+            min-width: 50px;
+            text-align: center;
+        }
+        
+        .dial-locks {
+            display: flex;
+            gap: 8px;
+        }
+        
+        .dial-lock {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: #333;
+            border: 2px solid #555;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            transition: all 0.3s;
+        }
+        
+        .dial-lock.unlocked {
+            background: #4ade80;
+            border-color: #4ade80;
+            box-shadow: 0 0 10px #4ade80;
+        }
+        
+        .dial-lock.current {
+            border-color: #ffd700;
+            box-shadow: 0 0 10px #ffd700;
+        }
+        
+        .dial-status {
+            margin-top: 15px;
+            font-size: 14px;
+            color: #888;
+            min-height: 24px;
+        }
+        
+        .dial-status.success {
+            color: #4ade80;
+            font-weight: bold;
+        }
+        
+        .dial-status.error {
+            color: #ff4444;
+        }
+        
+        .dial-instructions {
+            font-size: 12px;
+            color: #666;
+            margin-top: 10px;
+        }
+        
+        /* ============ PIPE PUZZLE ============ */
+        .pipes-container {
+            background: linear-gradient(145deg, #1a2a3a, #0a1520);
+            border-radius: 20px;
+            padding: 25px;
+            box-shadow: 
+                0 20px 60px rgba(0,0,0,0.6),
+                inset 0 2px 0 rgba(255,255,255,0.05);
+            border: 3px solid #2a3a4a;
+        }
+        
+        .pipes-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding: 0 10px;
+        }
+        
+        .pipes-label {
+            font-size: 12px;
+            color: #44aaff;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+        
+        .pipes-timer {
+            font-size: 18px;
+            color: #44aaff;
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            min-width: 80px;
+            text-align: center;
+        }
+        
+        .pipes-grid {
+            display: grid;
+            gap: 3px;
+            background: #0a1520;
+            padding: 10px;
+            border-radius: 10px;
+            border: 2px solid #2a3a4a;
+        }
+        
+        .pipe-cell {
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(145deg, #1a2a3a, #152535);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            border: 2px solid #2a3a4a;
+        }
+        
+        .pipe-cell:hover {
+            background: linear-gradient(145deg, #2a3a4a, #1a2a3a);
+            border-color: #44aaff;
+        }
+        
+        .pipe-cell.start {
+            background: linear-gradient(145deg, #1a3a1a, #0a200a);
+            border-color: #44cc44;
+        }
+        
+        .pipe-cell.end {
+            background: linear-gradient(145deg, #3a1a1a, #200a0a);
+            border-color: #cc4444;
+        }
+        
+        .pipe-cell.filled {
+            background: linear-gradient(145deg, #1a3a4a, #0a2535);
+        }
+        
+        .pipe-cell svg {
+            width: 50px;
+            height: 50px;
+            transition: transform 0.3s ease;
+        }
+        
+        .pipe-cell.rotating svg {
+            transform: rotate(90deg);
+        }
+        
+        .pipe-empty {
+            color: #2a3a4a;
+            font-size: 24px;
+        }
+        
+        .pipes-status {
+            margin-top: 20px;
+            font-size: 16px;
+            color: #888;
+            text-align: center;
+            min-height: 24px;
+        }
+        
+        .pipes-status.success {
+            color: #4ade80;
+            font-weight: bold;
+        }
+        
+        .flow-indicator {
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            background: #44aaff;
+            border-radius: 50%;
+            box-shadow: 0 0 10px #44aaff, 0 0 20px #44aaff;
+            animation: flowPulse 0.5s infinite;
+        }
+        
+        @keyframes flowPulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.6; transform: scale(0.8); }
+        }
+        
+        /* Start button */
+        .start-btn {
+            margin-top: 20px;
+            padding: 12px 35px;
+            font-size: 18px;
+            background: linear-gradient(135deg, #ffd700, #ffaa00);
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            color: #1a1a2e;
+            transition: all 0.2s;
+        }
+        
+        .start-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 20px rgba(255, 215, 0, 0.4);
+        }
+    </style>
+</head>
+<body>
+    <h1>🔐 Safe Cracking Test</h1>
+    
+    <div class="puzzle-selector">
+        <button class="puzzle-btn keypad active" onclick="selectPuzzle('keypad')">💻 Digital Keypad</button>
+        <button class="puzzle-btn dial" onclick="selectPuzzle('dial')">🎛️ Tumbler Dial</button>
+        <button class="puzzle-btn pipes" onclick="selectPuzzle('pipes')">🔧 Pipe Puzzle</button>
+    </div>
+    
+    <div class="difficulty-selector">
+        <button class="diff-btn active" onclick="setDifficulty(1)">Easy</button>
+        <button class="diff-btn" onclick="setDifficulty(2)">Medium</button>
+        <button class="diff-btn" onclick="setDifficulty(3)">Hard</button>
+    </div>
+    
+    <div id="puzzle-container"></div>
+
+    <script>
+        let currentPuzzle = 'keypad';
+        let difficulty = 1;
+        
+        // ============ DIGITAL KEYPAD ============
+        let keypadCode = [];
+        let keypadInput = [];
+        let keypadShowingCode = false;
+        let keypadCanInput = false;
+        
+        function generateKeypadCode() {
+            const length = 2 + difficulty; // 3, 4, or 5 digits
+            keypadCode = [];
+            for (let i = 0; i < length; i++) {
+                keypadCode.push(Math.floor(Math.random() * 10));
+            }
+        }
+        
+        function renderKeypad() {
+            const container = document.getElementById('puzzle-container');
+            container.innerHTML = `
+                <div class="safe-door">
+                    <div class="safe-handle"></div>
+                    <div class="keypad-display">
+                        <div class="display-label">Security Code</div>
+                        <div class="display-code" id="keypad-display">- - -</div>
+                    </div>
+                    <div class="keypad-grid">
+                        ${[1,2,3,4,5,6,7,8,9,'*',0,'#'].map(n => `
+                            <button class="key-btn" data-key="${n}" ${typeof n === 'string' ? 'disabled' : ''}>${n}</button>
+                        `).join('')}
+                    </div>
+                    <div class="keypad-status" id="keypad-status">Press START to see the code</div>
+                </div>
+                <button class="start-btn" id="start-btn" onclick="startKeypad()">START</button>
+            `;
+            
+            document.querySelectorAll('.key-btn').forEach(btn => {
+                if (btn.dataset.key && !isNaN(btn.dataset.key)) {
+                    btn.addEventListener('click', () => handleKeypadPress(parseInt(btn.dataset.key)));
+                }
+            });
+        }
+        
+        async function startKeypad() {
+            generateKeypadCode();
+            keypadInput = [];
+            keypadCanInput = false;
+            
+            document.getElementById('start-btn').style.display = 'none';
+            document.getElementById('keypad-status').textContent = 'Watch the buttons...';
+            
+            const display = document.getElementById('keypad-display');
+            display.className = 'display-code';
+            display.textContent = '• '.repeat(keypadCode.length).trim();
+            
+            await sleep(500);
+            
+            // Only flash buttons - don't show code on display
+            for (let i = 0; i < keypadCode.length; i++) {
+                const btn = document.querySelector(`.key-btn[data-key="${keypadCode[i]}"]`);
+                btn.classList.add('flash');
+                await sleep(500);
+                btn.classList.remove('flash');
+                await sleep(300);
+            }
+            
+            await sleep(400);
+            
+            // Ready for input
+            display.textContent = '_ '.repeat(keypadCode.length).trim();
+            document.getElementById('keypad-status').textContent = 'Enter the code!';
+            keypadCanInput = true;
+        }
+        
+        async function handleKeypadPress(num) {
+            if (!keypadCanInput) return;
+            
+            const btn = document.querySelector(`.key-btn[data-key="${num}"]`);
+            btn.classList.add('flash');
+            setTimeout(() => btn.classList.remove('flash'), 100);
+            
+            keypadInput.push(num);
+            
+            // Update display
+            const display = document.getElementById('keypad-display');
+            let displayText = '';
+            for (let i = 0; i < keypadCode.length; i++) {
+                displayText += (i < keypadInput.length ? keypadInput[i] : '_') + ' ';
+            }
+            display.textContent = displayText.trim();
+            
+            // Check if wrong
+            if (keypadInput[keypadInput.length - 1] !== keypadCode[keypadInput.length - 1]) {
+                keypadCanInput = false;
+                display.className = 'display-code error';
+                display.textContent = 'ERROR';
+                document.getElementById('keypad-status').textContent = 'Wrong code! Try again.';
+                
+                await sleep(1000);
+                document.getElementById('start-btn').style.display = 'block';
+                document.getElementById('start-btn').textContent = 'TRY AGAIN';
+                return;
+            }
+            
+            // Check if complete
+            if (keypadInput.length === keypadCode.length) {
+                keypadCanInput = false;
+                display.className = 'display-code success';
+                display.textContent = 'UNLOCKED';
+                document.getElementById('keypad-status').textContent = '✓ Safe cracked!';
+                
+                await sleep(1500);
+                document.getElementById('start-btn').style.display = 'block';
+                document.getElementById('start-btn').textContent = 'PLAY AGAIN';
+            }
+        }
+        
+        // ============ COMBINATION DIAL (TUMBLER STYLE) ============
+        let dialTargets = [];
+        let dialCurrentLock = 0;
+        let dialMarkerAngle = 0;
+        let dialSpeed = 2;
+        let dialDirection = 1;
+        let dialAnimating = false;
+        let dialAnimationId = null;
+        
+        function generateDialTargets() {
+            const numLocks = 1 + difficulty; // 2, 3, or 4 combinations
+            dialTargets = [];
+            
+            for (let i = 0; i < numLocks; i++) {
+                // Target angle (0-360) and tolerance
+                const target = Math.floor(Math.random() * 360);
+                const tolerance = Math.max(12, 25 - difficulty * 5); // degrees: 20, 15, or 10
+                dialTargets.push({
+                    target,
+                    tolerance,
+                    unlocked: false
+                });
+            }
+            
+            dialSpeed = 1.5 + difficulty * 0.7; // Faster on higher difficulty
+        }
+        
+        function renderDial() {
+            const container = document.getElementById('puzzle-container');
+            
+            // Generate tick marks
+            let ticks = '';
+            for (let i = 0; i < 60; i++) {
+                const angle = (i * 6) - 90;
+                const isMajor = i % 5 === 0;
+                ticks += `<div class="dial-tick ${isMajor ? 'major' : ''}" style="transform: rotate(${angle}deg)"></div>`;
+            }
+            
+            container.innerHTML = `
+                <div class="dial-safe-door">
+                    <div class="dial-brand">SECURIMAX</div>
+                    <div class="dial-container">
+                        <div class="dial-outer">
+                            <div class="dial-ring">
+                                <div class="dial-ticks">${ticks}</div>
+                                <svg class="dial-sweetspot" id="sweetspot-svg" viewBox="0 0 100 100"></svg>
+                                <div class="dial-marker-arm" id="dial-marker">
+                                    <div class="dial-marker-tip"></div>
+                                </div>
+                            </div>
+                            <div class="dial-knob-center">
+                                <div class="dial-knob-inner"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="dial-display">
+                        <div class="dial-locks" id="dial-locks"></div>
+                    </div>
+                    <div class="dial-status" id="dial-status">Press START to begin</div>
+                    <div class="dial-instructions">Press SPACE when the needle is in the green zone!</div>
+                </div>
+                <button class="start-btn" id="start-btn" onclick="startDial()">START</button>
+            `;
+            
+            // Add keyboard listener
+            document.addEventListener('keydown', handleDialKey);
+        }
+        
+        function startDial() {
+            generateDialTargets();
+            dialCurrentLock = 0;
+            dialMarkerAngle = 0;
+            dialDirection = 1;
+            
+            document.getElementById('start-btn').style.display = 'none';
+            document.getElementById('dial-status').textContent = 'Hit the green zone!';
+            
+            updateDialLocks();
+            updateSweetspotVisual();
+            
+            dialAnimating = true;
+            animateDial();
+        }
+        
+        function animateDial() {
+            if (!dialAnimating) return;
+            
+            dialMarkerAngle += dialDirection * dialSpeed;
+            
+            // Bounce at edges
+            if (dialMarkerAngle >= 360) {
+                dialMarkerAngle = 360;
+                dialDirection = -1;
+            } else if (dialMarkerAngle <= 0) {
+                dialMarkerAngle = 0;
+                dialDirection = 1;
+            }
+            
+            // Update marker visual
+            const marker = document.getElementById('dial-marker');
+            if (marker) {
+                marker.style.transform = `translateX(-50%) rotate(${dialMarkerAngle - 90}deg)`;
+            }
+            
+            dialAnimationId = requestAnimationFrame(animateDial);
+        }
+        
+        function updateDialLocks() {
+            const locksContainer = document.getElementById('dial-locks');
+            locksContainer.innerHTML = dialTargets.map((lock, i) => {
+                let className = 'dial-lock';
+                if (lock.unlocked) className += ' unlocked';
+                else if (i === dialCurrentLock) className += ' current';
+                return `<div class="${className}">${lock.unlocked ? '✓' : '🔒'}</div>`;
+            }).join('');
+        }
+        
+        function updateSweetspotVisual() {
+            const svg = document.getElementById('sweetspot-svg');
+            if (!svg || dialCurrentLock >= dialTargets.length) {
+                if (svg) svg.innerHTML = '';
+                return;
+            }
+            
+            const target = dialTargets[dialCurrentLock];
+            const startAngle = (target.target - target.tolerance - 90) * Math.PI / 180;
+            const endAngle = (target.target + target.tolerance - 90) * Math.PI / 180;
+            
+            const radius = 46;
+            const innerRadius = 30;
+            const cx = 50, cy = 50;
+            
+            const x1 = cx + Math.cos(startAngle) * radius;
+            const y1 = cy + Math.sin(startAngle) * radius;
+            const x2 = cx + Math.cos(endAngle) * radius;
+            const y2 = cy + Math.sin(endAngle) * radius;
+            const x3 = cx + Math.cos(endAngle) * innerRadius;
+            const y3 = cy + Math.sin(endAngle) * innerRadius;
+            const x4 = cx + Math.cos(startAngle) * innerRadius;
+            const y4 = cy + Math.sin(startAngle) * innerRadius;
+            
+            const largeArc = (target.tolerance * 2 > 180) ? 1 : 0;
+            
+            svg.innerHTML = `
+                <path d="M ${x1} ${y1} A ${radius} ${radius} 0 ${largeArc} 1 ${x2} ${y2} 
+                         L ${x3} ${y3} A ${innerRadius} ${innerRadius} 0 ${largeArc} 0 ${x4} ${y4} Z" 
+                      fill="rgba(74, 222, 128, 0.4)" 
+                      stroke="#4ade80" 
+                      stroke-width="1"/>
+            `;
+        }
+        
+        function handleDialKey(e) {
+            if (e.code === 'Space' && dialAnimating && dialCurrentLock < dialTargets.length) {
+                e.preventDefault();
+                checkDialPosition();
+            }
+        }
+        
+        async function checkDialPosition() {
+            const target = dialTargets[dialCurrentLock];
+            
+            // Calculate angular distance
+            let diff = Math.abs(dialMarkerAngle - target.target);
+            if (diff > 180) diff = 360 - diff;
+            
+            if (diff <= target.tolerance) {
+                // Correct!
+                target.unlocked = true;
+                dialCurrentLock++;
+                
+                updateDialLocks();
+                
+                if (dialCurrentLock >= dialTargets.length) {
+                    // All done!
+                    dialAnimating = false;
+                    cancelAnimationFrame(dialAnimationId);
+                    document.getElementById('dial-status').textContent = '✓ Safe cracked!';
+                    document.getElementById('dial-status').className = 'dial-status success';
+                    document.getElementById('sweetspot-svg').innerHTML = '';
+                    
+                    await sleep(1500);
+                    document.getElementById('start-btn').style.display = 'block';
+                    document.getElementById('start-btn').textContent = 'PLAY AGAIN';
+                } else {
+                    // Brief pause then new target
+                    dialAnimating = false;
+                    document.getElementById('dial-status').textContent = `Lock ${dialCurrentLock} of ${dialTargets.length}...`;
+                    
+                    await sleep(500);
+                    updateSweetspotVisual();
+                    dialAnimating = true;
+                    animateDial();
+                }
+            } else {
+                // Wrong - reset all
+                dialAnimating = false;
+                cancelAnimationFrame(dialAnimationId);
+                
+                document.getElementById('dial-status').textContent = 'Missed! Starting over...';
+                document.getElementById('dial-status').className = 'dial-status error';
+                
+                await sleep(1000);
+                
+                dialTargets.forEach(t => t.unlocked = false);
+                dialCurrentLock = 0;
+                updateDialLocks();
+                updateSweetspotVisual();
+                document.getElementById('dial-status').textContent = 'Hit the green zone!';
+                document.getElementById('dial-status').className = 'dial-status';
+                
+                dialAnimating = true;
+                animateDial();
+            }
+        }
+        
+        // ============ PIPE PUZZLE ============
+        // Pipe types: 0=empty, 1=straight, 2=corner, 3=T-junction, 4=cross
+        // Each pipe has connections: [top, right, bottom, left] (true/false)
+        const PIPE_TYPES = {
+            empty: { connections: [false, false, false, false], symbol: '' },
+            straight_h: { connections: [false, true, false, true], symbol: 'straight' },
+            straight_v: { connections: [true, false, true, false], symbol: 'straight' },
+            corner_tr: { connections: [true, true, false, false], symbol: 'corner' },
+            corner_rb: { connections: [false, true, true, false], symbol: 'corner' },
+            corner_bl: { connections: [false, false, true, true], symbol: 'corner' },
+            corner_lt: { connections: [true, false, false, true], symbol: 'corner' },
+            t_up: { connections: [true, true, false, true], symbol: 't' },
+            t_right: { connections: [true, true, true, false], symbol: 't' },
+            t_down: { connections: [false, true, true, true], symbol: 't' },
+            t_left: { connections: [true, false, true, true], symbol: 't' },
+            cross: { connections: [true, true, true, true], symbol: 'cross' },
+        };
+        
+        let pipesGrid = [];
+        let pipesSize = 4;
+        let pipesSolved = false;
+        let pipesTimeLimit = 60;
+        let pipesTimeLeft = 60;
+        let pipesTimerInterval = null;
+        let pipesStarted = false;
+        
+        function generatePipesGrid() {
+            // Larger grids for more challenge
+            if (difficulty === 1) pipesSize = 4;
+            else if (difficulty === 2) pipesSize = 6;
+            else pipesSize = 7;
+            
+            // Shorter time limits
+            if (difficulty === 1) pipesTimeLimit = 45;
+            else if (difficulty === 2) pipesTimeLimit = 35;
+            else pipesTimeLimit = 25;
+            
+            pipesGrid = [];
+            
+            // Create empty grid
+            for (let y = 0; y < pipesSize; y++) {
+                pipesGrid[y] = [];
+                for (let x = 0; x < pipesSize; x++) {
+                    pipesGrid[y][x] = { type: 'empty', rotation: 0, filled: false };
+                }
+            }
+            
+            // Start (left middle)
+            const midY = Math.floor(pipesSize / 2);
+            pipesGrid[midY][0] = { type: 'start', rotation: 0, filled: true };
+            
+            // Generate a valid path first, get the end Y position
+            const endY = generateValidPath(midY);
+            
+            // Place end where path actually ends
+            pipesGrid[endY][pipesSize - 1] = { type: 'end', rotation: 0, filled: false };
+            
+            // Fill remaining empty cells with random pipes
+            for (let py = 0; py < pipesSize; py++) {
+                for (let px = 0; px < pipesSize; px++) {
+                    if (pipesGrid[py][px].type === 'empty') {
+                        const type = Math.random() < 0.5 ? 'straight' : 'corner';
+                        pipesGrid[py][px] = {
+                            type: type,
+                            rotation: Math.floor(Math.random() * 4) * 90,
+                            filled: false
+                        };
+                    }
+                }
+            }
+            
+            // Debug: verify path works BEFORE scrambling
+            console.log('Path before scramble (pipesSize=' + pipesSize + '):');
+            for (let y = 0; y < pipesSize; y++) {
+                let row = '';
+                for (let x = 0; x < pipesSize; x++) {
+                    const cell = pipesGrid[y][x];
+                    if (cell.isPath) {
+                        row += `[${cell.type[0]}${cell.rotation}]`;
+                    } else if (cell.type === 'start') {
+                        row += '[S]';
+                    } else if (cell.type === 'end') {
+                        row += '[E]';
+                    } else {
+                        row += '[.]';
+                    }
+                }
+                console.log(row);
+            }
+            
+            // Test: check connections before scramble
+            console.log('Testing path connections:');
+            for (let y = 0; y < pipesSize; y++) {
+                for (let x = 0; x < pipesSize; x++) {
+                    const cell = pipesGrid[y][x];
+                    if (cell.isPath || cell.type === 'start' || cell.type === 'end') {
+                        const conn = getRotatedConnections(cell.type, cell.correctRotation || cell.rotation);
+                        console.log(`(${x},${y}) ${cell.type} rot=${cell.correctRotation || cell.rotation} conn=[T:${conn[0]},R:${conn[1]},B:${conn[2]},L:${conn[3]}]`);
+                    }
+                }
+            }
+            
+            // Scramble all pipes (this makes it a puzzle!)
+            scramblePipes();
+        }
+        
+        function generateValidPath(startY) {
+            // Use only 'straight' and 'corner' types with rotation
+            let x = 1;
+            let y = startY;
+            let entryDir = 'left'; // Flow enters first pipe from the LEFT (from start)
+            
+            // Generate path from x=1 to x=pipesSize-2 (leave last column for END)
+            while (x < pipesSize - 1) {
+                // Decide exit direction
+                let exitDir;
+                const canUp = y > 0 && pipesGrid[y-1][x].type === 'empty';
+                const canDown = y < pipesSize - 1 && pipesGrid[y+1][x].type === 'empty';
+                const isLastBeforeEnd = (x === pipesSize - 2);
+                
+                // On last column before END, must go right
+                if (isLastBeforeEnd) {
+                    exitDir = 'right';
+                } else {
+                    // More curves on higher difficulty
+                    const rightBias = difficulty === 1 ? 0.6 : difficulty === 2 ? 0.35 : 0.25;
+                    const rand = Math.random();
+                    if (rand < rightBias) {
+                        exitDir = 'right';
+                    } else if (rand < rightBias + 0.3 && canUp) {
+                        exitDir = 'top';
+                    } else if (canDown) {
+                        exitDir = 'bottom';
+                    } else if (canUp) {
+                        exitDir = 'top';
+                    } else {
+                        exitDir = 'right';
+                    }
+                }
+                
+                // Get pipe type and rotation for this entry->exit
+                const pipeInfo = getPipeForConnection(entryDir, exitDir);
+                
+                pipesGrid[y][x] = { 
+                    type: pipeInfo.type, 
+                    rotation: pipeInfo.rotation, 
+                    filled: false,
+                    isPath: true,
+                    correctRotation: pipeInfo.rotation // Store correct answer
+                };
+                
+                // Move to next cell and update entry direction
+                if (exitDir === 'top') {
+                    y--;
+                    entryDir = 'bottom';
+                } else if (exitDir === 'bottom') {
+                    y++;
+                    entryDir = 'top';
+                } else {
+                    x++;
+                    entryDir = 'left';
+                }
+            }
+            
+            // We're now at x = pipesSize - 1, which is where END goes
+            // Return the Y position for END placement
+            return y;
+        }
+        
+        function getPipeForConnection(entryDir, exitDir) {
+            // Returns { type, rotation } for a pipe connecting entryDir to exitDir
+            // 'straight' at rotation 0 connects LEFT <-> RIGHT
+            // 'corner' at rotation 0 connects LEFT and BOTTOM
+            //
+            // Corner rotations (clockwise):
+            // rot 0:   [F,F,T,T] = bottom + left   (┘)
+            // rot 90:  [T,F,F,T] = top + left      (┐)
+            // rot 180: [T,T,F,F] = top + right     (┌)
+            // rot 270: [F,T,T,F] = right + bottom  (└)
+            
+            const key = [entryDir, exitDir].sort().join('-');
+            
+            // Straight pipes
+            if (key === 'left-right') return { type: 'straight', rotation: 0 };
+            if (key === 'bottom-top') return { type: 'straight', rotation: 90 };
+            
+            // Corner pipes
+            if (key === 'bottom-left') return { type: 'corner', rotation: 0 };   // ┘
+            if (key === 'left-top') return { type: 'corner', rotation: 90 };     // ┐
+            if (key === 'right-top') return { type: 'corner', rotation: 180 };   // ┌
+            if (key === 'bottom-right') return { type: 'corner', rotation: 270 }; // └
+            
+            // Fallback
+            return { type: 'straight', rotation: 0 };
+        }
+        
+        // Legacy function
+        function getPipeTypeForConnection(entryDir, exitDir) {
+            return getPipeForConnection(entryDir, exitDir).type;
+        }
+        
+        function getPipeType(fromDir, toDir) {
+            return getPipeForConnection(fromDir, toDir).type;
+        }
+        
+        function scramblePipes() {
+            // Rotate each pipe randomly (but keep type)
+            for (let y = 0; y < pipesSize; y++) {
+                for (let x = 0; x < pipesSize; x++) {
+                    const cell = pipesGrid[y][x];
+                    if (cell.type !== 'start' && cell.type !== 'end' && cell.type !== 'empty') {
+                        // Random rotation (0, 90, 180, 270)
+                        cell.rotation = Math.floor(Math.random() * 4) * 90;
+                    }
+                }
+            }
+        }
+        
+        function renderPipes() {
+            const container = document.getElementById('puzzle-container');
+            
+            container.innerHTML = `
+                <div class="pipes-container">
+                    <div class="pipes-header">
+                        <span class="pipes-label">🟢 IN</span>
+                        <span class="pipes-timer" id="pipes-timer">⏱️ ${pipesTimeLimit}s</span>
+                        <span class="pipes-label">OUT 🔴</span>
+                    </div>
+                    <div class="pipes-grid" id="pipes-grid" style="grid-template-columns: repeat(${pipesSize}, 60px);">
+                    </div>
+                    <div class="pipes-status" id="pipes-status">Click pipes to rotate them!</div>
+                </div>
+                <button class="start-btn" id="start-btn" onclick="startPipes()">NEW PUZZLE</button>
+                <button class="start-btn" style="background: #666; margin-left: 10px;" onclick="showSolution()">SHOW SOLUTION</button>
+            `;
+            
+            renderPipesGrid();
+        }
+        
+        function renderPipesGrid() {
+            const grid = document.getElementById('pipes-grid');
+            if (!grid) return;
+            
+            grid.innerHTML = '';
+            
+            for (let y = 0; y < pipesSize; y++) {
+                for (let x = 0; x < pipesSize; x++) {
+                    const cell = pipesGrid[y][x];
+                    const div = document.createElement('div');
+                    div.className = 'pipe-cell';
+                    
+                    if (cell.type === 'start') div.className += ' start';
+                    if (cell.type === 'end') div.className += ' end';
+                    if (cell.filled) div.className += ' filled';
+                    
+                    div.innerHTML = getPipeSVG(cell.type, cell.rotation, cell.filled);
+                    
+                    if (cell.type !== 'start' && cell.type !== 'end') {
+                        div.onclick = () => rotatePipe(x, y);
+                    }
+                    
+                    grid.appendChild(div);
+                }
+            }
+        }
+        
+        function getPipeSVG(type, rotation, filled) {
+            const color = filled ? '#44aaff' : '#4a5a6a';
+            const strokeWidth = filled ? 8 : 6;
+            
+            let svg = `<svg viewBox="0 0 50 50" style="transform: rotate(${rotation}deg)">`;
+            
+            if (type === 'start') {
+                svg += `<circle cx="25" cy="25" r="12" fill="#44cc44"/>`;
+                svg += `<rect x="25" y="20" width="25" height="10" fill="#44cc44"/>`;
+            } else if (type === 'end') {
+                svg += `<circle cx="25" cy="25" r="12" fill="${filled ? '#44cc44' : '#cc4444'}"/>`;
+                svg += `<rect x="0" y="20" width="25" height="10" fill="${filled ? '#44cc44' : '#cc4444'}"/>`;
+            } else if (type === 'straight') {
+                // Horizontal line at rotation 0 (connects left-right)
+                svg += `<rect x="0" y="21" width="50" height="${strokeWidth}" fill="${color}" rx="2"/>`;
+            } else if (type === 'corner') {
+                // At rotation 0: connects LEFT and BOTTOM (┘ shape)
+                // Line from left edge to center, then down to bottom
+                svg += `<path d="M 0 25 L 25 25 L 25 50" stroke="${color}" stroke-width="${strokeWidth}" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`;
+            }
+            
+            svg += '</svg>';
+            return svg;
+        }
+        
+        function rotatePipe(x, y) {
+            if (pipesSolved) return;
+            
+            // Start timer on first click
+            if (!pipesStarted) {
+                startTimer();
+            }
+            
+            const cell = pipesGrid[y][x];
+            cell.rotation = (cell.rotation + 90) % 360;
+            
+            renderPipesGrid();
+            checkPipesSolved();
+        }
+        
+        function getRotatedConnections(type, rotation) {
+            // Returns [top, right, bottom, left] - which sides have openings
+            
+            if (type === 'empty') return [false, false, false, false];
+            if (type === 'start') return [false, true, false, false]; // outputs right
+            if (type === 'end') return [false, false, false, true]; // receives from left
+            
+            // Base connections at rotation 0
+            let baseConn;
+            if (type === 'straight') {
+                // Connects left-right at rotation 0
+                baseConn = [false, true, false, true]; // [top, right, bottom, left]
+            } else if (type === 'corner') {
+                // Connects left-bottom at rotation 0 (┘ shape)
+                baseConn = [false, false, true, true]; // [top, right, bottom, left]
+            } else {
+                return [false, false, false, false];
+            }
+            
+            // Apply rotation (each 90° clockwise shifts the array)
+            let conn = [...baseConn];
+            const steps = ((rotation / 90) % 4 + 4) % 4; // Ensure positive
+            
+            for (let i = 0; i < steps; i++) {
+                // Rotate clockwise: element at position n moves to position (n+1)%4
+                // [top, right, bottom, left] -> [left, top, right, bottom]
+                conn = [conn[3], conn[0], conn[1], conn[2]];
+            }
+            
+            return conn;
+        }
+        
+        function checkPipesSolved() {
+            // Reset filled state
+            for (let y = 0; y < pipesSize; y++) {
+                for (let x = 0; x < pipesSize; x++) {
+                    if (pipesGrid[y][x].type !== 'start') {
+                        pipesGrid[y][x].filled = false;
+                    }
+                }
+            }
+            
+            // Find start position
+            let startY = -1;
+            for (let y = 0; y < pipesSize; y++) {
+                if (pipesGrid[y][0].type === 'start') {
+                    startY = y;
+                    break;
+                }
+            }
+            if (startY === -1) return;
+            
+            // BFS - start cell is always filled, begin checking from its right neighbor
+            pipesGrid[startY][0].filled = true;
+            
+            // Start outputs to the RIGHT, so begin with the cell to the right
+            const queue = [{x: 1, y: startY, from: 'left'}];
+            const visited = new Set();
+            visited.add('0,' + startY); // Mark start as visited
+            
+            while (queue.length > 0) {
+                const {x, y, from} = queue.shift();
+                const key = `${x},${y}`;
+                
+                if (visited.has(key)) continue;
+                visited.add(key);
+                
+                const cell = pipesGrid[y]?.[x];
+                if (!cell) continue;
+                
+                const conn = getRotatedConnections(cell.type, cell.rotation);
+                
+                // Check if we can enter from 'from' direction
+                // conn = [top, right, bottom, left] = indices [0, 1, 2, 3]
+                const entryIndex = {top: 0, right: 1, bottom: 2, left: 3}[from];
+                if (!conn[entryIndex]) continue; // Can't enter this pipe from this direction
+                
+                cell.filled = true;
+                
+                // Check if reached end
+                if (cell.type === 'end') {
+                    pipesSolved = true;
+                    if (pipesTimerInterval) {
+                        clearInterval(pipesTimerInterval);
+                        pipesTimerInterval = null;
+                    }
+                    document.getElementById('pipes-status').textContent = `✓ Circuit hacked! (${pipesTimeLimit - pipesTimeLeft}s)`;
+                    document.getElementById('pipes-status').className = 'pipes-status success';
+                    renderPipesGrid();
+                    return;
+                }
+                
+                // Add neighbors (only if this pipe has opening in that direction)
+                if (conn[0] && y > 0) queue.push({x, y: y-1, from: 'bottom'});
+                if (conn[1] && x < pipesSize-1) queue.push({x: x+1, y, from: 'left'});
+                if (conn[2] && y < pipesSize-1) queue.push({x, y: y+1, from: 'top'});
+                if (conn[3] && x > 0) queue.push({x: x-1, y, from: 'right'});
+            }
+            
+            renderPipesGrid();
+        }
+        
+        function startPipes() {
+            // Clear any existing timer
+            if (pipesTimerInterval) {
+                clearInterval(pipesTimerInterval);
+                pipesTimerInterval = null;
+            }
+            
+            pipesSolved = false;
+            pipesStarted = false;
+            generatePipesGrid();
+            pipesTimeLeft = pipesTimeLimit;
+            
+            document.getElementById('pipes-status').textContent = 'Click a pipe to start!';
+            document.getElementById('pipes-status').className = 'pipes-status';
+            renderPipesGrid();
+            checkPipesSolved(); // Initial check to show flow from start
+            updateTimerDisplay();
+        }
+        
+        function startTimer() {
+            if (pipesStarted) return;
+            pipesStarted = true;
+            
+            document.getElementById('pipes-status').textContent = 'Connect the circuit!';
+            
+            pipesTimerInterval = setInterval(() => {
+                if (pipesSolved) {
+                    clearInterval(pipesTimerInterval);
+                    return;
+                }
+                
+                pipesTimeLeft--;
+                updateTimerDisplay();
+                
+                if (pipesTimeLeft <= 0) {
+                    clearInterval(pipesTimerInterval);
+                    pipesTimerInterval = null;
+                    document.getElementById('pipes-status').textContent = '⏱️ TIME UP! Try again...';
+                    document.getElementById('pipes-status').className = 'pipes-status error';
+                    pipesSolved = true; // Disable interaction
+                }
+            }, 1000);
+        }
+        
+        function updateTimerDisplay() {
+            const timerEl = document.getElementById('pipes-timer');
+            if (timerEl) {
+                timerEl.textContent = `⏱️ ${pipesTimeLeft}s`;
+                if (pipesTimeLeft <= 10) {
+                    timerEl.style.color = '#ff4444';
+                    timerEl.style.fontWeight = 'bold';
+                } else if (pipesTimeLeft <= 20) {
+                    timerEl.style.color = '#ffaa00';
+                } else {
+                    timerEl.style.color = '#44aaff';
+                }
+            }
+        }
+        
+        function showSolution() {
+            // Reset all path pipes to their correct rotation
+            for (let y = 0; y < pipesSize; y++) {
+                for (let x = 0; x < pipesSize; x++) {
+                    const cell = pipesGrid[y][x];
+                    if (cell.correctRotation !== undefined) {
+                        cell.rotation = cell.correctRotation;
+                    }
+                }
+            }
+            renderPipesGrid();
+            checkPipesSolved();
+        }
+        
+        // ============ UTILITIES ============
+        function sleep(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+        
+        function selectPuzzle(type) {
+            currentPuzzle = type;
+            
+            // Clean up
+            document.removeEventListener('keydown', handleDialKey);
+            dialAnimating = false;
+            if (dialAnimationId) cancelAnimationFrame(dialAnimationId);
+            
+            document.querySelectorAll('.puzzle-btn').forEach(btn => {
+                btn.classList.remove('active');
+                if (btn.classList.contains(type)) btn.classList.add('active');
+            });
+            
+            if (type === 'keypad') {
+                renderKeypad();
+            } else if (type === 'dial') {
+                renderDial();
+            } else if (type === 'pipes') {
+                generatePipesGrid();
+                renderPipes();
+            }
+        }
+        
+        function setDifficulty(d) {
+            difficulty = d;
+            document.querySelectorAll('.diff-btn').forEach((btn, i) => {
+                btn.classList.toggle('active', i === d - 1);
+            });
+            selectPuzzle(currentPuzzle);
+        }
+        
+        // Initialize
+        selectPuzzle('keypad');
+    </script>
+</body>
+</html>
