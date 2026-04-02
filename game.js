@@ -7,6 +7,12 @@ const VIEWPORT_HEIGHT = 11;
 const FALL_DELAY = 1.0; // Time before falling
 const FALL_SPEED = 0.08; // Speed of falling animation
 const SHAKE_DURATION = 0.4; // Shake warning before fall
+const MATCH_CLEAR_SIZE = 4;
+const MATCH_CLEAR_FLASH = 0.18;
+const DIG_SCORE = 10;
+const MATCH_SCORE = 30;
+const MAX_GENERATED_CLUSTER_SIZE = 5;
+const COLOR_NEIGHBOR_PREFERENCE = 0.45;
 
 let CANVAS_WIDTH = GRID_WIDTH * GRID_SIZE;
 let CANVAS_HEIGHT = VIEWPORT_HEIGHT * GRID_SIZE;
@@ -89,54 +95,40 @@ const BLOCK_TYPES = {
     ITEM: 12, // Treasures and oxygen - blocks can't fall through them
 };
 
-// Block Group class
-class BlockGroup {
-    constructor(id, colorIndex) {
+function isColoredBlockValue(value) {
+    return value >= BLOCK_TYPES.COLORED && value < BLOCK_TYPES.COLORED + BLOCK_COLORS.length;
+}
+
+class ColoredBlock {
+    constructor(id, x, y, colorIndex) {
         this.id = id;
+        this.x = x;
+        this.y = y;
         this.colorIndex = colorIndex;
-        this.cells = [];
         this.fallTimer = 0;
         this.isFalling = false;
         this.fallProgress = 0;
         this.isShaking = false;
         this.shakeTimer = 0;
-    }
-    
-    addCell(x, y) {
-        this.cells.push({ x, y });
-    }
-    
-    hasCell(x, y) {
-        return this.cells.some(cell => cell.x === x && cell.y === y);
-    }
-    
-    destroy() {
-        this.cells = [];
+        this.isClearing = false;
+        this.clearTimer = 0;
+        this.destroyed = false;
+        this.matchEligible = false;
     }
     
     canFall(grid) {
-        if (this.cells.length === 0) return false;
-        
-        for (const cell of this.cells) {
-            const belowY = cell.y + 1;
-            if (belowY >= GRID_HEIGHT) return false;
-            
-            const blockBelow = grid[belowY]?.[cell.x];
-            if (blockBelow !== BLOCK_TYPES.EMPTY) {
-                const isOwnCell = this.cells.some(c => c.x === cell.x && c.y === belowY);
-                if (!isOwnCell) return false;
-            }
-        }
-        return true;
+        const belowY = this.y + 1;
+        if (belowY >= GRID_HEIGHT) return false;
+        return grid[belowY]?.[this.x] === BLOCK_TYPES.EMPTY;
     }
     
     fall() {
-        this.cells.forEach(cell => cell.y++);
+        this.y++;
         this.fallProgress = 0;
     }
     
     overlapsWithPlayer(playerGridX, playerGridY) {
-        return this.cells.some(cell => cell.x === playerGridX && cell.y === playerGridY);
+        return this.x === playerGridX && this.y === playerGridY;
     }
     
     getShakeOffset() {
@@ -283,9 +275,10 @@ class Game {
         this.gamepad = new GamepadHandler();
         
         this.grid = [];
-        this.blockGroups = [];
+        this.colorBlocks = [];
         this.xBlocks = [];
-        this.groupIdCounter = 0;
+        this.nextColorBlockId = 1;
+        this.colorComponentStates = new Map();
         
         this.player = {
             // Grid position (logical)
@@ -339,6 +332,7 @@ class Game {
         this.countdownTimer = 0;
         this.countdownNumber = 3;
         this.hasPlayerDug = false; // Physics paused until first dig
+        this.pendingMatchCheck = false;
         
         this.gamepadMessage = null;
         this.gamepadMessageTime = 0;
@@ -416,61 +410,81 @@ class Game {
         const safeStartY = GRID_HEIGHT - 4;
         const safeStartX = Math.floor((GRID_WIDTH - 2) / 2);
         const midX = Math.floor(GRID_WIDTH / 2);
-        
-        // Track which cells are filled
-        const filled = new Set();
         const airPockets = [];
-        
-        // Mark safe area
-        for (let sy = safeStartY; sy < safeStartY + 2; sy++) {
-            for (let sx = safeStartX; sx < safeStartX + 2; sx++) {
-                filled.add(`${sx},${sy}`);
+
+        const shuffle = array => {
+            const copy = [...array];
+            for (let i = copy.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [copy[i], copy[j]] = [copy[j], copy[i]];
             }
-        }
-        
-        // Define shapes - Mr. Driller style (mostly 2x2 and small)
-        const SHAPES = [
-            // 2x2 square (most common - classic Mr. Driller)
-            { cells: [[0,0], [1,0], [0,1], [1,1]], weight: 50 },
-            // Single blocks (creates variety)
-            { cells: [[0,0]], weight: 20 },
-            // Horizontal 2-bar
-            { cells: [[0,0], [1,0]], weight: 15 },
-            // Vertical 2-bar
-            { cells: [[0,0], [0,1]], weight: 10 },
-            // Horizontal 3-bar (occasional)
-            { cells: [[0,0], [1,0], [2,0]], weight: 5 },
-        ];
-        
-        // Calculate total weight
-        const totalWeight = SHAPES.reduce((sum, s) => sum + s.weight, 0);
-        
-        // Pick random shape by weight
-        const pickShape = () => {
-            let r = Math.random() * totalWeight;
-            for (const shape of SHAPES) {
-                r -= shape.weight;
-                if (r <= 0) return shape.cells;
-            }
-            return SHAPES[0].cells;
+            return copy;
         };
-        
-        // Check if shape fits
-        const shapeFits = (shape, startX, startY) => {
-            for (const [dx, dy] of shape) {
-                const x = startX + dx;
-                const y = startY + dy;
-                if (x < 0 || x >= GRID_WIDTH) return false;
-                if (y < 4 || y >= GRID_HEIGHT - 3) return false;
-                if (filled.has(`${x},${y}`)) return false;
+
+        const getPotentialClusterSize = (x, y, colorIndex) => {
+            const targetValue = colorIndex + BLOCK_TYPES.COLORED;
+            const visited = new Set([`${x},${y}`]);
+            const queue = [[x, y]];
+            let size = 0;
+
+            while (queue.length > 0) {
+                const [currentX, currentY] = queue.shift();
+                size++;
+
+                const neighbors = [
+                    [currentX, currentY - 1],
+                    [currentX + 1, currentY],
+                    [currentX, currentY + 1],
+                    [currentX - 1, currentY],
+                ];
+
+                for (const [nextX, nextY] of neighbors) {
+                    const key = `${nextX},${nextY}`;
+                    if (visited.has(key)) continue;
+                    if (this.grid[nextY]?.[nextX] !== targetValue) continue;
+                    visited.add(key);
+                    queue.push([nextX, nextY]);
+                }
             }
-            return true;
+
+            return size;
         };
-        
-        // Generate blocks row by row
+
+        const pickColorIndex = (x, y) => {
+            const allColors = BLOCK_COLORS.map((_, index) => index);
+            const validColors = shuffle(allColors).filter(colorIndex =>
+                getPotentialClusterSize(x, y, colorIndex) <= MAX_GENERATED_CLUSTER_SIZE
+            );
+            const candidateColors = validColors.length > 0 ? validColors : shuffle(allColors);
+            const neighborColors = [];
+            const left = this.grid[y]?.[x - 1];
+            const up = this.grid[y - 1]?.[x];
+            
+            if (isColoredBlockValue(left)) {
+                const leftColor = left - BLOCK_TYPES.COLORED;
+                if (candidateColors.includes(leftColor)) {
+                    neighborColors.push(leftColor);
+                }
+            }
+            if (isColoredBlockValue(up)) {
+                const upColor = up - BLOCK_TYPES.COLORED;
+                if (candidateColors.includes(upColor)) {
+                    neighborColors.push(upColor);
+                }
+            }
+            
+            if (neighborColors.length > 0 && Math.random() < COLOR_NEIGHBOR_PREFERENCE) {
+                return neighborColors[Math.floor(Math.random() * neighborColors.length)];
+            }
+            
+            return candidateColors[0];
+        };
+
         for (let y = 4; y < GRID_HEIGHT - 3; y++) {
             for (let x = 0; x < GRID_WIDTH; x++) {
-                if (filled.has(`${x},${y}`)) continue;
+                const isSafeCell = y >= safeStartY && y < safeStartY + 2 &&
+                    x >= safeStartX && x < safeStartX + 2;
+                if (isSafeCell) continue;
                 
                 // Air pocket chance
                 const distFromMid = Math.abs(x - midX);
@@ -479,7 +493,6 @@ class Game {
                 if (Math.random() < airChance) {
                     airPockets.push({ x, y });
                     this.grid[y][x] = BLOCK_TYPES.EMPTY;
-                    filled.add(`${x},${y}`);
                     continue;
                 }
                 
@@ -491,50 +504,15 @@ class Game {
                     const xBlock = new XBlock(x, y);
                     this.xBlocks.push(xBlock);
                     this.grid[y][x] = BLOCK_TYPES.XBLOCK;
-                    filled.add(`${x},${y}`);
                     continue;
                 }
-                
-                // Try to place a shape
-                let placed = false;
-                
-                // Try a few random shapes
-                for (let attempt = 0; attempt < 5; attempt++) {
-                    const shape = pickShape();
-                    
-                    if (shapeFits(shape, x, y)) {
-                        const colorIndex = Math.floor(Math.random() * BLOCK_COLORS.length);
-                        const group = new BlockGroup(this.groupIdCounter++, colorIndex);
-                        
-                        for (const [dx, dy] of shape) {
-                            const cellX = x + dx;
-                            const cellY = y + dy;
-                            group.addCell(cellX, cellY);
-                            this.grid[cellY][cellX] = colorIndex + 1;
-                            filled.add(`${cellX},${cellY}`);
-                        }
-                        
-                        this.blockGroups.push(group);
-                        placed = true;
-                        break;
-                    }
-                }
-                
-                // Fallback: single block
-                if (!placed && !filled.has(`${x},${y}`)) {
-                    const colorIndex = Math.floor(Math.random() * BLOCK_COLORS.length);
-                    const group = new BlockGroup(this.groupIdCounter++, colorIndex);
-                    group.addCell(x, y);
-                    this.grid[y][x] = colorIndex + 1;
-                    this.blockGroups.push(group);
-                    filled.add(`${x},${y}`);
-                }
+
+                const colorIndex = pickColorIndex(x, y);
+                this.colorBlocks.push(new ColoredBlock(this.nextColorBlockId++, x, y, colorIndex));
+                this.grid[y][x] = colorIndex + BLOCK_TYPES.COLORED;
             }
         }
-        
-        // Clean up empty groups
-        this.blockGroups = this.blockGroups.filter(g => g.cells.length > 0);
-        
+
         // Place items ONLY in air pockets
         const shuffledPockets = [...airPockets].sort(() => Math.random() - 0.5);
         
@@ -591,6 +569,8 @@ class Game {
         for (let i = 0; i < 2 && i < deepPockets.length; i++) {
             addTreasure(deepPockets[i], 'chest', 500);
         }
+
+        this.settleInitialBoard();
     }
     
     getInput() {
@@ -887,19 +867,184 @@ class Game {
         } else if (blockInfo.type === 'bedrock') {
             // Bedrock is truly indestructible
             return false;
-        } else if (blockInfo.type === 'group') {
-            const group = blockInfo.group;
-            const cellCount = group.cells.length;
+        } else if (blockInfo.type === 'color') {
+            const block = blockInfo.block;
+            const piece = this.findConnectedColorPiece(block);
             
-            group.cells.forEach(cell => {
-                this.grid[cell.y][cell.x] = BLOCK_TYPES.EMPTY;
+            if (piece.length === 0) {
+                return false;
+            }
+            
+            piece.forEach(pieceBlock => {
+                pieceBlock.destroyed = true;
+                pieceBlock.isClearing = false;
+                pieceBlock.matchEligible = false;
+                
+                if (this.grid[pieceBlock.y]?.[pieceBlock.x] === pieceBlock.colorIndex + BLOCK_TYPES.COLORED) {
+                    this.grid[pieceBlock.y][pieceBlock.x] = BLOCK_TYPES.EMPTY;
+                }
             });
             
-            this.score += cellCount * 20;
-            group.destroy();
+            this.score += DIG_SCORE * piece.length;
             return true;
         }
         return false;
+    }
+    
+    getColorBlockAt(x, y) {
+        return this.colorBlocks.find(block =>
+            !block.destroyed &&
+            block.x === x &&
+            block.y === y
+        ) || null;
+    }
+
+    findConnectedColorPiece(startBlock) {
+        if (!startBlock || startBlock.destroyed || startBlock.isClearing) {
+            return [];
+        }
+        
+        const blockMap = this.getColorBlocksMap();
+        const queue = [startBlock];
+        const visited = new Set([`${startBlock.x},${startBlock.y}`]);
+        const piece = [];
+        
+        while (queue.length > 0) {
+            const block = queue.shift();
+            piece.push(block);
+            
+            const neighbors = [
+                [block.x, block.y - 1],
+                [block.x + 1, block.y],
+                [block.x, block.y + 1],
+                [block.x - 1, block.y],
+            ];
+            
+            for (const [nextX, nextY] of neighbors) {
+                const key = `${nextX},${nextY}`;
+                if (visited.has(key)) continue;
+                
+                const neighbor = blockMap.get(key);
+                if (!neighbor || neighbor.colorIndex !== startBlock.colorIndex) continue;
+                
+                visited.add(key);
+                queue.push(neighbor);
+            }
+        }
+        
+        return piece;
+    }
+
+    resetColoredBlockMotion(block) {
+        block.isFalling = false;
+        block.fallProgress = 0;
+        block.fallTimer = 0;
+        block.isShaking = false;
+        block.shakeTimer = 0;
+    }
+
+    getColorBlocksMap() {
+        const map = new Map();
+        
+        for (const block of this.colorBlocks) {
+            if (block.destroyed || block.isClearing) continue;
+            map.set(`${block.x},${block.y}`, block);
+        }
+        
+        return map;
+    }
+
+    buildColorComponents() {
+        const blockMap = this.getColorBlocksMap();
+        const visited = new Set();
+        const components = [];
+        
+        for (const block of this.colorBlocks) {
+            if (block.destroyed || block.isClearing) continue;
+            
+            const startKey = `${block.x},${block.y}`;
+            if (visited.has(startKey)) continue;
+            
+            const queue = [block];
+            const blocks = [];
+            visited.add(startKey);
+            
+            while (queue.length > 0) {
+                const current = queue.shift();
+                blocks.push(current);
+                
+                const neighbors = [
+                    [current.x, current.y - 1],
+                    [current.x + 1, current.y],
+                    [current.x, current.y + 1],
+                    [current.x - 1, current.y],
+                ];
+                
+                for (const [nextX, nextY] of neighbors) {
+                    const neighborKey = `${nextX},${nextY}`;
+                    if (visited.has(neighborKey)) continue;
+                    
+                    const neighbor = blockMap.get(neighborKey);
+                    if (!neighbor || neighbor.colorIndex !== block.colorIndex) continue;
+                    
+                    visited.add(neighborKey);
+                    queue.push(neighbor);
+                }
+            }
+            
+            components.push({
+                key: blocks.map(item => item.id).sort((a, b) => a - b).join(','),
+                blocks,
+                colorIndex: block.colorIndex,
+            });
+        }
+        
+        return components;
+    }
+
+    componentCanFall(component) {
+        const ownCells = new Set(component.blocks.map(block => `${block.x},${block.y}`));
+        
+        for (const block of component.blocks) {
+            const belowY = block.y + 1;
+            if (belowY >= GRID_HEIGHT) return false;
+            if (ownCells.has(`${block.x},${belowY}`)) continue;
+            if (this.grid[belowY]?.[block.x] !== BLOCK_TYPES.EMPTY) return false;
+        }
+        
+        return true;
+    }
+
+    moveColorComponentDown(component) {
+        for (const block of component.blocks) {
+            if (this.grid[block.y]?.[block.x] === block.colorIndex + BLOCK_TYPES.COLORED) {
+                this.grid[block.y][block.x] = BLOCK_TYPES.EMPTY;
+            }
+        }
+        
+        for (const block of component.blocks) {
+            block.y++;
+        }
+        
+        for (const block of component.blocks) {
+            if (this.grid[block.y]) {
+                this.grid[block.y][block.x] = block.colorIndex + BLOCK_TYPES.COLORED;
+            }
+        }
+    }
+
+    applyComponentMotionState(component, state) {
+        for (const block of component.blocks) {
+            block.isFalling = state.isFalling;
+            block.fallProgress = state.fallProgress;
+            block.fallTimer = state.fallTimer;
+            block.isShaking = state.isShaking;
+            block.shakeTimer = state.shakeTimer;
+        }
+    }
+
+    componentOverlapsPlayer(component, playerGridX, playerGridY) {
+        return component.blocks.some(block => block.overlapsWithPlayer(playerGridX, playerGridY));
     }
     
     getBlockAt(x, y) {
@@ -922,33 +1067,106 @@ class Game {
             return null; // Don't block digging or movement
         }
         
-        for (const group of this.blockGroups) {
-            if (group.hasCell(x, y)) {
-                return { type: 'group', group };
+        if (isColoredBlockValue(blockType)) {
+            const block = this.getColorBlockAt(x, y);
+            if (block && !block.isClearing) {
+                return { type: 'color', block };
             }
         }
         
         return null;
     }
     
-    updatePhysics(deltaTime) {
-        // Don't run physics until player has dug something
-        if (!this.hasPlayerDug) return;
-        
-        // STEP 1: Mark all blocks that will eventually fall
-        // A block will fall if there's empty space anywhere below it (directly or through other falling blocks)
-        
-        // First, find all groups that can fall RIGHT NOW (empty directly below)
-        const canFallNow = new Set();
-        for (const group of this.blockGroups) {
-            if (group.cells.length === 0) continue;
-            if (group.canFall(this.grid)) {
-                canFallNow.add(group);
+    updateColoredBlockPhysics(deltaTime) {
+        for (const block of this.colorBlocks) {
+            if (block.destroyed) continue;
+            
+            if (block.isClearing) {
+                block.clearTimer += deltaTime;
+                if (block.clearTimer >= MATCH_CLEAR_FLASH) {
+                    if (this.grid[block.y]?.[block.x] === block.colorIndex + BLOCK_TYPES.COLORED) {
+                        this.grid[block.y][block.x] = BLOCK_TYPES.EMPTY;
+                    }
+                    block.destroyed = true;
+                }
+                continue;
             }
+            
+            this.resetColoredBlockMotion(block);
         }
         
-        // Also check x-blocks
+        const components = this.buildColorComponents();
+        const nextStates = new Map();
+        
+        for (const component of components) {
+            const previousState = this.colorComponentStates.get(component.key);
+            const state = previousState ? { ...previousState } : {
+                fallTimer: 0,
+                isFalling: false,
+                fallProgress: 0,
+                isShaking: false,
+                shakeTimer: 0,
+            };
+            
+            if (state.isFalling) {
+                state.fallProgress += deltaTime / FALL_SPEED;
+                
+                if (state.fallProgress >= 1) {
+                    this.moveColorComponentDown(component);
+                    state.fallProgress = 0;
+                    
+                    if (!this.componentCanFall(component)) {
+                        state.isFalling = false;
+                        state.isShaking = false;
+                        state.fallTimer = 0;
+                        state.shakeTimer = 0;
+                        component.blocks.forEach(block => {
+                            block.matchEligible = true;
+                        });
+                        this.pendingMatchCheck = true;
+                    }
+                    
+                    const playerGridX = Math.round(this.player.x / GRID_SIZE);
+                    const playerGridY = Math.round(this.player.y / GRID_SIZE);
+                    if (this.componentOverlapsPlayer(component, playerGridX, playerGridY)) {
+                        this.gameState = 'gameover';
+                    }
+                }
+            } else {
+                const shouldStartFalling = this.componentCanFall(component);
+                
+                if (shouldStartFalling) {
+                    if (!state.isShaking) {
+                        state.isShaking = true;
+                        state.shakeTimer = 0;
+                    }
+                    
+                    state.shakeTimer += deltaTime;
+                    
+                    if (state.shakeTimer >= SHAKE_DURATION) {
+                        state.fallTimer += deltaTime;
+                        if (state.fallTimer >= FALL_DELAY - SHAKE_DURATION && this.componentCanFall(component)) {
+                            state.isFalling = true;
+                            state.fallProgress = 0;
+                        }
+                    }
+                } else {
+                    state.fallTimer = 0;
+                    state.isShaking = false;
+                    state.shakeTimer = 0;
+                }
+            }
+            
+            this.applyComponentMotionState(component, state);
+            nextStates.set(component.key, state);
+        }
+        
+        this.colorComponentStates = nextStates;
+    }
+    
+    updateXBlockPhysics(deltaTime) {
         const xBlocksCanFall = new Set();
+        
         for (const xBlock of this.xBlocks) {
             if (xBlock.destroyed) continue;
             if (xBlock.canFall(this.grid)) {
@@ -956,103 +1174,6 @@ class Game {
             }
         }
         
-        // STEP 2: If ANY block starts shaking, all blocks above it should also start shaking
-        // This creates the "chain reaction" effect where everything falls together
-        
-        // Update block groups
-        for (const group of this.blockGroups) {
-            if (group.cells.length === 0) continue;
-            
-            if (group.isFalling) {
-                group.fallProgress += deltaTime / FALL_SPEED;
-                
-                if (group.fallProgress >= 1) {
-                    group.cells.forEach(cell => {
-                        if (this.grid[cell.y]?.[cell.x] === group.colorIndex + 1) {
-                            this.grid[cell.y][cell.x] = BLOCK_TYPES.EMPTY;
-                        }
-                    });
-                    
-                    group.fall();
-                    
-                    group.cells.forEach(cell => {
-                        if (this.grid[cell.y]) {
-                            this.grid[cell.y][cell.x] = group.colorIndex + 1;
-                        }
-                    });
-                    
-                    if (!group.canFall(this.grid)) {
-                        group.isFalling = false;
-                        group.isShaking = false;
-                        group.fallTimer = 0;
-                        group.shakeTimer = 0;
-                    }
-                    
-                    const playerGridX = Math.round(this.player.x / GRID_SIZE);
-                    const playerGridY = Math.round(this.player.y / GRID_SIZE);
-                    if (group.overlapsWithPlayer(playerGridX, playerGridY)) {
-                        this.gameState = 'gameover';
-                    }
-                }
-            } else {
-                // Check if this group can fall (empty below) OR if it's above a falling/shaking group
-                let shouldStartFalling = canFallNow.has(group);
-                
-                if (!shouldStartFalling) {
-                    // Check if any block below us is shaking/falling
-                    for (const cell of group.cells) {
-                        const belowY = cell.y + 1;
-                        // Check if there's a shaking/falling group below
-                        for (const otherGroup of this.blockGroups) {
-                            if (otherGroup === group) continue;
-                            if (otherGroup.isShaking || otherGroup.isFalling) {
-                                if (otherGroup.hasCell(cell.x, belowY)) {
-                                    shouldStartFalling = true;
-                                    break;
-                                }
-                            }
-                        }
-                        // Check x-blocks below
-                        for (const xBlock of this.xBlocks) {
-                            if (xBlock.destroyed) continue;
-                            if (xBlock.isShaking || xBlock.isFalling) {
-                                if (xBlock.x === cell.x && xBlock.y === belowY) {
-                                    shouldStartFalling = true;
-                                    break;
-                                }
-                            }
-                        }
-                        if (shouldStartFalling) break;
-                    }
-                }
-                
-                if (shouldStartFalling) {
-                    if (!group.isShaking) {
-                        group.isShaking = true;
-                        group.shakeTimer = 0;
-                    }
-                    
-                    group.shakeTimer += deltaTime;
-                    
-                    if (group.shakeTimer >= SHAKE_DURATION) {
-                        group.fallTimer += deltaTime;
-                        if (group.fallTimer >= FALL_DELAY - SHAKE_DURATION) {
-                            // Only actually start falling if there's space
-                            if (group.canFall(this.grid)) {
-                                group.isFalling = true;
-                                group.fallProgress = 0;
-                            }
-                        }
-                    }
-                } else {
-                    group.fallTimer = 0;
-                    group.isShaking = false;
-                    group.shakeTimer = 0;
-                }
-            }
-        }
-        
-        // Update X-blocks with same logic
         for (const xBlock of this.xBlocks) {
             if (xBlock.destroyed) continue;
             
@@ -1082,29 +1203,6 @@ class Game {
             } else {
                 let shouldStartFalling = xBlocksCanFall.has(xBlock);
                 
-                if (!shouldStartFalling) {
-                    const belowY = xBlock.y + 1;
-                    // Check if there's a shaking/falling group below
-                    for (const group of this.blockGroups) {
-                        if (group.isShaking || group.isFalling) {
-                            if (group.hasCell(xBlock.x, belowY)) {
-                                shouldStartFalling = true;
-                                break;
-                            }
-                        }
-                    }
-                    // Check other x-blocks below
-                    for (const otherXBlock of this.xBlocks) {
-                        if (otherXBlock === xBlock || otherXBlock.destroyed) continue;
-                        if (otherXBlock.isShaking || otherXBlock.isFalling) {
-                            if (otherXBlock.x === xBlock.x && otherXBlock.y === belowY) {
-                                shouldStartFalling = true;
-                                break;
-                            }
-                        }
-                    }
-                }
-                
                 if (shouldStartFalling) {
                     if (!xBlock.isShaking) {
                         xBlock.isShaking = true;
@@ -1115,11 +1213,9 @@ class Game {
                     
                     if (xBlock.shakeTimer >= SHAKE_DURATION) {
                         xBlock.fallTimer += deltaTime;
-                        if (xBlock.fallTimer >= FALL_DELAY - SHAKE_DURATION) {
-                            if (xBlock.canFall(this.grid)) {
-                                xBlock.isFalling = true;
-                                xBlock.fallProgress = 0;
-                            }
+                        if (xBlock.fallTimer >= FALL_DELAY - SHAKE_DURATION && xBlock.canFall(this.grid)) {
+                            xBlock.isFalling = true;
+                            xBlock.fallProgress = 0;
                         }
                     }
                 } else {
@@ -1129,65 +1225,212 @@ class Game {
                 }
             }
         }
-        
-        // Oxygen tubes fall
-        this.oxygenTubes.forEach(tube => {
-            if (tube.collected) return;
+    }
+    
+    updateItemsPhysics(items, deltaTime) {
+        items.forEach(item => {
+            if (item.collected) return;
             
-            const tubeGridX = Math.floor(tube.x / GRID_SIZE);
-            const tubeGridY = Math.floor(tube.y / GRID_SIZE);
+            const itemGridX = Math.floor(item.x / GRID_SIZE);
+            const itemGridY = Math.floor(item.y / GRID_SIZE);
+            const blockBelow = this.grid[itemGridY + 1]?.[itemGridX];
             
-            const blockBelow = this.grid[tubeGridY + 1]?.[tubeGridX];
-            if (blockBelow === BLOCK_TYPES.EMPTY && tubeGridY < GRID_HEIGHT - 2) {
-                tube.fallTimer = (tube.fallTimer || 0) + deltaTime;
-                if (tube.fallTimer >= 0.08) {
-                    // Clear old position
-                    if (this.grid[tubeGridY]?.[tubeGridX] === BLOCK_TYPES.ITEM) {
-                        this.grid[tubeGridY][tubeGridX] = BLOCK_TYPES.EMPTY;
+            if (blockBelow === BLOCK_TYPES.EMPTY && itemGridY < GRID_HEIGHT - 2) {
+                item.fallTimer = (item.fallTimer || 0) + deltaTime;
+                if (item.fallTimer >= 0.08) {
+                    if (this.grid[itemGridY]?.[itemGridX] === BLOCK_TYPES.ITEM) {
+                        this.grid[itemGridY][itemGridX] = BLOCK_TYPES.EMPTY;
                     }
-                    tube.y += GRID_SIZE;
-                    // Set new position
-                    const newGridY = Math.floor(tube.y / GRID_SIZE);
+                    item.y += GRID_SIZE;
+                    const newGridY = Math.floor(item.y / GRID_SIZE);
                     if (this.grid[newGridY]) {
-                        this.grid[newGridY][tubeGridX] = BLOCK_TYPES.ITEM;
+                        this.grid[newGridY][itemGridX] = BLOCK_TYPES.ITEM;
                     }
-                    tube.fallTimer = 0;
+                    item.fallTimer = 0;
                 }
             } else {
-                tube.fallTimer = 0;
+                item.fallTimer = 0;
             }
         });
-        
-        // Treasures fall
-        this.treasures.forEach(treasure => {
-            if (treasure.collected) return;
+    }
+
+    settleInitialBoard() {
+        const moveItemsDownOneStep = items => {
+            let moved = false;
             
-            const treasureGridX = Math.floor(treasure.x / GRID_SIZE);
-            const treasureGridY = Math.floor(treasure.y / GRID_SIZE);
-            
-            const blockBelow = this.grid[treasureGridY + 1]?.[treasureGridX];
-            if (blockBelow === BLOCK_TYPES.EMPTY && treasureGridY < GRID_HEIGHT - 2) {
-                treasure.fallTimer = (treasure.fallTimer || 0) + deltaTime;
-                if (treasure.fallTimer >= 0.08) {
-                    // Clear old position
-                    if (this.grid[treasureGridY]?.[treasureGridX] === BLOCK_TYPES.ITEM) {
-                        this.grid[treasureGridY][treasureGridX] = BLOCK_TYPES.EMPTY;
+            for (const item of items) {
+                if (item.collected) continue;
+                
+                const itemGridX = Math.floor(item.x / GRID_SIZE);
+                const itemGridY = Math.floor(item.y / GRID_SIZE);
+                const blockBelow = this.grid[itemGridY + 1]?.[itemGridX];
+                
+                if (blockBelow === BLOCK_TYPES.EMPTY && itemGridY < GRID_HEIGHT - 2) {
+                    if (this.grid[itemGridY]?.[itemGridX] === BLOCK_TYPES.ITEM) {
+                        this.grid[itemGridY][itemGridX] = BLOCK_TYPES.EMPTY;
                     }
-                    treasure.y += GRID_SIZE;
-                    // Set new position
-                    const newGridY = Math.floor(treasure.y / GRID_SIZE);
+                    item.y += GRID_SIZE;
+                    const newGridY = Math.floor(item.y / GRID_SIZE);
                     if (this.grid[newGridY]) {
-                        this.grid[newGridY][treasureGridX] = BLOCK_TYPES.ITEM;
+                        this.grid[newGridY][itemGridX] = BLOCK_TYPES.ITEM;
                     }
-                    treasure.fallTimer = 0;
+                    moved = true;
                 }
-            } else {
-                treasure.fallTimer = 0;
             }
-        });
+            
+            return moved;
+        };
         
-        // Cleanup
-        this.blockGroups = this.blockGroups.filter(g => g.cells.length > 0);
+        const getComponentMaxY = component =>
+            Math.max(...component.blocks.map(block => block.y));
+        
+        for (let i = 0; i < GRID_WIDTH * GRID_HEIGHT * 4; i++) {
+            let movedAny = false;
+            const components = this.buildColorComponents()
+                .sort((a, b) => getComponentMaxY(b) - getComponentMaxY(a));
+            
+            for (const component of components) {
+                if (!this.componentCanFall(component)) continue;
+                this.moveColorComponentDown(component);
+                movedAny = true;
+            }
+            
+            const xBlocks = this.xBlocks
+                .filter(xBlock => !xBlock.destroyed)
+                .sort((a, b) => b.y - a.y);
+            
+            for (const xBlock of xBlocks) {
+                if (!xBlock.canFall(this.grid)) continue;
+                
+                this.grid[xBlock.y][xBlock.x] = BLOCK_TYPES.EMPTY;
+                xBlock.y++;
+                this.grid[xBlock.y][xBlock.x] = BLOCK_TYPES.XBLOCK;
+                movedAny = true;
+            }
+            
+            movedAny = moveItemsDownOneStep(this.oxygenTubes) || movedAny;
+            movedAny = moveItemsDownOneStep(this.treasures) || movedAny;
+            
+            if (!movedAny) break;
+        }
+        
+        for (const block of this.colorBlocks) {
+            block.isClearing = false;
+            block.clearTimer = 0;
+            block.matchEligible = false;
+            this.resetColoredBlockMotion(block);
+        }
+        
+        for (const xBlock of this.xBlocks) {
+            xBlock.isFalling = false;
+            xBlock.fallProgress = 0;
+            xBlock.fallTimer = 0;
+            xBlock.isShaking = false;
+            xBlock.shakeTimer = 0;
+        }
+        
+        this.colorComponentStates.clear();
+        this.pendingMatchCheck = false;
+    }
+    
+    findStableColorCluster(startBlock, visited) {
+        const queue = [startBlock];
+        const cluster = [];
+        visited.add(`${startBlock.x},${startBlock.y}`);
+        
+        while (queue.length > 0) {
+            const block = queue.shift();
+            cluster.push(block);
+            
+            const neighbors = [
+                [block.x, block.y - 1],
+                [block.x + 1, block.y],
+                [block.x, block.y + 1],
+                [block.x - 1, block.y],
+            ];
+            
+            for (const [nextX, nextY] of neighbors) {
+                const key = `${nextX},${nextY}`;
+                if (visited.has(key)) continue;
+                
+                const neighbor = this.getColorBlockAt(nextX, nextY);
+                if (!neighbor || neighbor.colorIndex !== startBlock.colorIndex) continue;
+                if (neighbor.isClearing || neighbor.isFalling || neighbor.isShaking) continue;
+                
+                visited.add(key);
+                queue.push(neighbor);
+            }
+        }
+        
+        return cluster;
+    }
+    
+    hasActiveColorMotion() {
+        const colorBlocksMoving = this.colorBlocks.some(block =>
+            !block.destroyed &&
+            (block.isFalling || block.isShaking || block.isClearing)
+        );
+        const xBlocksMoving = this.xBlocks.some(xBlock =>
+            !xBlock.destroyed &&
+            (xBlock.isFalling || xBlock.isShaking)
+        );
+        
+        return colorBlocksMoving || xBlocksMoving;
+    }
+    
+    triggerColorMatches() {
+        const visited = new Set();
+        let foundMatch = false;
+        
+        for (const block of this.colorBlocks) {
+            if (block.destroyed || block.isClearing || block.isFalling || block.isShaking) continue;
+            
+            const key = `${block.x},${block.y}`;
+            if (visited.has(key)) continue;
+            
+            const cluster = this.findStableColorCluster(block, visited);
+            const hasEligibleBlock = cluster.some(matchBlock => matchBlock.matchEligible);
+            if (!hasEligibleBlock) continue;
+            
+            if (cluster.length < MATCH_CLEAR_SIZE) {
+                cluster.forEach(matchBlock => {
+                    matchBlock.matchEligible = false;
+                });
+                continue;
+            }
+            
+            foundMatch = true;
+            this.score += cluster.length * MATCH_SCORE;
+            
+            cluster.forEach(matchBlock => {
+                matchBlock.matchEligible = false;
+                matchBlock.isClearing = true;
+                matchBlock.clearTimer = 0;
+                matchBlock.isShaking = false;
+                matchBlock.isFalling = false;
+                matchBlock.fallTimer = 0;
+                matchBlock.shakeTimer = 0;
+            });
+        }
+        
+        return foundMatch;
+    }
+    
+    updatePhysics(deltaTime) {
+        // Don't run physics until player has dug something
+        if (!this.hasPlayerDug) return;
+
+        this.updateColoredBlockPhysics(deltaTime);
+        this.updateXBlockPhysics(deltaTime);
+        this.updateItemsPhysics(this.oxygenTubes, deltaTime);
+        this.updateItemsPhysics(this.treasures, deltaTime);
+        
+        if (this.pendingMatchCheck && !this.hasActiveColorMotion()) {
+            this.triggerColorMatches();
+            this.pendingMatchCheck = false;
+        }
+        
+        this.colorBlocks = this.colorBlocks.filter(block => !block.destroyed);
         this.xBlocks = this.xBlocks.filter(b => !b.destroyed);
     }
     
@@ -1249,9 +1492,10 @@ class Game {
     
     restart() {
         this.grid = [];
-        this.blockGroups = [];
+        this.colorBlocks = [];
         this.xBlocks = [];
-        this.groupIdCounter = 0;
+        this.nextColorBlockId = 1;
+        this.colorComponentStates = new Map();
         
         this.player = {
             gridX: Math.floor(GRID_WIDTH / 2),
@@ -1292,6 +1536,7 @@ class Game {
         this.countdownTimer = 0;
         this.countdownNumber = 3;
         this.hasPlayerDug = false;
+        this.pendingMatchCheck = false;
         
         for (let y = 0; y < GRID_HEIGHT; y++) {
             this.grid[y] = [];
@@ -1315,10 +1560,10 @@ class Game {
         this.ctx.fillStyle = '#0a0a1a';
         this.ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
         
-        // Render block groups
-        for (const group of this.blockGroups) {
-            if (group.cells.length === 0) continue;
-            this.renderBlockGroup(group);
+        // Render colored blocks
+        for (const block of this.colorBlocks) {
+            if (block.destroyed) continue;
+            this.renderColoredBlock(block);
         }
         
         // Render X-blocks
@@ -1418,118 +1663,109 @@ class Game {
         }
     }
     
-    renderBlockGroup(group) {
-        if (group.cells.length === 0) return;
+    renderColoredBlock(block) {
+        if (block.destroyed) return;
         
-        const color = BLOCK_COLORS[group.colorIndex];
-        const fallOffset = group.isFalling ? group.fallProgress * GRID_SIZE : 0;
-        const shakeOffset = group.getShakeOffset();
-        
-        const cellSet = new Set(group.cells.map(c => `${c.x},${c.y}`));
+        const color = BLOCK_COLORS[block.colorIndex];
+        const fallOffset = block.isFalling ? block.fallProgress * GRID_SIZE : 0;
+        const shakeOffset = block.getShakeOffset();
         const ctx = this.ctx;
-        const padding = 2;
+        const outerPadding = 2;
         const radius = 6;
+        const colorValue = block.colorIndex + BLOCK_TYPES.COLORED;
+        const baseX = block.x * GRID_SIZE + shakeOffset;
+        const baseY = block.y * GRID_SIZE - this.cameraY + fallOffset;
         
-        // First pass: draw all cells
-        for (const cell of group.cells) {
-            const screenX = cell.x * GRID_SIZE + shakeOffset + padding;
-            const screenY = cell.y * GRID_SIZE - this.cameraY + fallOffset + padding;
-            const size = GRID_SIZE - padding * 2;
-            
-            if (screenY < -GRID_SIZE || screenY > CANVAS_HEIGHT + GRID_SIZE) continue;
-            
-            const hasTop = cellSet.has(`${cell.x},${cell.y - 1}`);
-            const hasBottom = cellSet.has(`${cell.x},${cell.y + 1}`);
-            const hasLeft = cellSet.has(`${cell.x - 1},${cell.y}`);
-            const hasRight = cellSet.has(`${cell.x + 1},${cell.y}`);
-            
-            // Determine which corners should be rounded
-            const tl = !hasTop && !hasLeft ? radius : 0;
-            const tr = !hasTop && !hasRight ? radius : 0;
-            const bl = !hasBottom && !hasLeft ? radius : 0;
-            const br = !hasBottom && !hasRight ? radius : 0;
-            
-            // Draw rounded rectangle
-            ctx.beginPath();
-            ctx.moveTo(screenX + tl, screenY);
-            ctx.lineTo(screenX + size - tr, screenY);
-            if (tr) ctx.arcTo(screenX + size, screenY, screenX + size, screenY + tr, tr);
-            else ctx.lineTo(screenX + size, screenY);
-            ctx.lineTo(screenX + size, screenY + size - br);
-            if (br) ctx.arcTo(screenX + size, screenY + size, screenX + size - br, screenY + size, br);
-            else ctx.lineTo(screenX + size, screenY + size);
-            ctx.lineTo(screenX + bl, screenY + size);
-            if (bl) ctx.arcTo(screenX, screenY + size, screenX, screenY + size - bl, bl);
-            else ctx.lineTo(screenX, screenY + size);
-            ctx.lineTo(screenX, screenY + tl);
-            if (tl) ctx.arcTo(screenX, screenY, screenX + tl, screenY, tl);
-            else ctx.lineTo(screenX, screenY);
-            ctx.closePath();
-            
-            // Main fill with gradient
-            const gradient = ctx.createLinearGradient(screenX, screenY, screenX, screenY + size);
+        if (baseY < -GRID_SIZE || baseY > CANVAS_HEIGHT + GRID_SIZE) return;
+        
+        const hasTop = this.grid[block.y - 1]?.[block.x] === colorValue;
+        const hasBottom = this.grid[block.y + 1]?.[block.x] === colorValue;
+        const hasLeft = this.grid[block.y]?.[block.x - 1] === colorValue;
+        const hasRight = this.grid[block.y]?.[block.x + 1] === colorValue;
+        const topInset = hasTop ? 0 : outerPadding;
+        const bottomInset = hasBottom ? 0 : outerPadding;
+        const leftInset = hasLeft ? 0 : outerPadding;
+        const rightInset = hasRight ? 0 : outerPadding;
+        const screenX = baseX + leftInset;
+        const screenY = baseY + topInset;
+        const width = GRID_SIZE - leftInset - rightInset;
+        const height = GRID_SIZE - topInset - bottomInset;
+        
+        // Determine which corners should be rounded
+        const tl = !hasTop && !hasLeft ? radius : 0;
+        const tr = !hasTop && !hasRight ? radius : 0;
+        const bl = !hasBottom && !hasLeft ? radius : 0;
+        const br = !hasBottom && !hasRight ? radius : 0;
+        
+        // Draw rounded rectangle
+        ctx.beginPath();
+        ctx.moveTo(screenX + tl, screenY);
+        ctx.lineTo(screenX + width - tr, screenY);
+        if (tr) ctx.arcTo(screenX + width, screenY, screenX + width, screenY + tr, tr);
+        else ctx.lineTo(screenX + width, screenY);
+        ctx.lineTo(screenX + width, screenY + height - br);
+        if (br) ctx.arcTo(screenX + width, screenY + height, screenX + width - br, screenY + height, br);
+        else ctx.lineTo(screenX + width, screenY + height);
+        ctx.lineTo(screenX + bl, screenY + height);
+        if (bl) ctx.arcTo(screenX, screenY + height, screenX, screenY + height - bl, bl);
+        else ctx.lineTo(screenX, screenY + height);
+        ctx.lineTo(screenX, screenY + tl);
+        if (tl) ctx.arcTo(screenX, screenY, screenX + tl, screenY, tl);
+        else ctx.lineTo(screenX, screenY);
+        ctx.closePath();
+        
+        if (block.isClearing && Math.floor(block.clearTimer * 24) % 2 === 0) {
+            ctx.fillStyle = '#ffffff';
+            ctx.fill();
+        } else {
+            const gradient = ctx.createLinearGradient(screenX, screenY, screenX, screenY + height);
             gradient.addColorStop(0, color.highlight);
             gradient.addColorStop(0.3, color.color);
             gradient.addColorStop(1, color.shadow);
             ctx.fillStyle = gradient;
             ctx.fill();
-            
-            // Inner highlight (top-left corner shine)
-            if (!hasTop && !hasLeft) {
-                ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
-                ctx.beginPath();
-                ctx.ellipse(screenX + 8, screenY + 8, 5, 4, -0.3, 0, Math.PI * 2);
-                ctx.fill();
-                
-                ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
-                ctx.beginPath();
-                ctx.ellipse(screenX + 14, screenY + 12, 3, 2, -0.3, 0, Math.PI * 2);
-                ctx.fill();
-            }
         }
         
-        // Second pass: draw dark outlines only on OUTER edges
-        for (const cell of group.cells) {
-            const screenX = cell.x * GRID_SIZE + shakeOffset + padding;
-            const screenY = cell.y * GRID_SIZE - this.cameraY + fallOffset + padding;
-            const size = GRID_SIZE - padding * 2;
+        if (!hasTop && !hasLeft && !block.isClearing) {
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+            ctx.beginPath();
+            ctx.ellipse(screenX + 8, screenY + 8, 5, 4, -0.3, 0, Math.PI * 2);
+            ctx.fill();
             
-            if (screenY < -GRID_SIZE || screenY > CANVAS_HEIGHT + GRID_SIZE) continue;
-            
-            const hasTop = cellSet.has(`${cell.x},${cell.y - 1}`);
-            const hasBottom = cellSet.has(`${cell.x},${cell.y + 1}`);
-            const hasLeft = cellSet.has(`${cell.x - 1},${cell.y}`);
-            const hasRight = cellSet.has(`${cell.x + 1},${cell.y}`);
-            
-            ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
-            ctx.lineWidth = 3;
-            ctx.lineCap = 'round';
-            
-            // Only draw edges that are on the outside of the group
-            if (!hasTop) {
-                ctx.beginPath();
-                ctx.moveTo(screenX, screenY);
-                ctx.lineTo(screenX + size, screenY);
-                ctx.stroke();
-            }
-            if (!hasBottom) {
-                ctx.beginPath();
-                ctx.moveTo(screenX, screenY + size);
-                ctx.lineTo(screenX + size, screenY + size);
-                ctx.stroke();
-            }
-            if (!hasLeft) {
-                ctx.beginPath();
-                ctx.moveTo(screenX, screenY);
-                ctx.lineTo(screenX, screenY + size);
-                ctx.stroke();
-            }
-            if (!hasRight) {
-                ctx.beginPath();
-                ctx.moveTo(screenX + size, screenY);
-                ctx.lineTo(screenX + size, screenY + size);
-                ctx.stroke();
-            }
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+            ctx.beginPath();
+            ctx.ellipse(screenX + 14, screenY + 12, 3, 2, -0.3, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        
+        ctx.strokeStyle = block.isClearing ? 'rgba(255, 255, 255, 0.95)' : 'rgba(0, 0, 0, 0.8)';
+        ctx.lineWidth = 3;
+        ctx.lineCap = 'round';
+        
+        // Only draw edges that are on the outside of the same-color cluster
+        if (!hasTop) {
+            ctx.beginPath();
+            ctx.moveTo(screenX, screenY);
+            ctx.lineTo(screenX + width, screenY);
+            ctx.stroke();
+        }
+        if (!hasBottom) {
+            ctx.beginPath();
+            ctx.moveTo(screenX, screenY + height);
+            ctx.lineTo(screenX + width, screenY + height);
+            ctx.stroke();
+        }
+        if (!hasLeft) {
+            ctx.beginPath();
+            ctx.moveTo(screenX, screenY);
+            ctx.lineTo(screenX, screenY + height);
+            ctx.stroke();
+        }
+        if (!hasRight) {
+            ctx.beginPath();
+            ctx.moveTo(screenX + width, screenY);
+            ctx.lineTo(screenX + width, screenY + height);
+            ctx.stroke();
         }
     }
     
