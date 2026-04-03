@@ -13,6 +13,16 @@ const DIG_SCORE = 10;
 const MATCH_SCORE = 30;
 const MAX_GENERATED_CLUSTER_SIZE = 5;
 const COLOR_NEIGHBOR_PREFERENCE = 0.45;
+const STEP_DURATION = 0.075;
+const DIG_COOLDOWN = 0.08;
+const DIG_ANIM_DURATION = 0.12;
+const FALL_START_SPEED = 360;
+const FALL_ACCELERATION = 2200;
+const FALL_MAX_SPEED = 1100;
+const CAMERA_ANCHOR_RATIO = 0.38;
+const CAMERA_FOLLOW_GROUNDED = 0.24;
+const CAMERA_FOLLOW_FALLING = 0.36;
+const CAMERA_FALL_LOOKAHEAD = GRID_SIZE * 0.7;
 
 let CANVAS_WIDTH = GRID_WIDTH * GRID_SIZE;
 let CANVAS_HEIGHT = VIEWPORT_HEIGHT * GRID_SIZE;
@@ -305,6 +315,10 @@ class Game {
             moveCooldown: 0.12, // Slower, more deliberate movement
             isMoving: false,
             moveAnimFrame: 0,
+            isStepping: false,
+            stepStartX: Math.floor(GRID_WIDTH / 2) * GRID_SIZE,
+            stepTargetX: Math.floor(GRID_WIDTH / 2) * GRID_SIZE,
+            stepProgress: 1,
             
             // Drilling
             digCooldown: 0,
@@ -625,211 +639,183 @@ class Game {
     updatePlayer(deltaTime) {
         const input = this.getInput();
         const p = this.player;
-        
-        const WALK_SPEED = 380; // Pixels per second
-        const FALL_THRESHOLD = 0.4; // How centered you need to be to fall (0.5 = perfectly centered)
-        
-        // Current grid cell (based on center of player)
-        const centerX = p.visualX + GRID_SIZE / 2;
-        const currentGridX = Math.floor(centerX / GRID_SIZE);
-        const currentGridY = Math.floor(p.visualY / GRID_SIZE);
-        
-        // How far into the current cell (0-1, 0.5 = centered)
-        const cellOffsetX = (centerX % GRID_SIZE) / GRID_SIZE;
-        const isCentered = cellOffsetX > FALL_THRESHOLD && cellOffsetX < (1 - FALL_THRESHOLD);
-        
-        // Check block below current position
-        const blockBelow = this.grid[currentGridY + 1]?.[currentGridX];
-        const isBlockSolid = blockBelow !== undefined && 
-                             blockBelow !== BLOCK_TYPES.EMPTY && 
-                             blockBelow !== BLOCK_TYPES.ITEM;
-        const atBottom = currentGridY >= GRID_HEIGHT - 1;
-        
-        // Only fall if centered enough over the hole
-        const shouldFall = !isBlockSolid && !atBottom && isCentered;
-        
-        p.isGrounded = !shouldFall;
-        p.gridX = currentGridX;
-        p.gridY = currentGridY;
-        
-        // FALLING
-        if (shouldFall) {
-            // Track how far we've fallen (in pixels for smoother detection)
-            if (!p.isFalling) {
-                p.fallStartY = p.visualY; // Remember where we started falling (in pixels)
+        const stepEase = t => 1 - Math.pow(1 - t, 3);
+
+        p.moveTimer += deltaTime;
+        p.digCooldown -= deltaTime;
+        p.showDrill = false;
+
+        if (p.isStepping) {
+            p.stepProgress += deltaTime / STEP_DURATION;
+            const eased = stepEase(Math.min(p.stepProgress, 1));
+            p.visualX = p.stepStartX + (p.stepTargetX - p.stepStartX) * eased;
+            p.isMoving = true;
+            p.moveAnimFrame = (p.moveAnimFrame + deltaTime * 16) % 4;
+
+            if (p.stepProgress < 1) {
+                return;
             }
+
+            p.isStepping = false;
+            p.visualX = p.stepTargetX;
+            p.gridX = Math.round(p.visualX / GRID_SIZE);
+        }
+
+        const currentGridX = p.gridX;
+        const currentGridY = Math.floor(p.visualY / GRID_SIZE);
+        const blockBelow = this.grid[currentGridY + 1]?.[currentGridX];
+        const isBlockSolid = blockBelow !== undefined &&
+            blockBelow !== BLOCK_TYPES.EMPTY &&
+            blockBelow !== BLOCK_TYPES.ITEM;
+        const atBottom = currentGridY >= GRID_HEIGHT - 1;
+        const shouldFall = !isBlockSolid && !atBottom;
+
+        p.isGrounded = !shouldFall;
+        p.gridY = currentGridY;
+
+        if (shouldFall) {
+            if (!p.isFalling) {
+                p.fallStartY = p.visualY;
+                p.fallVelocity = Math.max(p.fallVelocity, FALL_START_SPEED);
+            }
+
             p.isFalling = true;
             p.isMoving = false;
+            p.isStepping = false;
             p.showDrill = false;
-            
-            // Snap X to center of cell when starting to fall
-            const targetX = currentGridX * GRID_SIZE;
-            p.visualX += (targetX - p.visualX) * 0.3; // Smooth snap
-            
-            // Accelerate falling
-            p.fallVelocity += deltaTime * 1500;
-            p.fallVelocity = Math.min(p.fallVelocity, 800);
-            
-            // Move down
+            p.visualX = currentGridX * GRID_SIZE;
+            p.fallVelocity = Math.min(
+                p.fallVelocity + deltaTime * FALL_ACCELERATION,
+                FALL_MAX_SPEED
+            );
             p.visualY += p.fallVelocity * deltaTime;
-            
-            // Animate
-            p.moveAnimFrame = (p.moveAnimFrame + deltaTime * 10) % 4;
-            
-            // Update grid Y as we fall
+            p.moveAnimFrame = (p.moveAnimFrame + deltaTime * 12) % 4;
             p.gridY = Math.floor(p.visualY / GRID_SIZE);
-            
-            // Calculate fall distance in grid cells
             p.fallDistance = (p.visualY - p.fallStartY) / GRID_SIZE;
-            
-            // Check if landed
-            const blockAtGridY = this.grid[p.gridY + 1]?.[currentGridX];
-            const solidAtGrid = blockAtGridY !== undefined && 
-                               blockAtGridY !== BLOCK_TYPES.EMPTY && 
-                               blockAtGridY !== BLOCK_TYPES.ITEM;
-            
-            if (solidAtGrid || p.gridY >= GRID_HEIGHT - 1) {
-                p.visualY = p.gridY * GRID_SIZE;
-                p.visualX = currentGridX * GRID_SIZE; // Snap X when landing
+
+            const landingGridY = p.gridY;
+            const landingBlock = this.grid[landingGridY + 1]?.[currentGridX];
+            const landedOnSolid = landingBlock !== undefined &&
+                landingBlock !== BLOCK_TYPES.EMPTY &&
+                landingBlock !== BLOCK_TYPES.ITEM;
+
+            if (landedOnSolid || landingGridY >= GRID_HEIGHT - 1) {
+                p.visualY = landingGridY * GRID_SIZE;
+                p.visualX = currentGridX * GRID_SIZE;
+                p.gridY = landingGridY;
                 p.isFalling = false;
                 p.fallVelocity = 0;
-                // Don't reset fallDistance here - keep it for one more frame
             }
             return;
         }
-        
-        // Reset fall distance when grounded
+
         p.fallDistance = 0;
-        
-        // GROUNDED
         p.isFalling = false;
         p.fallVelocity = 0;
-        p.visualY = currentGridY * GRID_SIZE; // Keep Y snapped to grid
-        
-        p.moveTimer += deltaTime;
-        p.digCooldown -= deltaTime;
-        
-        // Reset states
-        p.showDrill = false;
-        
-        // Update drill animation
+        p.visualX = currentGridX * GRID_SIZE;
+        p.visualY = currentGridY * GRID_SIZE;
+
         if (p.isDrilling) {
+            p.isMoving = false;
             p.drillAnimTimer -= deltaTime;
-            p.drillAnimFrame = (p.drillAnimFrame + deltaTime * 20) % 3;
+            p.drillAnimFrame = (p.drillAnimFrame + deltaTime * 26) % 3;
             if (p.drillAnimTimer <= 0) {
                 p.isDrilling = false;
                 p.drillAnimFrame = 0;
             }
-            // Snap to grid while drilling
-            const targetX = currentGridX * GRID_SIZE;
-            p.visualX += (targetX - p.visualX) * 0.3;
             return;
         }
-        
-        // Check what's in each direction (from current grid cell)
+
         const blockLeft = this.grid[currentGridY]?.[currentGridX - 1];
         const blockRight = this.grid[currentGridY]?.[currentGridX + 1];
         const blockDown = this.grid[currentGridY + 1]?.[currentGridX];
         const blockUp = this.grid[currentGridY - 1]?.[currentGridX];
-        
-        const canMoveLeft = currentGridX > 0 && (blockLeft === BLOCK_TYPES.EMPTY || blockLeft === BLOCK_TYPES.ITEM);
-        const canMoveRight = currentGridX < GRID_WIDTH - 1 && (blockRight === BLOCK_TYPES.EMPTY || blockRight === BLOCK_TYPES.ITEM);
-        const canMoveDown = (blockDown === BLOCK_TYPES.EMPTY || blockDown === BLOCK_TYPES.ITEM);
-        
-        const hasBlockLeft = currentGridX > 0 && blockLeft !== BLOCK_TYPES.EMPTY && blockLeft !== BLOCK_TYPES.ITEM && blockLeft !== undefined;
-        const hasBlockRight = currentGridX < GRID_WIDTH - 1 && blockRight !== BLOCK_TYPES.EMPTY && blockRight !== BLOCK_TYPES.ITEM && blockRight !== undefined;
-        const hasBlockDown = blockDown !== BLOCK_TYPES.EMPTY && blockDown !== BLOCK_TYPES.ITEM && blockDown !== undefined;
-        const hasBlockUp = currentGridY > 0 && blockUp !== BLOCK_TYPES.EMPTY && blockUp !== BLOCK_TYPES.ITEM && blockUp !== undefined;
-        
-        // MOVEMENT
+
+        const canMoveLeft = currentGridX > 0 &&
+            (blockLeft === BLOCK_TYPES.EMPTY || blockLeft === BLOCK_TYPES.ITEM);
+        const canMoveRight = currentGridX < GRID_WIDTH - 1 &&
+            (blockRight === BLOCK_TYPES.EMPTY || blockRight === BLOCK_TYPES.ITEM);
+        const canMoveDown = blockDown === BLOCK_TYPES.EMPTY || blockDown === BLOCK_TYPES.ITEM;
+
+        const hasBlockLeft = currentGridX > 0 &&
+            blockLeft !== BLOCK_TYPES.EMPTY &&
+            blockLeft !== BLOCK_TYPES.ITEM &&
+            blockLeft !== undefined;
+        const hasBlockRight = currentGridX < GRID_WIDTH - 1 &&
+            blockRight !== BLOCK_TYPES.EMPTY &&
+            blockRight !== BLOCK_TYPES.ITEM &&
+            blockRight !== undefined;
+        const hasBlockDown = blockDown !== BLOCK_TYPES.EMPTY &&
+            blockDown !== BLOCK_TYPES.ITEM &&
+            blockDown !== undefined;
+        const hasBlockUp = currentGridY > 0 &&
+            blockUp !== BLOCK_TYPES.EMPTY &&
+            blockUp !== BLOCK_TYPES.ITEM &&
+            blockUp !== undefined;
+
+        const beginStep = direction => {
+            p.isStepping = true;
+            p.stepStartX = currentGridX * GRID_SIZE;
+            p.stepTargetX = (currentGridX + direction) * GRID_SIZE;
+            p.stepProgress = 0;
+            p.isMoving = true;
+            p.moveAnimFrame = (p.moveAnimFrame + 1) % 4;
+        };
+
         p.isMoving = false;
-        
+
         if (input.left) {
             p.facing = 'left';
-            
-            // Check if there's a block directly to our left in current cell
             if (hasBlockLeft) {
-                // There's a wall to the left
                 p.showDrill = true;
-                // Snap towards center
-                const targetX = currentGridX * GRID_SIZE;
-                p.visualX += (targetX - p.visualX) * 0.2;
-            } else {
-                // No wall, free to move
-                p.visualX -= WALK_SPEED * deltaTime;
-                p.visualX = Math.max(0, p.visualX);
-                p.isMoving = true;
-                p.moveAnimFrame = (p.moveAnimFrame + deltaTime * 8) % 4;
+            } else if (canMoveLeft) {
+                beginStep(-1);
+                return;
             }
-        }
-        else if (input.right) {
+        } else if (input.right) {
             p.facing = 'right';
-            
-            // Check if there's a block directly to our right in current cell
             if (hasBlockRight) {
-                // There's a wall to the right
                 p.showDrill = true;
-                // Snap towards center
-                const targetX = currentGridX * GRID_SIZE;
-                p.visualX += (targetX - p.visualX) * 0.2;
-            } else {
-                // No wall, free to move
-                p.visualX += WALK_SPEED * deltaTime;
-                p.visualX = Math.min((GRID_WIDTH - 1) * GRID_SIZE, p.visualX);
-                p.isMoving = true;
-                p.moveAnimFrame = (p.moveAnimFrame + deltaTime * 8) % 4;
+            } else if (canMoveRight) {
+                beginStep(1);
+                return;
             }
-        }
-        else if (input.down) {
+        } else if (input.down) {
             p.facing = 'down';
-            if (canMoveDown && isCentered) {
-                // Drop down
-                p.gridY = currentGridY + 1;
-                p.fallVelocity = 200;
-            } else if (hasBlockDown) {
-                p.showDrill = true;
-                // Snap to center for drilling
-                const targetX = currentGridX * GRID_SIZE;
-                p.visualX += (targetX - p.visualX) * 0.2;
-            } else if (canMoveDown && !isCentered) {
-                // Need to center first
-                const targetX = currentGridX * GRID_SIZE;
-                p.visualX += (targetX - p.visualX) * 0.15;
+            if (canMoveDown) {
+                p.fallVelocity = FALL_START_SPEED;
+                return;
             }
-        }
-        else if (input.up) {
+            if (hasBlockDown) {
+                p.showDrill = true;
+            }
+        } else if (input.up) {
             p.facing = 'up';
             if (hasBlockUp) {
                 p.showDrill = true;
-                // Snap to center for drilling
-                const targetX = currentGridX * GRID_SIZE;
-                p.visualX += (targetX - p.visualX) * 0.2;
             }
         }
-        
-        // DIG ACTION - requires being reasonably centered
+
         if (input.digJustPressed && p.digCooldown <= 0) {
-            // Snap to center for digging
-            p.visualX = currentGridX * GRID_SIZE;
-            
             let digX = currentGridX;
             let digY = currentGridY;
-            
+
             if (p.facing === 'left' && currentGridX > 0) digX = currentGridX - 1;
             else if (p.facing === 'right' && currentGridX < GRID_WIDTH - 1) digX = currentGridX + 1;
             else if (p.facing === 'down') digY = currentGridY + 1;
             else if (p.facing === 'up' && currentGridY > 0) digY = currentGridY - 1;
-            
+
             if (digY < GRID_HEIGHT && digY >= 0 && digX >= 0 && digX < GRID_WIDTH) {
                 const targetBlock = this.grid[digY]?.[digX];
-                if (targetBlock !== BLOCK_TYPES.EMPTY && 
-                    targetBlock !== BLOCK_TYPES.ITEM && 
+                if (targetBlock !== BLOCK_TYPES.EMPTY &&
+                    targetBlock !== BLOCK_TYPES.ITEM &&
                     targetBlock !== BLOCK_TYPES.BEDROCK) {
                     const didDig = this.digBlock(digX, digY);
                     if (didDig) {
-                        p.digCooldown = 0.15;
+                        p.digCooldown = DIG_COOLDOWN;
                         p.isDrilling = true;
-                        p.drillAnimTimer = 0.2;
+                        p.drillAnimTimer = DIG_ANIM_DURATION;
+                        p.drillAnimFrame = 0;
                     }
                 }
             }
@@ -1484,8 +1470,16 @@ class Game {
     }
     
     updateCamera() {
-        const targetCameraY = this.player.visualY - CANVAS_HEIGHT / 2 + GRID_SIZE;
-        this.cameraY += (targetCameraY - this.cameraY) * 0.15; // Slightly faster camera follow
+        const lookAhead = this.player.isFalling ? CAMERA_FALL_LOOKAHEAD : 0;
+        const targetCameraY = this.player.visualY - CANVAS_HEIGHT * CAMERA_ANCHOR_RATIO + lookAhead;
+        const follow = this.player.isFalling ? CAMERA_FOLLOW_FALLING : CAMERA_FOLLOW_GROUNDED;
+        
+        if (Math.abs(targetCameraY - this.cameraY) < 0.5) {
+            this.cameraY = targetCameraY;
+        } else {
+            this.cameraY += (targetCameraY - this.cameraY) * follow;
+        }
+        
         this.cameraY = Math.max(0, Math.min(this.cameraY, GRID_HEIGHT * GRID_SIZE - CANVAS_HEIGHT));
         this.depth = Math.max(0, Math.floor((this.player.visualY / GRID_SIZE) - 2));
     }
@@ -1518,6 +1512,10 @@ class Game {
             moveCooldown: 0.12,
             isMoving: false,
             moveAnimFrame: 0,
+            isStepping: false,
+            stepStartX: Math.floor(GRID_WIDTH / 2) * GRID_SIZE,
+            stepTargetX: Math.floor(GRID_WIDTH / 2) * GRID_SIZE,
+            stepProgress: 1,
             
             digCooldown: 0,
             isDrilling: false,
@@ -1878,7 +1876,7 @@ class Game {
         let scaleY = 1;
         
         if (isDrilling && facing === 'down') {
-            const progress = p.drillAnimTimer / 0.2;
+            const progress = p.drillAnimTimer / DIG_ANIM_DURATION;
             if (progress > 0.5) {
                 offsetY = -8 * (progress - 0.5) * 2;
                 scaleY = 1.1;
