@@ -293,6 +293,7 @@ class GamepadHandler {
         const up = gp.buttons[12]?.pressed || gp.axes[1] < -this.deadzone;
         const down = gp.buttons[13]?.pressed || gp.axes[1] > this.deadzone;
         const digPressed = gp.buttons[0]?.pressed || gp.buttons[2]?.pressed;
+        const pausePressed = gp.buttons[9]?.pressed;
         
         const input = {
             left,
@@ -301,6 +302,7 @@ class GamepadHandler {
             down,
             dig: digPressed,
             digJustPressed: digPressed && !this.lastButtons.dig,
+            pauseJustPressed: pausePressed && !this.lastButtons.pause,
             // Direction just pressed (for facing)
             leftJustPressed: left && !this.lastDirections.left,
             rightJustPressed: right && !this.lastDirections.right,
@@ -310,6 +312,7 @@ class GamepadHandler {
         
         // Save state for next frame
         this.lastButtons.dig = digPressed;
+        this.lastButtons.pause = pausePressed;
         this.lastDirections = { left, right, up, down };
         
         return input;
@@ -427,10 +430,117 @@ class ArcadeSound {
     }
 }
 
+class GameUI {
+    constructor(game) {
+        this.game = game;
+        this.root = document.getElementById('gameUi');
+        this.enabled = Boolean(this.root);
+        this.lastState = null;
+
+        if (!this.enabled) return;
+
+        this.hud = document.getElementById('gameHud');
+        this.depth = document.getElementById('hudDepth');
+        this.score = document.getElementById('hudScore');
+        this.air = document.getElementById('hudAir');
+        this.airFill = document.getElementById('hudAirFill');
+        this.airModule = document.getElementById('hudAirModule');
+        this.pauseButton = document.getElementById('pauseButton');
+        this.countdown = document.getElementById('countdownDisplay');
+        this.toast = document.getElementById('gameToast');
+        this.gameoverScore = document.getElementById('gameoverScore');
+        this.gameoverDepth = document.getElementById('gameoverDepth');
+        this.wonScore = document.getElementById('wonScore');
+        this.wonAir = document.getElementById('wonAir');
+        this.screens = {
+            menu: document.getElementById('screenMenu'),
+            paused: document.getElementById('screenPaused'),
+            gameover: document.getElementById('screenGameover'),
+            won: document.getElementById('screenWon'),
+        };
+
+        for (const button of this.root.querySelectorAll('[data-action]')) {
+            button.addEventListener('click', () => {
+                this.game.sound.unlock();
+                this.game.clearKeyboardInput();
+                const action = button.dataset.action;
+                if (action === 'start') this.game.startRun();
+                else if (action === 'resume') this.game.resumeGame();
+                else if (action === 'restart') this.game.restart();
+                else if (action === 'menu') this.game.showMainMenu();
+            });
+        }
+
+        this.pauseButton?.addEventListener('click', () => {
+            this.game.sound.unlock();
+            this.game.clearKeyboardInput();
+            this.game.pauseGame();
+        });
+
+        window.addEventListener('blur', () => {
+            this.game.clearKeyboardInput();
+            if (this.game.gameState === 'playing') {
+                this.game.pauseGame();
+            }
+        });
+
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                this.game.clearKeyboardInput();
+                if (this.game.gameState === 'playing') {
+                    this.game.pauseGame();
+                }
+            }
+        });
+    }
+
+    sync(game) {
+        if (!this.enabled) return;
+
+        const airPercent = Math.max(0, Math.min(1, game.oxygen / game.maxOxygen));
+        this.depth.textContent = Math.max(0, game.depth).toString();
+        this.score.textContent = game.score.toString();
+        this.air.textContent = `${Math.floor(game.oxygen)}%`;
+        this.airFill.style.transform = `scaleX(${airPercent})`;
+        this.airModule.classList.toggle('is-low', airPercent <= 0.25);
+
+        this.gameoverScore.textContent = game.score.toString();
+        this.gameoverDepth.textContent = `${game.depth} m`;
+        this.wonScore.textContent = game.score.toString();
+        this.wonAir.textContent = `${Math.floor(game.oxygen)}%`;
+
+        this.hud.hidden = game.gameState === 'menu';
+        this.pauseButton.hidden = game.gameState !== 'playing';
+        this.countdown.hidden = game.gameState !== 'countdown';
+        if (game.gameState === 'countdown') {
+            this.countdown.textContent = Math.max(1, game.countdownNumber).toString();
+        }
+
+        const activeScreen = this.screens[game.gameState] || null;
+        for (const screen of Object.values(this.screens)) {
+            if (!screen) continue;
+            const isActive = screen === activeScreen;
+            screen.hidden = !isActive;
+            screen.setAttribute('aria-hidden', isActive ? 'false' : 'true');
+        }
+
+        const toastMessage = game.gamepadMessage;
+        this.toast.hidden = !toastMessage;
+        if (toastMessage) this.toast.textContent = toastMessage;
+
+        if (this.lastState !== game.gameState) {
+            this.lastState = game.gameState;
+            const primaryButton = activeScreen?.querySelector('.menu-button--primary');
+            primaryButton?.focus({ preventScroll: true });
+        }
+    }
+}
+
 class Game {
     constructor() {
         this.canvas = document.getElementById('gameCanvas');
         this.ctx = this.canvas.getContext('2d');
+        this.frame = document.getElementById('gameFrame') || this.canvas.parentElement;
         
         this.gamepad = new GamepadHandler();
         this.sound = new ArcadeSound();
@@ -503,8 +613,9 @@ class Game {
         this.keys = {};
         this.keysJustPressed = {};
         this.lastTime = 0;
+        this.lastRenderedState = null;
         
-        this.gameState = 'countdown';
+        this.gameState = 'menu';
         this.countdownTimer = 0;
         this.countdownNumber = 3;
         this.hasPlayerDug = false; // Physics paused until first dig
@@ -513,12 +624,18 @@ class Game {
         this.gamepadMessage = null;
         this.gamepadMessageTime = 0;
         this.boundGameLoop = this.gameLoop.bind(this);
+        this.ui = new GameUI(this);
         
         this.resize();
         window.addEventListener('resize', () => this.resize());
         window.addEventListener('pointerdown', () => this.sound.unlock(), { passive: true });
         
         this.init();
+    }
+
+    clearKeyboardInput() {
+        this.keys = {};
+        this.keysJustPressed = {};
     }
     
     resize() {
@@ -542,9 +659,25 @@ class Game {
         this.canvas.width = CANVAS_WIDTH;
         this.canvas.height = CANVAS_HEIGHT;
         this.ctx.imageSmoothingEnabled = false;
+        this.lastRenderedState = null;
         this.lightingOverlay = null;
-        this.canvas.style.width = (CANVAS_WIDTH * SCALE) + 'px';
-        this.canvas.style.height = (CANVAS_HEIGHT * SCALE) + 'px';
+        this.postProcessOverlay = null;
+        this.playerLightSprite = null;
+        this.dynamicLightMap = null;
+        this.glowSprites = null;
+
+        const displayWidth = CANVAS_WIDTH * SCALE;
+        const displayHeight = CANVAS_HEIGHT * SCALE;
+        if (this.frame) {
+            this.frame.style.width = `${displayWidth}px`;
+            this.frame.style.height = `${displayHeight}px`;
+            this.frame.style.setProperty('--game-scale', SCALE.toString());
+            this.canvas.style.width = '100%';
+            this.canvas.style.height = '100%';
+        } else {
+            this.canvas.style.width = `${displayWidth}px`;
+            this.canvas.style.height = `${displayHeight}px`;
+        }
     }
     
     init() {
@@ -566,6 +699,9 @@ class Game {
         
         window.addEventListener('keydown', e => {
             this.sound.unlock();
+            const isUiControl = Boolean(e.target?.closest?.('button'));
+            if (isUiControl) return;
+
             if (!this.keys[e.key]) {
                 this.keysJustPressed[e.key] = true;
             }
@@ -581,6 +717,7 @@ class Game {
         });
         
         window.addEventListener('keyup', e => {
+            if (e.target?.closest?.('button')) return;
             this.keys[e.key] = false;
         });
         
@@ -825,6 +962,7 @@ class Game {
             down: this.keys['ArrowDown'] || this.keys['s'] || gp?.down,
             dig: this.keys[' '] || gp?.dig,
             digJustPressed: this.keysJustPressed[' '] || gp?.digJustPressed,
+            pauseJustPressed: gp?.pauseJustPressed,
             // Direction just pressed (for facing changes)
             leftJustPressed: this.keysJustPressed['ArrowLeft'] || this.keysJustPressed['a'] || gp?.leftJustPressed,
             rightJustPressed: this.keysJustPressed['ArrowRight'] || this.keysJustPressed['d'] || gp?.rightJustPressed,
@@ -834,6 +972,30 @@ class Game {
     }
     
     update(deltaTime) {
+        const input = this.getInput();
+        const pausePressed =
+            this.keysJustPressed['Escape'] ||
+            this.keysJustPressed['p'] ||
+            this.keysJustPressed['P'] ||
+            input.pauseJustPressed;
+
+        if (this.gameState === 'menu') {
+            this.updateEffects(deltaTime * 0.35);
+            if (input.digJustPressed || this.keysJustPressed['Enter']) {
+                this.startRun();
+            }
+            this.keysJustPressed = {};
+            return;
+        }
+
+        if (this.gameState === 'paused') {
+            if (pausePressed || input.digJustPressed || this.keysJustPressed['Enter']) {
+                this.resumeGame();
+            }
+            this.keysJustPressed = {};
+            return;
+        }
+
         this.updateEffects(deltaTime);
 
         if (this.gameState === 'countdown') {
@@ -845,19 +1007,25 @@ class Game {
                     this.gameState = 'playing';
                 }
             }
+            this.keysJustPressed = {};
             return;
         }
         
         if (this.gameState === 'gameover' || this.gameState === 'won') {
-            const input = this.getInput();
-            if (this.keysJustPressed[' '] || this.keysJustPressed['Enter'] || input.digJustPressed) {
+            if (this.keysJustPressed['Enter'] || input.digJustPressed) {
                 this.restart();
             }
             this.keysJustPressed = {};
             return;
         }
+
+        if (pausePressed) {
+            this.pauseGame();
+            this.keysJustPressed = {};
+            return;
+        }
         
-        this.updatePlayer(deltaTime);
+        this.updatePlayer(deltaTime, input);
         if (this.gameState === 'playing') {
             this.checkWinCondition();
         }
@@ -894,8 +1062,7 @@ class Game {
         }
     }
 
-    updatePlayer(deltaTime) {
-        const input = this.getInput();
+    updatePlayer(deltaTime, input = this.getInput()) {
         const p = this.player;
 
         p.moveTimer += deltaTime;
@@ -1006,12 +1173,22 @@ class Game {
                 const sideX = currentGridX + airDirection;
                 const bodyTopRow = Math.floor((p.visualY + 8) / GRID_SIZE);
                 const bodyBottomRow = Math.floor((p.visualY + PLAYER_SIZE - 8) / GRID_SIZE);
-                let canSteerSideways = sideX >= 0 && sideX < GRID_WIDTH;
+                const maxPlayerX = (GRID_WIDTH - 1) * GRID_SIZE;
+                const aligningToOuterEdge =
+                    (airDirection < 0 && currentGridX === 0 && p.visualX > 0) ||
+                    (airDirection > 0 &&
+                        currentGridX === GRID_WIDTH - 1 &&
+                        p.visualX < maxPlayerX);
+                let canSteerSideways =
+                    aligningToOuterEdge ||
+                    (sideX >= 0 && sideX < GRID_WIDTH);
 
-                for (let row = bodyTopRow; row <= bodyBottomRow && canSteerSideways; row++) {
-                    const sideCell = this.grid[row]?.[sideX];
-                    canSteerSideways = sideCell === BLOCK_TYPES.EMPTY ||
-                        sideCell === BLOCK_TYPES.ITEM;
+                if (!aligningToOuterEdge) {
+                    for (let row = bodyTopRow; row <= bodyBottomRow && canSteerSideways; row++) {
+                        const sideCell = this.grid[row]?.[sideX];
+                        canSteerSideways = sideCell === BLOCK_TYPES.EMPTY ||
+                            sideCell === BLOCK_TYPES.ITEM;
+                    }
                 }
 
                 if (canSteerSideways) {
@@ -1110,8 +1287,15 @@ class Game {
         const blockDown = this.grid[currentGridY + 1]?.[currentGridX];
         const blockUp = this.grid[currentGridY - 1]?.[currentGridX];
 
-        const canMoveLeft = currentGridX > 0 && (blockLeft === BLOCK_TYPES.EMPTY || blockLeft === BLOCK_TYPES.ITEM);
-        const canMoveRight = currentGridX < GRID_WIDTH - 1 && (blockRight === BLOCK_TYPES.EMPTY || blockRight === BLOCK_TYPES.ITEM);
+        const maxPlayerX = (GRID_WIDTH - 1) * GRID_SIZE;
+        const canMoveLeft =
+            (currentGridX === 0 && p.visualX > 0) ||
+            (currentGridX > 0 &&
+                (blockLeft === BLOCK_TYPES.EMPTY || blockLeft === BLOCK_TYPES.ITEM));
+        const canMoveRight =
+            (currentGridX === GRID_WIDTH - 1 && p.visualX < maxPlayerX) ||
+            (currentGridX < GRID_WIDTH - 1 &&
+                (blockRight === BLOCK_TYPES.EMPTY || blockRight === BLOCK_TYPES.ITEM));
         const canMoveDown = (blockDown === BLOCK_TYPES.EMPTY || blockDown === BLOCK_TYPES.ITEM);
 
         const hasBlockLeft = currentGridX > 0 && blockLeft !== BLOCK_TYPES.EMPTY && blockLeft !== BLOCK_TYPES.ITEM && blockLeft !== undefined;
@@ -2065,12 +2249,42 @@ class Game {
     }
     
     updateCamera(deltaTime) {
-        const targetCameraY = this.player.visualY - CANVAS_HEIGHT / 2 + GRID_SIZE;
+        const fallLookahead = this.player.isFalling ?
+            Math.min(GRID_SIZE, this.player.fallVelocity * 0.055) :
+            0;
+        const targetCameraY =
+            this.player.visualY -
+            CANVAS_HEIGHT / 2 +
+            GRID_SIZE +
+            fallLookahead;
         const followTime = this.player.isFalling ? 0.085 : 0.12;
         const follow = 1 - Math.exp(-deltaTime / followTime);
         this.cameraY += (targetCameraY - this.cameraY) * follow;
         this.cameraY = Math.max(0, Math.min(this.cameraY, GRID_HEIGHT * GRID_SIZE - CANVAS_HEIGHT));
         this.depth = Math.max(0, Math.floor((this.player.visualY / GRID_SIZE) - 2));
+    }
+
+    startRun() {
+        this.restart();
+    }
+
+    pauseGame() {
+        if (this.gameState === 'playing') {
+            this.clearKeyboardInput();
+            this.gameState = 'paused';
+        }
+    }
+
+    resumeGame() {
+        if (this.gameState === 'paused') {
+            this.clearKeyboardInput();
+            this.gameState = 'playing';
+        }
+    }
+
+    showMainMenu() {
+        this.restart();
+        this.gameState = 'menu';
     }
     
     restart() {
@@ -2135,6 +2349,7 @@ class Game {
         this.countdownNumber = 3;
         this.hasPlayerDug = false;
         this.pendingMatchCheck = false;
+        this.clearKeyboardInput();
         
         for (let y = 0; y < GRID_HEIGHT; y++) {
             this.grid[y] = [];
@@ -2155,11 +2370,14 @@ class Game {
     
     render() {
         this.renderCaveBackground();
+        this.renderAmbientDust();
         
         const shakeX = this.pixelSnap(Math.sin(this.screenShakePhase) * this.screenShake);
         const shakeY = this.pixelSnap(
             Math.cos(this.screenShakePhase * 1.37) * this.screenShake * 0.65
         );
+        this.renderShakeX = shakeX;
+        this.renderShakeY = shakeY;
         this.ctx.save();
         this.ctx.translate(shakeX, shakeY);
 
@@ -2171,6 +2389,8 @@ class Game {
                 this.renderItemPocket(item, screenY);
             }
         }
+
+        this.renderWorldShadows();
 
         // Render colored blocks
         for (const block of this.colorBlocks) {
@@ -2229,6 +2449,7 @@ class Game {
             this.renderSafe(this.safe.x, safeScreenY);
         }
         
+        this.renderFallSpeedLines();
         this.renderDebris();
 
         // Render player
@@ -2242,23 +2463,12 @@ class Game {
         
         this.ctx.restore();
         this.renderLighting();
-
-        // Render HUD
-        this.renderHUD();
-        
-        // Render overlays
-        if (this.gameState === 'countdown') {
-            const text = this.countdownNumber > 0 ? this.countdownNumber.toString() : 'DIG!';
-            this.renderOverlay(text, '#ffd700');
-        } else if (this.gameState === 'gameover') {
-            this.renderGameOver();
-        } else if (this.gameState === 'won') {
-            this.renderWin();
-        }
+        this.renderPostProcess();
+        this.ui.sync(this);
     }
 
     pixelSnap(value) {
-        return Math.round(value / 2) * 2;
+        return Math.round(value);
     }
 
     hashCell(x, y, seed = 0) {
@@ -2279,31 +2489,55 @@ class Game {
         const snappedCameraY = this.pixelSnap(this.cameraY);
         const firstWorldRow = Math.floor(snappedCameraY / GRID_SIZE) - 1;
         const rowOffset = -(snappedCameraY % GRID_SIZE) - GRID_SIZE;
-        const strata = ['#171426', '#131426', '#101322', '#0c111e', '#090d18'];
+        const biomes = {
+            earth: {
+                base: ['#211725', '#1d1724'],
+                seam: '#332238',
+                fleck: '#3b293d',
+                shadow: '#120f18',
+                accent: '#6a3c45',
+            },
+            slate: {
+                base: ['#101723', '#0e1521'],
+                seam: '#19263a',
+                fleck: '#203149',
+                shadow: '#080d16',
+                accent: '#2c6675',
+            },
+            vault: {
+                base: ['#10151c', '#0d1219'],
+                seam: '#242b34',
+                fleck: '#303844',
+                shadow: '#070b10',
+                accent: '#765738',
+            },
+        };
 
-        ctx.fillStyle = '#080b15';
+        ctx.fillStyle = '#080b13';
         ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
         for (let visibleRow = 0; visibleRow < VIEWPORT_HEIGHT + 3; visibleRow++) {
             const worldRow = firstWorldRow + visibleRow;
             const screenY = rowOffset + visibleRow * GRID_SIZE;
-            const depthIndex = Math.max(
-                0,
-                Math.min(strata.length - 1, Math.floor(Math.max(0, worldRow) / 10))
-            );
+            const depth = Math.max(0, worldRow);
+            const biome = depth < 15 ?
+                biomes.earth :
+                depth < 35 ? biomes.slate : biomes.vault;
 
-            ctx.fillStyle = strata[depthIndex];
+            ctx.fillStyle = biome.base[Math.abs(worldRow) % biome.base.length];
             ctx.fillRect(0, screenY, CANVAS_WIDTH, GRID_SIZE);
 
-            if (worldRow >= 0 && worldRow % 4 === 0) {
-                ctx.fillStyle = depthIndex < 2 ? '#211a31' : '#17182a';
+            if (worldRow >= 0 && worldRow % (depth >= 35 ? 3 : 4) === 0) {
+                ctx.fillStyle = biome.seam;
                 for (let segment = 0; segment < GRID_WIDTH; segment++) {
-                    const notch = this.hashCell(segment, worldRow, 9) > 0.5 ? 4 : 0;
+                    const notch = depth >= 35 ?
+                        0 :
+                        (this.hashCell(segment, worldRow, 9) > 0.5 ? 4 : 0);
                     ctx.fillRect(
                         segment * GRID_SIZE,
                         this.pixelSnap(screenY + 8 + notch),
                         GRID_SIZE,
-                        2
+                        depth >= 35 ? 3 : 2
                     );
                 }
             }
@@ -2316,19 +2550,162 @@ class Game {
                     Math.floor(this.hashCell(x, worldRow, 7) * 18) * 2;
 
                 if (fleck > 0.38) {
-                    ctx.fillStyle = depthIndex < 2 ? '#292039' : '#1a2033';
+                    ctx.fillStyle = biome.fleck;
                     ctx.fillRect(this.pixelSnap(fleckX), this.pixelSnap(fleckY), 6, 4);
-                    ctx.fillStyle = depthIndex < 2 ? '#0e0d18' : '#080b14';
+                    ctx.fillStyle = biome.shadow;
                     ctx.fillRect(this.pixelSnap(fleckX + 4), this.pixelSnap(fleckY + 4), 4, 2);
                 }
 
                 if (fleck > 0.91) {
-                    ctx.fillStyle = depthIndex > 2 ? '#29435a' : '#4b344d';
+                    ctx.fillStyle = biome.accent;
                     ctx.fillRect(this.pixelSnap(fleckX + 18), this.pixelSnap(fleckY - 6), 4, 2);
                     ctx.fillRect(this.pixelSnap(fleckX + 20), this.pixelSnap(fleckY - 4), 2, 4);
                 }
+
+                if (depth < 15 && fleck > 0.78) {
+                    ctx.fillStyle = '#49303b';
+                    ctx.fillRect(this.pixelSnap(fleckX + 10), screenY, 3, 14);
+                    ctx.fillRect(this.pixelSnap(fleckX + 7), screenY + 11, 6, 3);
+                    ctx.fillStyle = '#251a25';
+                    ctx.fillRect(this.pixelSnap(fleckX + 8), screenY + 14, 3, 9);
+                } else if (depth >= 15 && depth < 35 && fleck > 0.84) {
+                    ctx.fillStyle = '#285569';
+                    for (let step = 0; step < 4; step++) {
+                        ctx.fillRect(
+                            this.pixelSnap(fleckX + step * 5),
+                            this.pixelSnap(fleckY - step * 3),
+                            6,
+                            2
+                        );
+                    }
+                    ctx.fillStyle = '#4f91a0';
+                    ctx.fillRect(this.pixelSnap(fleckX + 8), this.pixelSnap(fleckY - 5), 4, 2);
+                } else if (depth >= 35 && fleck > 0.8) {
+                    ctx.fillStyle = '#4b5158';
+                    ctx.fillRect(this.pixelSnap(fleckX + 12), this.pixelSnap(fleckY - 8), 4, 4);
+                    ctx.fillStyle = '#181d24';
+                    ctx.fillRect(this.pixelSnap(fleckX + 13), this.pixelSnap(fleckY - 7), 2, 2);
+                }
             }
         }
+
+        const centerDepth = Math.max(
+            0,
+            Math.floor((this.cameraY + CANVAS_HEIGHT / 2) / GRID_SIZE)
+        );
+        const parallaxColor = centerDepth < 15 ?
+            'rgba(105, 58, 69, 0.12)' :
+            centerDepth < 35 ?
+                'rgba(54, 112, 132, 0.10)' :
+                'rgba(145, 105, 65, 0.08)';
+        const parallaxSpan = CANVAS_HEIGHT + 180;
+        ctx.fillStyle = parallaxColor;
+
+        for (let index = 0; index < 7; index++) {
+            const x = Math.floor(this.hashCell(index, 4, 22) * CANVAS_WIDTH);
+            const baseY = this.hashCell(index, 9, 31) * parallaxSpan;
+            const y = (
+                (baseY - this.cameraY * (0.12 + index * 0.012)) %
+                parallaxSpan +
+                parallaxSpan
+            ) % parallaxSpan - 80;
+            const height = 44 + Math.floor(this.hashCell(index, 11, 18) * 72);
+            ctx.fillRect(this.pixelSnap(x), this.pixelSnap(y), index % 2 ? 2 : 3, height);
+            ctx.fillRect(this.pixelSnap(x - 4), this.pixelSnap(y + height - 8), 8, 2);
+        }
+    }
+
+    renderAmbientDust() {
+        const ctx = this.ctx;
+        const depth = Math.max(0, Math.floor(this.cameraY / GRID_SIZE));
+        ctx.save();
+
+        for (let index = 0; index < 24; index++) {
+            const speed = 3 + this.hashCell(index, 3, 44) * 7;
+            const drift = this.visualTime * speed;
+            const x = (
+                this.hashCell(index, 7, 12) * CANVAS_WIDTH +
+                Math.sin(this.visualTime * 0.35 + index) * 12 +
+                CANVAS_WIDTH
+            ) % CANVAS_WIDTH;
+            const y = (
+                this.hashCell(index, 13, 6) * (CANVAS_HEIGHT + 40) +
+                drift -
+                this.cameraY * 0.035 +
+                CANVAS_HEIGHT +
+                40
+            ) % (CANVAS_HEIGHT + 40) - 20;
+            const alpha = 0.045 + this.hashCell(index, 5, 28) * 0.08;
+            ctx.fillStyle = depth > 28 ?
+                `rgba(162, 181, 198, ${alpha})` :
+                `rgba(210, 189, 178, ${alpha})`;
+            const size = index % 5 === 0 ? 2 : 1;
+            ctx.fillRect(this.pixelSnap(x), this.pixelSnap(y), size, size);
+        }
+
+        ctx.restore();
+    }
+
+    renderWorldShadows() {
+        const ctx = this.ctx;
+        ctx.save();
+        ctx.fillStyle = 'rgba(2, 3, 9, 0.42)';
+
+        for (const block of this.colorBlocks) {
+            if (block.destroyed) continue;
+            const fallOffset = block.isFalling ? block.fallProgress * GRID_SIZE : 0;
+            const screenY = block.y * GRID_SIZE - this.cameraY + fallOffset;
+            if (screenY < -GRID_SIZE || screenY > CANVAS_HEIGHT + GRID_SIZE) continue;
+            const screenX = block.x * GRID_SIZE + block.getShakeOffset();
+            ctx.fillRect(
+                this.pixelSnap(screenX + 7),
+                this.pixelSnap(screenY + 9),
+                GRID_SIZE - 4,
+                GRID_SIZE - 3
+            );
+        }
+
+        for (const block of this.xBlocks) {
+            if (block.destroyed) continue;
+            const fallOffset = block.isFalling ? block.fallProgress * GRID_SIZE : 0;
+            const screenY = block.y * GRID_SIZE - this.cameraY + fallOffset;
+            if (screenY < -GRID_SIZE || screenY > CANVAS_HEIGHT + GRID_SIZE) continue;
+            ctx.fillRect(
+                this.pixelSnap(block.x * GRID_SIZE + block.getShakeOffset() + 7),
+                this.pixelSnap(screenY + 9),
+                GRID_SIZE - 4,
+                GRID_SIZE - 3
+            );
+        }
+
+        ctx.restore();
+    }
+
+    renderFallSpeedLines() {
+        if (!this.player.isFalling || this.player.fallDistance < 1.15) return;
+
+        const ctx = this.ctx;
+        const intensity = Math.min(1, (this.player.fallDistance - 1.15) / 3);
+        ctx.save();
+        ctx.fillStyle = `rgba(186, 221, 239, ${0.08 + intensity * 0.13})`;
+
+        for (let index = 0; index < 11; index++) {
+            const x = Math.floor(this.hashCell(index, 17, 66) * CANVAS_WIDTH);
+            const offset = (
+                this.visualTime * (170 + index * 13) +
+                this.hashCell(index, 8, 91) * CANVAS_HEIGHT
+            ) % CANVAS_HEIGHT;
+            const length = 8 +
+                Math.floor(this.hashCell(index, 6, 43) * 22 * intensity);
+            ctx.fillRect(
+                this.pixelSnap(x),
+                this.pixelSnap(offset),
+                index % 4 === 0 ? 2 : 1,
+                length
+            );
+        }
+
+        ctx.restore();
     }
 
     renderItemPocket(item, screenCenterY) {
@@ -2337,29 +2714,38 @@ class Game {
         const y = this.pixelSnap(screenCenterY - GRID_SIZE / 2);
         const isOxygen = item.type === 'oxygen';
         const accent = isOxygen ? '#4de8ff' : '#f4bd21';
-        const accentDark = isOxygen ? '#15536b' : '#69420e';
+        const accentDark = isOxygen ? '#123b4a' : '#56380d';
 
-        ctx.fillStyle = '#050711';
-        ctx.fillRect(x + 3, y + 3, GRID_SIZE - 6, GRID_SIZE - 6);
-        ctx.fillStyle = '#342742';
-        ctx.fillRect(x + 6, y + 6, GRID_SIZE - 12, 4);
-        ctx.fillRect(x + 6, y + 6, 4, GRID_SIZE - 12);
-        ctx.fillStyle = '#0a0b17';
-        ctx.fillRect(x + 10, y + 10, GRID_SIZE - 20, GRID_SIZE - 20);
-        ctx.fillStyle = '#171426';
-        ctx.fillRect(x + 12, y + 12, GRID_SIZE - 24, 4);
-        ctx.fillRect(x + 12, y + 12, 4, GRID_SIZE - 24);
-        ctx.fillStyle = '#03050c';
-        ctx.fillRect(x + 14, y + GRID_SIZE - 16, GRID_SIZE - 28, 3);
+        // A carved alcove rather than a UI-card: deep cavity, chipped stone rim,
+        // and a small practical light beneath the pickup.
+        ctx.fillStyle = '#03050b';
+        this.fillSteppedRect(x + 2, y + 3, GRID_SIZE - 4, GRID_SIZE - 5, 7, '#03050b');
+        ctx.fillStyle = '#0a0d17';
+        this.fillSteppedRect(x + 6, y + 7, GRID_SIZE - 12, GRID_SIZE - 12, 6, '#0a0d17');
+        ctx.fillStyle = '#171b27';
+        ctx.fillRect(x + 11, y + 11, GRID_SIZE - 22, 4);
+        ctx.fillRect(x + 11, y + 15, 4, GRID_SIZE - 29);
+        ctx.fillStyle = '#070910';
+        ctx.fillRect(x + 16, y + 16, GRID_SIZE - 32, GRID_SIZE - 29);
+
+        ctx.fillStyle = '#363946';
+        ctx.fillRect(x + 5, y + 8, 11, 8);
+        ctx.fillRect(x + GRID_SIZE - 17, y + 7, 12, 10);
+        ctx.fillRect(x + 6, y + GRID_SIZE - 18, 9, 12);
+        ctx.fillRect(x + GRID_SIZE - 17, y + GRID_SIZE - 17, 11, 11);
+        ctx.fillStyle = '#5b5e68';
+        ctx.fillRect(x + 7, y + 8, 8, 3);
+        ctx.fillRect(x + GRID_SIZE - 15, y + 8, 8, 3);
+        ctx.fillStyle = '#171923';
+        ctx.fillRect(x + 8, y + GRID_SIZE - 9, GRID_SIZE - 16, 5);
+        ctx.fillRect(x + GRID_SIZE - 13, y + 17, 6, GRID_SIZE - 31);
 
         ctx.fillStyle = accentDark;
-        ctx.fillRect(x + 8, y + 8, 10, 2);
-        ctx.fillRect(x + 8, y + 8, 2, 10);
-        ctx.fillRect(x + GRID_SIZE - 18, y + GRID_SIZE - 10, 10, 2);
-        ctx.fillRect(x + GRID_SIZE - 10, y + GRID_SIZE - 18, 2, 10);
+        ctx.fillRect(x + 17, y + GRID_SIZE - 17, GRID_SIZE - 34, 8);
         ctx.fillStyle = accent;
-        ctx.fillRect(x + 10, y + 10, 4, 2);
-        ctx.fillRect(x + GRID_SIZE - 14, y + GRID_SIZE - 12, 4, 2);
+        ctx.globalAlpha = 0.42 + Math.sin(this.visualTime * 4.2 + item.gridY) * 0.08;
+        ctx.fillRect(x + 21, y + GRID_SIZE - 16, GRID_SIZE - 42, 3);
+        ctx.globalAlpha = 1;
     }
 
     renderOxygenTube(x, y) {
@@ -2399,8 +2785,11 @@ class Game {
         const width = this.safe.width;
         const height = this.safe.height;
 
-        ctx.fillStyle = '#04050b';
-        ctx.fillRect(screenX + 6, screenY + 8, width, height);
+        ctx.fillStyle = '#020308';
+        ctx.fillRect(screenX + 10, screenY + 12, width, height);
+        ctx.fillStyle = '#0c0d14';
+        ctx.fillRect(screenX + width - 2, screenY + 18, 12, height - 12);
+        ctx.fillRect(screenX + 18, screenY + height - 2, width - 8, 14);
         this.fillSteppedRect(screenX, screenY, width, height, 6, '#171522');
         this.fillSteppedRect(screenX + 4, screenY + 4, width - 8, height - 8, 4, '#4b4855');
         ctx.fillStyle = '#242530';
@@ -2439,9 +2828,137 @@ class Game {
             ctx.fillStyle = '#d0c998';
             ctx.fillRect(screenX + rivetX + 1, screenY + rivetY + 1, 4, 4);
         }
+
+        ctx.fillStyle = '#090b10';
+        ctx.fillRect(screenX + width - 22, screenY + 47, 8, 34);
+        const safePulse = 0.55 + Math.sin(this.visualTime * 3.4) * 0.2;
+        ctx.fillStyle = `rgba(92, 241, 165, ${safePulse})`;
+        ctx.fillRect(screenX + width - 20, screenY + 51, 4, 4);
+        ctx.fillStyle = '#ae354d';
+        ctx.fillRect(screenX + width - 20, screenY + 61, 4, 4);
+        ctx.fillStyle = '#d39b32';
+        ctx.fillRect(screenX + width - 20, screenY + 71, 4, 4);
+    }
+
+    getGlowSprite(color) {
+        if (!this.glowSprites) {
+            this.glowSprites = new Map();
+        }
+        if (this.glowSprites.has(color)) {
+            return this.glowSprites.get(color);
+        }
+
+        const sprite = document.createElement('canvas');
+        sprite.width = 128;
+        sprite.height = 128;
+        const glowCtx = sprite.getContext('2d');
+        const gradient = glowCtx.createRadialGradient(64, 64, 0, 64, 64, 64);
+        gradient.addColorStop(0, color);
+        gradient.addColorStop(0.18, color);
+        gradient.addColorStop(0.58, `${color}42`);
+        gradient.addColorStop(1, `${color}00`);
+        glowCtx.fillStyle = gradient;
+        glowCtx.fillRect(0, 0, 128, 128);
+        this.glowSprites.set(color, sprite);
+        return sprite;
     }
 
     renderLighting() {
+        if (!this.dynamicLightMap) {
+            this.dynamicLightMap = document.createElement('canvas');
+            this.dynamicLightMap.width = Math.ceil(CANVAS_WIDTH / 2);
+            this.dynamicLightMap.height = Math.ceil(CANVAS_HEIGHT / 2);
+        }
+
+        const lightMap = this.dynamicLightMap;
+        const lightCtx = lightMap.getContext('2d');
+        lightCtx.clearRect(0, 0, lightMap.width, lightMap.height);
+        lightCtx.fillStyle = 'rgba(2, 5, 13, 0.29)';
+        lightCtx.fillRect(0, 0, lightMap.width, lightMap.height);
+        lightCtx.globalCompositeOperation = 'destination-out';
+
+        const carveLight = (x, y, radius, strength = 1) => {
+            const centerX = x / 2;
+            const centerY = y / 2;
+            const scaledRadius = radius / 2;
+            const gradient = lightCtx.createRadialGradient(
+                centerX,
+                centerY,
+                0,
+                centerX,
+                centerY,
+                scaledRadius
+            );
+            gradient.addColorStop(0, `rgba(0, 0, 0, ${strength})`);
+            gradient.addColorStop(0.38, `rgba(0, 0, 0, ${strength * 0.82})`);
+            gradient.addColorStop(0.72, `rgba(0, 0, 0, ${strength * 0.34})`);
+            gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+            lightCtx.fillStyle = gradient;
+            lightCtx.fillRect(
+                centerX - scaledRadius,
+                centerY - scaledRadius,
+                scaledRadius * 2,
+                scaledRadius * 2
+            );
+        };
+
+        const shakeX = this.renderShakeX || 0;
+        const shakeY = this.renderShakeY || 0;
+        const playerLightX = this.player.visualX + GRID_SIZE / 2 + shakeX;
+        const playerLightY =
+            this.player.visualY - this.cameraY + GRID_SIZE / 2 + shakeY;
+        carveLight(playerLightX, playerLightY, 174, 1);
+
+        const visibleItems = [...this.oxygenTubes, ...this.treasures].filter(item => {
+            const screenY = item.y - this.cameraY;
+            return !item.collected &&
+                screenY > -GRID_SIZE &&
+                screenY < CANVAS_HEIGHT + GRID_SIZE;
+        });
+        for (const item of visibleItems) {
+            carveLight(item.x + shakeX, item.y - this.cameraY + shakeY, 74, 0.72);
+        }
+
+        const safeScreenY = this.safe.y - this.cameraY;
+        if (safeScreenY > -this.safe.height && safeScreenY < CANVAS_HEIGHT) {
+            carveLight(
+                this.safe.x + this.safe.width / 2 + shakeX,
+                safeScreenY + this.safe.height / 2 + shakeY,
+                118,
+                0.74
+            );
+        }
+
+        lightCtx.globalCompositeOperation = 'source-over';
+        this.ctx.save();
+        this.ctx.imageSmoothingEnabled = true;
+        this.ctx.drawImage(lightMap, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+        this.ctx.globalCompositeOperation = 'screen';
+        const playerGlow = this.getGlowSprite('#ffb35b');
+        this.ctx.globalAlpha = 0.11;
+        this.ctx.drawImage(
+            playerGlow,
+            playerLightX - 82,
+            playerLightY - 82,
+            164,
+            164
+        );
+
+        for (const item of visibleItems) {
+            const color = item.type === 'oxygen' ? '#39e5ff' : '#ffc444';
+            const glow = this.getGlowSprite(color);
+            this.ctx.globalAlpha = item.type === 'oxygen' ? 0.19 : 0.16;
+            this.ctx.drawImage(
+                glow,
+                item.x + shakeX - 47,
+                item.y - this.cameraY + shakeY - 47,
+                94,
+                94
+            );
+        }
+        this.ctx.restore();
+
         if (!this.lightingOverlay) {
             const overlay = document.createElement('canvas');
             overlay.width = CANVAS_WIDTH;
@@ -2466,6 +2983,34 @@ class Game {
         }
 
         this.ctx.drawImage(this.lightingOverlay, 0, 0);
+    }
+
+    renderPostProcess() {
+        if (!this.postProcessOverlay) {
+            const overlay = document.createElement('canvas');
+            overlay.width = CANVAS_WIDTH;
+            overlay.height = CANVAS_HEIGHT;
+            const overlayCtx = overlay.getContext('2d');
+            overlayCtx.imageSmoothingEnabled = false;
+
+            overlayCtx.fillStyle = 'rgba(3, 5, 12, 0.022)';
+            for (let y = 2; y < CANVAS_HEIGHT; y += 4) {
+                overlayCtx.fillRect(0, y, CANVAS_WIDTH, 1);
+            }
+
+            for (let index = 0; index < 340; index++) {
+                const x = Math.floor(this.hashCell(index, 11, 73) * CANVAS_WIDTH);
+                const y = Math.floor(this.hashCell(index, 19, 37) * CANVAS_HEIGHT);
+                const cool = index % 3 === 0;
+                overlayCtx.fillStyle = cool ?
+                    'rgba(115, 188, 225, 0.018)' :
+                    'rgba(255, 219, 173, 0.014)';
+                overlayCtx.fillRect(x, y, index % 9 === 0 ? 2 : 1, 1);
+            }
+            this.postProcessOverlay = overlay;
+        }
+
+        this.ctx.drawImage(this.postProcessOverlay, 0, 0);
     }
     
     renderDebris() {
@@ -2497,8 +3042,8 @@ class Game {
         }
 
         const tile = document.createElement('canvas');
-        tile.width = 32;
-        tile.height = 32;
+        tile.width = GRID_SIZE;
+        tile.height = GRID_SIZE;
         const tileCtx = tile.getContext('2d');
         tileCtx.imageSmoothingEnabled = false;
 
@@ -2529,43 +3074,57 @@ class Game {
             }
         };
 
-        const outerLeft = hasLeft ? 0 : 1;
-        const outerTop = hasTop ? 0 : 1;
-        const outerRight = hasRight ? 32 : 31;
-        const outerBottom = hasBottom ? 32 : 31;
-        drawShape(outerLeft, outerTop, outerRight, outerBottom, 3, color.deep);
+        const outerLeft = hasLeft ? 0 : 2;
+        const outerTop = hasTop ? 0 : 2;
+        const outerRight = hasRight ? GRID_SIZE : GRID_SIZE - 2;
+        const outerBottom = hasBottom ? GRID_SIZE : GRID_SIZE - 2;
+        drawShape(outerLeft, outerTop, outerRight, outerBottom, 6, color.deep);
 
-        const innerLeft = hasLeft ? 0 : outerLeft + 2;
-        const innerTop = hasTop ? 0 : outerTop + 2;
-        const innerRight = hasRight ? 32 : outerRight - 2;
-        const innerBottom = hasBottom ? 32 : outerBottom - 2;
-        drawShape(innerLeft, innerTop, innerRight, innerBottom, 2, color.color);
+        const innerLeft = hasLeft ? 0 : outerLeft + 4;
+        const innerTop = hasTop ? 0 : outerTop + 4;
+        const innerRight = hasRight ? GRID_SIZE : outerRight - 4;
+        const innerBottom = hasBottom ? GRID_SIZE : outerBottom - 4;
+        const bodyGradient = tileCtx.createLinearGradient(0, 0, GRID_SIZE, GRID_SIZE);
+        bodyGradient.addColorStop(0, color.light);
+        bodyGradient.addColorStop(0.27, color.color);
+        bodyGradient.addColorStop(0.72, color.color);
+        bodyGradient.addColorStop(1, color.shadow);
+        drawShape(innerLeft, innerTop, innerRight, innerBottom, 4, bodyGradient);
 
         tileCtx.fillStyle = color.light;
-        if (!hasTop) tileCtx.fillRect(7, 4, 18, 2);
-        if (!hasLeft) tileCtx.fillRect(4, 8, 2, 16);
+        if (!hasTop) tileCtx.fillRect(14, 8, 36, 4);
+        if (!hasLeft) tileCtx.fillRect(8, 16, 4, 32);
         tileCtx.fillStyle = color.highlight;
         if (!hasTop && !hasLeft) {
-            tileCtx.fillRect(7, 6, 6, 3);
-            tileCtx.fillRect(8, 5, 4, 1);
+            tileCtx.fillRect(14, 12, 12, 6);
+            tileCtx.fillRect(16, 10, 8, 2);
         }
 
         tileCtx.fillStyle = color.shadow;
-        if (!hasBottom) tileCtx.fillRect(7, 27, 18, 2);
-        if (!hasRight) tileCtx.fillRect(27, 8, 2, 17);
+        if (!hasBottom) tileCtx.fillRect(14, 54, 36, 4);
+        if (!hasRight) tileCtx.fillRect(54, 16, 4, 34);
         tileCtx.fillStyle = color.deep;
-        if (!hasBottom) tileCtx.fillRect(10, 29, 13, 1);
-        if (!hasRight) tileCtx.fillRect(29, 11, 1, 12);
+        if (!hasBottom) tileCtx.fillRect(20, 58, 26, 2);
+        if (!hasRight) tileCtx.fillRect(58, 22, 2, 24);
+
+        tileCtx.fillStyle = 'rgba(255, 255, 255, 0.08)';
+        tileCtx.fillRect(18, 22, 30, 2);
+        tileCtx.fillStyle = 'rgba(0, 0, 0, 0.075)';
+        tileCtx.fillRect(18, 46, 30, 2);
 
         const chipSets = [
-            [[19, 10, 3, 2], [21, 12, 2, 1]],
-            [[11, 20, 4, 2], [10, 22, 2, 1]],
-            [[22, 18, 2, 4], [20, 20, 2, 2]],
+            [[38, 20, 6, 4], [42, 24, 4, 2], [19, 39, 2, 2]],
+            [[22, 40, 8, 4], [20, 44, 4, 2], [43, 29, 3, 2]],
+            [[44, 36, 4, 8], [40, 40, 4, 4], [23, 25, 3, 2]],
         ];
         tileCtx.fillStyle = color.shadow;
         for (const [chipX, chipY, chipWidth, chipHeight] of chipSets[variant]) {
             tileCtx.fillRect(chipX, chipY, chipWidth, chipHeight);
         }
+
+        tileCtx.fillStyle = color.highlight;
+        const glintX = 17 + variant * 9;
+        tileCtx.fillRect(glintX, 17 + variant * 3, 3, 2);
 
         this.blockTileCache.set(cacheKey, tile);
         return tile;
@@ -2609,25 +3168,27 @@ class Game {
         const screenY = this.pixelSnap(y);
         const isFlashing = xBlock && xBlock.hitFlash > 0;
 
-        ctx.fillStyle = '#080913';
-        ctx.fillRect(screenX + 2, screenY + 4, 60, 60);
+        const pulse = 0.64 + Math.sin(this.visualTime * 4.6 + screenX * 0.02) * 0.16;
+
+        ctx.fillStyle = '#05060c';
+        ctx.fillRect(screenX + 4, screenY + 7, 60, 58);
         this.fillSteppedRect(
             screenX + 2,
             screenY + 2,
             60,
             60,
             5,
-            isFlashing ? '#fff6e6' : '#292936'
+            isFlashing ? '#4a3d42' : '#292c36'
         );
-        ctx.fillStyle = isFlashing ? '#ffd2c5' : '#4c4d5b';
+        ctx.fillStyle = isFlashing ? '#807077' : '#555966';
         ctx.fillRect(screenX + 8, screenY + 8, 48, 4);
         ctx.fillRect(screenX + 8, screenY + 8, 4, 48);
-        ctx.fillStyle = isFlashing ? '#ff6f74' : '#171823';
+        ctx.fillStyle = '#151720';
         ctx.fillRect(screenX + 52, screenY + 12, 4, 42);
         ctx.fillRect(screenX + 12, screenY + 52, 42, 4);
 
-        const xColor = isFlashing ? '#ffffff' : '#d34e69';
-        const xShadow = isFlashing ? '#ff9b91' : '#6e243e';
+        const xColor = isFlashing ? '#fff8eb' : `rgba(237, 73, 104, ${pulse})`;
+        const xShadow = isFlashing ? '#ff716f' : 'rgba(101, 27, 55, 0.94)';
         for (let step = 0; step < 6; step++) {
             const offset = 13 + step * 6;
             ctx.fillStyle = xShadow;
@@ -3129,7 +3690,16 @@ class Game {
         this.lastTime = currentTime;
         
         this.update(deltaTime);
-        this.render();
+
+        const canReusePausedFrame =
+            this.gameState === 'paused' &&
+            this.lastRenderedState === 'paused';
+        if (canReusePausedFrame) {
+            this.ui.sync(this);
+        } else {
+            this.render();
+        }
+        this.lastRenderedState = this.gameState;
         
         requestAnimationFrame(this.boundGameLoop);
     }

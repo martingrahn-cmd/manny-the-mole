@@ -1,36 +1,574 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="sv">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Manny the Mole - Heist Edition</title>
+    <meta name="theme-color" content="#070812">
+    <title>Manny the Mole — Vault Run</title>
     <style>
+        :root {
+            color-scheme: dark;
+            font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        }
+
         * {
+            box-sizing: border-box;
             margin: 0;
             padding: 0;
-            box-sizing: border-box;
         }
-        
-        html, body {
+
+        [hidden] {
+            display: none !important;
+        }
+
+        html,
+        body {
             width: 100%;
             height: 100%;
             overflow: hidden;
-            background: #0a0a0a;
+            background:
+                radial-gradient(circle at 50% 18%, rgba(50, 46, 91, 0.34), transparent 34%),
+                radial-gradient(circle at 18% 82%, rgba(16, 116, 136, 0.13), transparent 32%),
+                linear-gradient(145deg, #05060b 0%, #090a12 48%, #030407 100%);
         }
-        
-        #gameCanvas {
-            display: block;
+
+        body::before {
+            position: fixed;
+            inset: 0;
+            content: "";
+            pointer-events: none;
+            opacity: 0.23;
+            background-image:
+                linear-gradient(rgba(255, 255, 255, 0.018) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255, 255, 255, 0.014) 1px, transparent 1px);
+            background-size: 24px 24px;
+            mask-image: radial-gradient(circle, black, transparent 76%);
+        }
+
+        button {
+            border: 0;
+            color: inherit;
+            font: inherit;
+        }
+
+        #gameFrame {
+            --game-scale: 1;
             position: absolute;
             top: 50%;
             left: 50%;
+            overflow: hidden;
+            isolation: isolate;
             transform: translate(-50%, -50%);
+            border: max(1px, calc(1px * var(--game-scale))) solid rgba(183, 210, 255, 0.12);
+            border-radius: max(12px, calc(15px * var(--game-scale)));
+            background: #090b17;
+            box-shadow:
+                0 calc(20px * var(--game-scale)) calc(70px * var(--game-scale)) rgba(0, 0, 0, 0.72),
+                0 0 calc(40px * var(--game-scale)) rgba(67, 173, 220, 0.08),
+                inset 0 1px rgba(255, 255, 255, 0.08);
+        }
+
+        #gameFrame::after {
+            position: absolute;
+            inset: 0;
+            z-index: 4;
+            content: "";
+            pointer-events: none;
+            border-radius: inherit;
+            box-shadow:
+                inset 0 0 0 max(1px, calc(1px * var(--game-scale))) rgba(255, 255, 255, 0.045),
+                inset 0 calc(-20px * var(--game-scale)) calc(44px * var(--game-scale)) rgba(0, 0, 0, 0.16);
+        }
+
+        #gameCanvas {
+            position: absolute;
+            inset: 0;
+            display: block;
+            width: 100%;
+            height: 100%;
             image-rendering: pixelated;
             image-rendering: crisp-edges;
+        }
+
+        #gameUi {
+            position: absolute;
+            z-index: 5;
+            inset: 0;
+            container-type: inline-size;
+            pointer-events: none;
+            color: #f7f8fc;
+            font-variant-numeric: tabular-nums;
+            text-rendering: optimizeLegibility;
+        }
+
+        .modern-hud {
+            position: absolute;
+            top: 0;
+            right: 0;
+            left: 0;
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto minmax(0, 1.18fr) auto;
+            gap: calc(6px * var(--game-scale));
+            align-items: stretch;
+            padding: calc(8px * var(--game-scale));
+            padding-bottom: calc(15px * var(--game-scale));
+            background: linear-gradient(
+                180deg,
+                rgba(4, 6, 15, 0.92) 0%,
+                rgba(5, 7, 17, 0.72) 62%,
+                transparent 100%
+            );
+        }
+
+        .hud-card {
+            min-width: 0;
+            padding: calc(7px * var(--game-scale)) calc(9px * var(--game-scale));
+            border: max(1px, calc(1px * var(--game-scale))) solid rgba(255, 255, 255, 0.09);
+            border-radius: calc(9px * var(--game-scale));
+            background: linear-gradient(145deg, rgba(31, 34, 52, 0.84), rgba(11, 13, 26, 0.72));
+            box-shadow:
+                inset 0 1px rgba(255, 255, 255, 0.08),
+                0 calc(4px * var(--game-scale)) calc(16px * var(--game-scale)) rgba(0, 0, 0, 0.2);
+            backdrop-filter: blur(calc(10px * var(--game-scale))) saturate(1.25);
+        }
+
+        .hud-card--score {
+            min-width: calc(98px * var(--game-scale));
+            text-align: center;
+        }
+
+        .hud-card--air {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: calc(3px * var(--game-scale)) calc(8px * var(--game-scale));
+            align-content: center;
+        }
+
+        .hud-label {
+            overflow: hidden;
+            color: rgba(225, 230, 244, 0.58);
+            font-size: max(8px, calc(8px * var(--game-scale)));
+            font-weight: 700;
+            letter-spacing: 0.15em;
+            line-height: 1;
+            text-overflow: ellipsis;
+            text-transform: uppercase;
+            white-space: nowrap;
+        }
+
+        .hud-value {
+            display: block;
+            margin-top: calc(3px * var(--game-scale));
+            color: #f8fbff;
+            font-size: max(15px, calc(19px * var(--game-scale)));
+            font-weight: 760;
+            letter-spacing: -0.035em;
+            line-height: 1;
+            text-shadow: 0 0 calc(12px * var(--game-scale)) rgba(99, 232, 255, 0.2);
+        }
+
+        .hud-value small {
+            margin-left: 0.14em;
+            color: rgba(229, 234, 245, 0.55);
+            font-size: 0.52em;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .hud-card--score .hud-value {
+            color: #ffd76a;
+            text-shadow: 0 0 calc(14px * var(--game-scale)) rgba(255, 190, 45, 0.21);
+        }
+
+        .air-number {
+            margin: 0;
+            color: #6cf0ff;
+            font-size: max(13px, calc(17px * var(--game-scale)));
+            text-align: right;
+        }
+
+        .air-track {
+            position: relative;
+            grid-column: 1 / -1;
+            height: max(4px, calc(5px * var(--game-scale)));
+            overflow: hidden;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.09);
+            box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.45);
+        }
+
+        .air-fill {
+            position: absolute;
+            inset: 0;
+            transform: scaleX(1);
+            transform-origin: left;
+            border-radius: inherit;
+            background: linear-gradient(90deg, #38c7ff, #73f5ef);
+            box-shadow: 0 0 calc(10px * var(--game-scale)) rgba(81, 230, 255, 0.46);
+            transition: transform 160ms linear, background 220ms ease;
+        }
+
+        .hud-card--air.is-low {
+            border-color: rgba(255, 103, 119, 0.4);
+            animation: low-air 900ms ease-in-out infinite alternate;
+        }
+
+        .hud-card--air.is-low .air-number {
+            color: #ff7d8d;
+        }
+
+        .hud-card--air.is-low .air-fill {
+            background: linear-gradient(90deg, #ff4f68, #ff9575);
+            box-shadow: 0 0 calc(12px * var(--game-scale)) rgba(255, 75, 101, 0.55);
+        }
+
+        .icon-button {
+            display: grid;
+            width: calc(35px * var(--game-scale));
+            min-width: 30px;
+            place-items: center;
+            border: max(1px, calc(1px * var(--game-scale))) solid rgba(255, 255, 255, 0.1);
+            border-radius: calc(9px * var(--game-scale));
+            background: rgba(18, 20, 33, 0.74);
+            box-shadow: inset 0 1px rgba(255, 255, 255, 0.07);
+            cursor: pointer;
+            pointer-events: auto;
+            backdrop-filter: blur(calc(10px * var(--game-scale)));
+            transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+        }
+
+        .icon-button:hover {
+            border-color: rgba(108, 240, 255, 0.38);
+            background: rgba(31, 39, 56, 0.92);
+            transform: translateY(-1px);
+        }
+
+        .pause-glyph {
+            display: flex;
+            gap: calc(3px * var(--game-scale));
+        }
+
+        .pause-glyph::before,
+        .pause-glyph::after {
+            width: calc(3px * var(--game-scale));
+            min-width: 2px;
+            height: calc(12px * var(--game-scale));
+            min-height: 10px;
+            content: "";
+            border-radius: 2px;
+            background: #eef4ff;
+        }
+
+        .countdown {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            min-width: calc(100px * var(--game-scale));
+            padding: calc(16px * var(--game-scale)) calc(20px * var(--game-scale));
+            transform: translate(-50%, -50%);
+            border: max(1px, calc(1px * var(--game-scale))) solid rgba(255, 255, 255, 0.13);
+            border-radius: calc(20px * var(--game-scale));
+            background: rgba(8, 10, 22, 0.72);
+            box-shadow: 0 calc(18px * var(--game-scale)) calc(50px * var(--game-scale)) rgba(0, 0, 0, 0.42);
+            color: #ffd867;
+            font-size: max(46px, calc(58px * var(--game-scale)));
+            font-weight: 800;
+            letter-spacing: -0.06em;
+            line-height: 1;
+            text-align: center;
+            text-shadow: 0 0 calc(24px * var(--game-scale)) rgba(255, 198, 62, 0.42);
+            backdrop-filter: blur(calc(14px * var(--game-scale)));
+        }
+
+        .screen {
+            position: absolute;
+            inset: 0;
+            display: grid;
+            place-items: center;
+            padding: calc(24px * var(--game-scale));
+            pointer-events: auto;
+            background:
+                radial-gradient(circle at 50% 24%, rgba(61, 79, 119, 0.2), transparent 38%),
+                linear-gradient(180deg, rgba(3, 4, 10, 0.54), rgba(3, 4, 10, 0.87));
+            backdrop-filter: blur(calc(5px * var(--game-scale))) saturate(0.82);
+        }
+
+        .screen-panel {
+            width: min(88cqw, calc(344px * var(--game-scale)));
+            padding: calc(25px * var(--game-scale));
+            border: max(1px, calc(1px * var(--game-scale))) solid rgba(255, 255, 255, 0.12);
+            border-radius: calc(22px * var(--game-scale));
+            background:
+                linear-gradient(145deg, rgba(31, 35, 53, 0.94), rgba(10, 12, 24, 0.93));
+            box-shadow:
+                0 calc(24px * var(--game-scale)) calc(70px * var(--game-scale)) rgba(0, 0, 0, 0.55),
+                inset 0 1px rgba(255, 255, 255, 0.09);
+            text-align: center;
+        }
+
+        .eyebrow {
+            color: #73e8f6;
+            font-size: max(8px, calc(9px * var(--game-scale)));
+            font-weight: 800;
+            letter-spacing: 0.22em;
+            text-transform: uppercase;
+        }
+
+        .screen h1,
+        .screen h2 {
+            margin-top: calc(8px * var(--game-scale));
+            color: #fbfcff;
+            font-size: max(27px, calc(35px * var(--game-scale)));
+            font-weight: 780;
+            letter-spacing: -0.055em;
+            line-height: 0.96;
+        }
+
+        .screen h1 span {
+            display: block;
+            color: #ffd363;
+        }
+
+        .screen-copy {
+            max-width: 28em;
+            margin: calc(13px * var(--game-scale)) auto 0;
+            color: rgba(226, 231, 242, 0.66);
+            font-size: max(11px, calc(12px * var(--game-scale)));
+            line-height: 1.5;
+        }
+
+        .menu-actions {
+            display: grid;
+            gap: calc(8px * var(--game-scale));
+            margin-top: calc(21px * var(--game-scale));
+        }
+
+        .menu-button {
+            width: 100%;
+            min-height: calc(42px * var(--game-scale));
+            padding: calc(10px * var(--game-scale)) calc(16px * var(--game-scale));
+            border: max(1px, calc(1px * var(--game-scale))) solid rgba(255, 255, 255, 0.11);
+            border-radius: calc(12px * var(--game-scale));
+            background: rgba(255, 255, 255, 0.055);
+            color: rgba(245, 248, 255, 0.88);
+            font-size: max(11px, calc(12px * var(--game-scale)));
+            font-weight: 720;
+            letter-spacing: 0.01em;
+            cursor: pointer;
+            transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
+        }
+
+        .menu-button:hover {
+            border-color: rgba(116, 232, 246, 0.32);
+            background: rgba(255, 255, 255, 0.09);
+            transform: translateY(-1px);
+        }
+
+        .menu-button--primary {
+            border-color: rgba(115, 232, 246, 0.32);
+            background: linear-gradient(135deg, #39bfd2, #347dd8);
+            color: #07101a;
+            box-shadow: 0 calc(9px * var(--game-scale)) calc(24px * var(--game-scale)) rgba(37, 147, 201, 0.26);
+        }
+
+        .menu-button--primary:hover {
+            border-color: rgba(207, 252, 255, 0.62);
+            background: linear-gradient(135deg, #67e5ed, #4b94ed);
+        }
+
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: calc(7px * var(--game-scale));
+            justify-content: center;
+            margin-top: calc(19px * var(--game-scale));
+            color: rgba(225, 231, 243, 0.52);
+            font-size: max(8px, calc(9px * var(--game-scale)));
+        }
+
+        .control {
+            display: inline-flex;
+            gap: calc(5px * var(--game-scale));
+            align-items: center;
+        }
+
+        kbd {
+            min-width: calc(22px * var(--game-scale));
+            padding: calc(3px * var(--game-scale)) calc(5px * var(--game-scale));
+            border: max(1px, calc(1px * var(--game-scale))) solid rgba(255, 255, 255, 0.13);
+            border-bottom-color: rgba(255, 255, 255, 0.24);
+            border-radius: calc(5px * var(--game-scale));
+            background: rgba(255, 255, 255, 0.07);
+            color: rgba(247, 249, 255, 0.86);
+            font: 700 max(8px, calc(9px * var(--game-scale))) / 1 ui-monospace, monospace;
+            text-align: center;
+        }
+
+        .result-stats {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: calc(8px * var(--game-scale));
+            margin-top: calc(20px * var(--game-scale));
+        }
+
+        .result-stat {
+            padding: calc(11px * var(--game-scale));
+            border: max(1px, calc(1px * var(--game-scale))) solid rgba(255, 255, 255, 0.08);
+            border-radius: calc(12px * var(--game-scale));
+            background: rgba(255, 255, 255, 0.04);
+        }
+
+        .result-stat span {
+            display: block;
+            color: rgba(224, 230, 242, 0.49);
+            font-size: max(8px, calc(8px * var(--game-scale)));
+            font-weight: 750;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+        }
+
+        .result-stat strong {
+            display: block;
+            margin-top: calc(4px * var(--game-scale));
+            color: #f7f9ff;
+            font-size: max(15px, calc(18px * var(--game-scale)));
+        }
+
+        .toast {
+            position: absolute;
+            bottom: calc(15px * var(--game-scale));
+            left: 50%;
+            max-width: 84%;
+            padding: calc(8px * var(--game-scale)) calc(12px * var(--game-scale));
+            overflow: hidden;
+            transform: translateX(-50%);
+            border: max(1px, calc(1px * var(--game-scale))) solid rgba(105, 240, 177, 0.22);
+            border-radius: 999px;
+            background: rgba(8, 18, 19, 0.86);
+            color: #9cf4c4;
+            font-size: max(9px, calc(10px * var(--game-scale)));
+            font-weight: 650;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            backdrop-filter: blur(calc(10px * var(--game-scale)));
+        }
+
+        button:focus-visible {
+            outline: max(2px, calc(2px * var(--game-scale))) solid #8ceffc;
+            outline-offset: calc(3px * var(--game-scale));
+        }
+
+        @keyframes low-air {
+            from { box-shadow: inset 0 1px rgba(255, 255, 255, 0.08); }
+            to { box-shadow: inset 0 1px rgba(255, 255, 255, 0.08), 0 0 calc(18px * var(--game-scale)) rgba(255, 71, 97, 0.18); }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            *,
+            *::before,
+            *::after {
+                scroll-behavior: auto !important;
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
         }
     </style>
 </head>
 <body>
-    <canvas id="gameCanvas"></canvas>
+    <main id="gameFrame" aria-label="Manny the Mole">
+        <canvas id="gameCanvas" aria-label="Spelplan"></canvas>
+
+        <div id="gameUi">
+            <header id="gameHud" class="modern-hud" hidden>
+                <div class="hud-card">
+                    <span class="hud-label">Djup</span>
+                    <strong class="hud-value"><span id="hudDepth">0</span><small>m</small></strong>
+                </div>
+
+                <div class="hud-card hud-card--score">
+                    <span class="hud-label">Byte</span>
+                    <strong id="hudScore" class="hud-value">0</strong>
+                </div>
+
+                <div id="hudAirModule" class="hud-card hud-card--air">
+                    <span class="hud-label">Luft</span>
+                    <strong id="hudAir" class="hud-value air-number">100%</strong>
+                    <div class="air-track" aria-hidden="true">
+                        <div id="hudAirFill" class="air-fill"></div>
+                    </div>
+                </div>
+
+                <button id="pauseButton" class="icon-button" type="button" aria-label="Pausa spelet">
+                    <span class="pause-glyph" aria-hidden="true"></span>
+                </button>
+            </header>
+
+            <div id="countdownDisplay" class="countdown" aria-live="assertive" hidden>3</div>
+            <div id="gameToast" class="toast" role="status" hidden></div>
+
+            <section id="screenMenu" class="screen" aria-label="Startmeny">
+                <div class="screen-panel">
+                    <p class="eyebrow">Vault Run</p>
+                    <h1>Manny <span>the Mole</span></h1>
+                    <p class="screen-copy">Gräv djupt, håll luften uppe och ta dig in i valvet innan gruvan tar dig.</p>
+                    <div class="menu-actions">
+                        <button class="menu-button menu-button--primary" type="button" data-action="start">Starta kuppen</button>
+                    </div>
+                    <div class="controls" aria-label="Kontroller">
+                        <span class="control"><kbd>WASD</kbd> Flytta</span>
+                        <span class="control"><kbd>Space</kbd> Borra</span>
+                        <span class="control"><kbd>P</kbd> Paus</span>
+                    </div>
+                </div>
+            </section>
+
+            <section id="screenPaused" class="screen" aria-label="Pausmeny" hidden>
+                <div class="screen-panel">
+                    <p class="eyebrow">Spelet är pausat</p>
+                    <h2>Ta ett andetag</h2>
+                    <p class="screen-copy">Gruvan väntar. Fortsätt när du är redo.</p>
+                    <div class="menu-actions">
+                        <button class="menu-button menu-button--primary" type="button" data-action="resume">Fortsätt</button>
+                        <button class="menu-button" type="button" data-action="restart">Börja om</button>
+                        <button class="menu-button" type="button" data-action="menu">Till huvudmenyn</button>
+                    </div>
+                </div>
+            </section>
+
+            <section id="screenGameover" class="screen" aria-label="Spelet är slut" hidden>
+                <div class="screen-panel">
+                    <p class="eyebrow">Kuppen misslyckades</p>
+                    <h2>Gruvan vann</h2>
+                    <div class="result-stats">
+                        <div class="result-stat"><span>Poäng</span><strong id="gameoverScore">0</strong></div>
+                        <div class="result-stat"><span>Djup</span><strong id="gameoverDepth">0 m</strong></div>
+                    </div>
+                    <div class="menu-actions">
+                        <button class="menu-button menu-button--primary" type="button" data-action="restart">Försök igen</button>
+                        <button class="menu-button" type="button" data-action="menu">Till huvudmenyn</button>
+                    </div>
+                </div>
+            </section>
+
+            <section id="screenWon" class="screen" aria-label="Kuppen lyckades" hidden>
+                <div class="screen-panel">
+                    <p class="eyebrow">Valvet är öppet</p>
+                    <h2>Kuppen lyckades</h2>
+                    <div class="result-stats">
+                        <div class="result-stat"><span>Byte</span><strong id="wonScore">0</strong></div>
+                        <div class="result-stat"><span>Luft kvar</span><strong id="wonAir">0%</strong></div>
+                    </div>
+                    <div class="menu-actions">
+                        <button class="menu-button menu-button--primary" type="button" data-action="restart">Spela igen</button>
+                        <button class="menu-button" type="button" data-action="menu">Till huvudmenyn</button>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </main>
+
     <script src="game.js"></script>
 </body>
 </html>
