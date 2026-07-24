@@ -4,19 +4,31 @@ const PLAYER_SIZE = 64;
 const GRID_WIDTH = 7; // Like Mr. Driller / Tetris
 const GRID_HEIGHT = 50;
 const VIEWPORT_HEIGHT = 11;
-const FALL_DELAY = 1.0; // Time before falling
-const FALL_SPEED = 0.08; // Speed of falling animation
-const SHAKE_DURATION = 0.4; // Shake warning before fall
+const FALL_DELAY = 0.52; // Total warning time before unsupported blocks drop
+const FALL_SPEED = 0.075; // Seconds per grid cell while blocks are falling
+const SHAKE_DURATION = 0.34; // Readable warning before the drop
 const MATCH_CLEAR_SIZE = 4;
-const MATCH_CLEAR_FLASH = 0.18;
+const MATCH_CLEAR_FLASH = 0.42;
+const DIG_CLEAR_FLASH = 0.09;
 const DIG_SCORE = 10;
 const MATCH_SCORE = 30;
-const MAX_GENERATED_CLUSTER_SIZE = 5;
+const MAX_GENERATED_CLUSTER_SIZE = 3;
+const ACTIVE_COLOR_COUNT = 4;
 const COLOR_NEIGHBOR_PREFERENCE = 0.45;
-const DIG_RECOVERY = 0.11;
-const DIG_LOCK_DURATION = 0.08;
-const DIG_ANIM_DURATION = 0.14;
+const WALK_SPEED = 350;
+const AIR_CONTROL_SPEED = 235;
+const FALL_START_SPEED = 390;
+const FALL_ACCELERATION = 2300;
+const FALL_MAX_SPEED = 1100;
+const FALL_CENTER_WINDOW = 0.12;
+const STEP_UP_DURATION = 0.15;
+const STEP_UP_ALIGN_WINDOW = 0.20;
+const DIG_BUFFER_DURATION = 0.055;
+const DIG_RECOVERY = 0.105;
+const DIG_LOCK_DURATION = 0.055;
+const DIG_ANIM_DURATION = 0.18;
 const DRILL_ANIM_SPEED = 24;
+const MAX_DEBRIS_PARTICLES = 44;
 
 let CANVAS_WIDTH = GRID_WIDTH * GRID_SIZE;
 let CANVAS_HEIGHT = VIEWPORT_HEIGHT * GRID_SIZE;
@@ -84,11 +96,11 @@ function loadAssets() {
 
 // Block colors - bright Mr. Driller style colors
 const BLOCK_COLORS = [
-    { name: 'blue', color: '#4488ff', highlight: '#88bbff', shadow: '#2266cc' },
-    { name: 'red', color: '#ff4444', highlight: '#ff8888', shadow: '#cc2222' },
-    { name: 'yellow', color: '#ffdd00', highlight: '#ffee66', shadow: '#ccaa00' },
-    { name: 'green', color: '#44cc44', highlight: '#88ee88', shadow: '#22aa22' },
-    { name: 'pink', color: '#ff66cc', highlight: '#ffaadd', shadow: '#cc4499' },
+    { name: 'blue', color: '#2786e8', highlight: '#7dd8ff', light: '#49aef4', shadow: '#1550a6', deep: '#0b2b63' },
+    { name: 'red', color: '#ed3e52', highlight: '#ff9a94', light: '#ff6570', shadow: '#a91d3a', deep: '#5f1028' },
+    { name: 'yellow', color: '#f4bd21', highlight: '#fff29a', light: '#ffd94f', shadow: '#ad6c12', deep: '#67400a' },
+    { name: 'green', color: '#38b95e', highlight: '#9af5a0', light: '#63dc78', shadow: '#17753d', deep: '#0b4329' },
+    { name: 'pink', color: '#e94fb7', highlight: '#ffb1e4', light: '#fa79ca', shadow: '#9a297a', deep: '#561648' },
 ];
 
 const BLOCK_TYPES = {
@@ -97,6 +109,42 @@ const BLOCK_TYPES = {
     XBLOCK: 10,
     BEDROCK: 11,
     ITEM: 12, // Treasures and oxygen - blocks can't fall through them
+};
+
+const PIXEL_FONT = {
+    '0': ['11111', '10001', '10011', '10101', '11001', '10001', '11111'],
+    '1': ['00100', '01100', '00100', '00100', '00100', '00100', '01110'],
+    '2': ['11110', '00001', '00001', '11110', '10000', '10000', '11111'],
+    '3': ['11110', '00001', '00001', '01110', '00001', '00001', '11110'],
+    '4': ['10010', '10010', '10010', '11111', '00010', '00010', '00010'],
+    '5': ['11111', '10000', '10000', '11110', '00001', '00001', '11110'],
+    '6': ['01111', '10000', '10000', '11110', '10001', '10001', '01110'],
+    '7': ['11111', '00001', '00010', '00100', '01000', '01000', '01000'],
+    '8': ['01110', '10001', '10001', '01110', '10001', '10001', '01110'],
+    '9': ['01110', '10001', '10001', '01111', '00001', '00001', '11110'],
+    'A': ['01110', '10001', '10001', '11111', '10001', '10001', '10001'],
+    'C': ['01111', '10000', '10000', '10000', '10000', '10000', '01111'],
+    'D': ['11110', '10001', '10001', '10001', '10001', '10001', '11110'],
+    'E': ['11111', '10000', '10000', '11110', '10000', '10000', '11111'],
+    'G': ['01111', '10000', '10000', '10111', '10001', '10001', '01111'],
+    'H': ['10001', '10001', '10001', '11111', '10001', '10001', '10001'],
+    'I': ['11111', '00100', '00100', '00100', '00100', '00100', '11111'],
+    'L': ['10000', '10000', '10000', '10000', '10000', '10000', '11111'],
+    'M': ['10001', '11011', '10101', '10101', '10001', '10001', '10001'],
+    'N': ['10001', '11001', '11001', '10101', '10011', '10011', '10001'],
+    'O': ['01110', '10001', '10001', '10001', '10001', '10001', '01110'],
+    'P': ['11110', '10001', '10001', '11110', '10000', '10000', '10000'],
+    'R': ['11110', '10001', '10001', '11110', '10100', '10010', '10001'],
+    'S': ['01111', '10000', '10000', '01110', '00001', '00001', '11110'],
+    'T': ['11111', '00100', '00100', '00100', '00100', '00100', '00100'],
+    'U': ['10001', '10001', '10001', '10001', '10001', '10001', '01110'],
+    'V': ['10001', '10001', '10001', '10001', '10001', '01010', '00100'],
+    'Y': ['10001', '10001', '01010', '00100', '00100', '00100', '00100'],
+    '%': ['11001', '11010', '00100', '01000', '10110', '00110', '00000'],
+    '$': ['00100', '01111', '10100', '01110', '00101', '11110', '00100'],
+    '!': ['00100', '00100', '00100', '00100', '00100', '00000', '00100'],
+    ':': ['00000', '00100', '00100', '00000', '00100', '00100', '00000'],
+    ' ': ['00000', '00000', '00000', '00000', '00000', '00000', '00000'],
 };
 
 function isColoredBlockValue(value) {
@@ -116,6 +164,7 @@ class ColoredBlock {
         this.shakeTimer = 0;
         this.isClearing = false;
         this.clearTimer = 0;
+        this.clearDuration = MATCH_CLEAR_FLASH;
         this.destroyed = false;
         this.matchEligible = false;
     }
@@ -138,7 +187,7 @@ class ColoredBlock {
     getShakeOffset() {
         if (!this.isShaking) return 0;
         // Shake intensity increases as timer progresses
-        const intensity = 2 + (this.shakeTimer / SHAKE_DURATION) * 3;
+        const intensity = 2 + Math.min(1, this.shakeTimer / SHAKE_DURATION) * 3;
         return Math.sin(this.shakeTimer * 40) * intensity;
     }
 }
@@ -148,7 +197,8 @@ class XBlock {
     constructor(x, y) {
         this.x = x;
         this.y = y;
-        this.hp = 3; // Takes 3 hits to destroy!
+        this.hp = 5;
+        this.maxHp = 5;
         this.fallTimer = 0;
         this.isFalling = false;
         this.fallProgress = 0;
@@ -171,7 +221,7 @@ class XBlock {
     
     getShakeOffset() {
         if (!this.isShaking) return 0;
-        const intensity = 2 + (this.shakeTimer / SHAKE_DURATION) * 3;
+        const intensity = 2 + Math.min(1, this.shakeTimer / SHAKE_DURATION) * 3;
         return Math.sin(this.shakeTimer * 40) * intensity;
     }
 }
@@ -271,12 +321,119 @@ class GamepadHandler {
     }
 }
 
+class ArcadeSound {
+    constructor() {
+        this.context = null;
+        this.noiseBuffer = null;
+        this.lastLandTime = -1;
+    }
+
+    unlock() {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextClass) return null;
+
+        if (!this.context) {
+            this.context = new AudioContextClass();
+            const sampleCount = Math.floor(this.context.sampleRate * 0.2);
+            this.noiseBuffer = this.context.createBuffer(1, sampleCount, this.context.sampleRate);
+            const samples = this.noiseBuffer.getChannelData(0);
+            for (let i = 0; i < sampleCount; i++) {
+                samples[i] = Math.random() * 2 - 1;
+            }
+        }
+
+        if (this.context.state === 'suspended') {
+            this.context.resume().catch(() => {});
+        }
+        return this.context;
+    }
+
+    playTone(startFrequency, endFrequency, duration, volume, type = 'square', delay = 0) {
+        const context = this.unlock();
+        if (!context) return;
+
+        const startTime = context.currentTime + delay;
+        const oscillator = context.createOscillator();
+        const gain = context.createGain();
+        oscillator.type = type;
+        oscillator.frequency.setValueAtTime(startFrequency, startTime);
+        oscillator.frequency.exponentialRampToValueAtTime(
+            Math.max(20, endFrequency),
+            startTime + duration
+        );
+        gain.gain.setValueAtTime(0.0001, startTime);
+        gain.gain.exponentialRampToValueAtTime(volume, startTime + 0.008);
+        gain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
+        oscillator.connect(gain);
+        gain.connect(context.destination);
+        oscillator.start(startTime);
+        oscillator.stop(startTime + duration + 0.01);
+    }
+
+    playNoise(duration, volume, frequency) {
+        const context = this.unlock();
+        if (!context || !this.noiseBuffer) return;
+
+        const now = context.currentTime;
+        const source = context.createBufferSource();
+        const filter = context.createBiquadFilter();
+        const gain = context.createGain();
+        source.buffer = this.noiseBuffer;
+        filter.type = 'bandpass';
+        filter.frequency.setValueAtTime(frequency, now);
+        filter.Q.setValueAtTime(0.8, now);
+        gain.gain.setValueAtTime(volume, now);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+        source.connect(filter);
+        filter.connect(gain);
+        gain.connect(context.destination);
+        source.start(now, Math.random() * 0.08, duration);
+    }
+
+    playDrill(strength, isHardBlock = false) {
+        const weight = Math.min(4, Math.max(1, strength));
+        if (isHardBlock) {
+            this.playTone(165, 58, 0.085, 0.07, 'square');
+            this.playNoise(0.075, 0.07, 420);
+        } else {
+            this.playTone(125 + weight * 7, 48, 0.075, 0.045 + weight * 0.008, 'sawtooth');
+            this.playNoise(0.065, 0.035 + weight * 0.008, 720);
+        }
+    }
+
+    playLand(strength = 1) {
+        const context = this.unlock();
+        if (!context || context.currentTime - this.lastLandTime < 0.045) return;
+        this.lastLandTime = context.currentTime;
+        const weight = Math.min(4, Math.max(1, strength));
+        this.playTone(82, 32, 0.07, 0.025 + weight * 0.012, 'triangle');
+        this.playNoise(0.045, 0.015 + weight * 0.007, 190);
+    }
+
+    playClear(size) {
+        const lift = Math.min(5, Math.max(0, size - MATCH_CLEAR_SIZE));
+        this.playTone(330 + lift * 25, 510 + lift * 35, 0.11, 0.045, 'square');
+        this.playTone(495 + lift * 25, 720 + lift * 35, 0.1, 0.03, 'square', 0.045);
+    }
+
+    playPickup(isOxygen = false) {
+        if (isOxygen) {
+            this.playTone(390, 690, 0.11, 0.035, 'square');
+            this.playTone(585, 880, 0.09, 0.024, 'square', 0.045);
+        } else {
+            this.playTone(620, 980, 0.09, 0.035, 'square');
+            this.playTone(820, 1240, 0.08, 0.022, 'square', 0.04);
+        }
+    }
+}
+
 class Game {
     constructor() {
         this.canvas = document.getElementById('gameCanvas');
         this.ctx = this.canvas.getContext('2d');
         
         this.gamepad = new GamepadHandler();
+        this.sound = new ArcadeSound();
         
         this.grid = [];
         this.colorBlocks = [];
@@ -303,19 +460,28 @@ class Game {
             fallVelocity: 0,
             fallStartY: 0,
             fallDistance: 0,
+            landingTimer: 0,
             
             // Movement
             moveTimer: 0,
             moveCooldown: 0.12, // Slower, more deliberate movement
             isMoving: false,
             moveAnimFrame: 0,
+            isSteppingUp: false,
+            stepUpProgress: 0,
+            stepUpStartX: 0,
+            stepUpStartY: 0,
+            stepUpTargetX: 0,
+            stepUpTargetY: 0,
             
             // Drilling
             digCooldown: 0,
+            digBufferTimer: 0,
             isDrilling: false,
             drillAnimFrame: 0,
             drillAnimTimer: 0,
             drillLockTimer: 0,
+            drillSnapTargetX: null,
             showDrill: false, // True when facing a block
         };
         
@@ -327,7 +493,12 @@ class Game {
         
         this.oxygenTubes = [];
         this.treasures = []; // Coins, bags, chests
+        this.itemsByCell = new Map();
         this.safe = null;
+        this.debrisParticles = [];
+        this.screenShake = 0;
+        this.screenShakePhase = 0;
+        this.visualTime = 0;
         
         this.keys = {};
         this.keysJustPressed = {};
@@ -341,9 +512,11 @@ class Game {
         
         this.gamepadMessage = null;
         this.gamepadMessageTime = 0;
+        this.boundGameLoop = this.gameLoop.bind(this);
         
         this.resize();
         window.addEventListener('resize', () => this.resize());
+        window.addEventListener('pointerdown', () => this.sound.unlock(), { passive: true });
         
         this.init();
     }
@@ -368,6 +541,8 @@ class Game {
         
         this.canvas.width = CANVAS_WIDTH;
         this.canvas.height = CANVAS_HEIGHT;
+        this.ctx.imageSmoothingEnabled = false;
+        this.lightingOverlay = null;
         this.canvas.style.width = (CANVAS_WIDTH * SCALE) + 'px';
         this.canvas.style.height = (CANVAS_HEIGHT * SCALE) + 'px';
     }
@@ -390,6 +565,7 @@ class Game {
         };
         
         window.addEventListener('keydown', e => {
+            this.sound.unlock();
             if (!this.keys[e.key]) {
                 this.keysJustPressed[e.key] = true;
             }
@@ -408,14 +584,13 @@ class Game {
             this.keys[e.key] = false;
         });
         
-        requestAnimationFrame(this.gameLoop.bind(this));
+        requestAnimationFrame(this.boundGameLoop);
     }
     
     generateLevel() {
         const safeStartY = GRID_HEIGHT - 4;
         const safeStartX = Math.floor((GRID_WIDTH - 2) / 2);
         const midX = Math.floor(GRID_WIDTH / 2);
-        const airPockets = [];
 
         const shuffle = array => {
             const copy = [...array];
@@ -456,7 +631,9 @@ class Game {
         };
 
         const pickColorIndex = (x, y) => {
-            const allColors = BLOCK_COLORS.map((_, index) => index);
+            const allColors = BLOCK_COLORS
+                .slice(0, ACTIVE_COLOR_COUNT)
+                .map((_, index) => index);
             const validColors = shuffle(allColors).filter(colorIndex =>
                 getPotentialClusterSize(x, y, colorIndex) <= MAX_GENERATED_CLUSTER_SIZE
             );
@@ -493,10 +670,9 @@ class Game {
                 
                 // Air pocket chance
                 const distFromMid = Math.abs(x - midX);
-                const airChance = distFromMid <= 1 ? 0.05 : 0.10;
+                const airChance = distFromMid <= 1 ? 0.01 : 0.02;
                 
                 if (Math.random() < airChance) {
-                    airPockets.push({ x, y });
                     this.grid[y][x] = BLOCK_TYPES.EMPTY;
                     continue;
                 }
@@ -518,64 +694,124 @@ class Game {
             }
         }
 
-        // Place items ONLY in air pockets
-        const shuffledPockets = [...airPockets].sort(() => Math.random() - 0.5);
-        
-        // Oxygen tubes
-        const oxygenCount = Math.min(8, Math.floor(shuffledPockets.length * 0.25));
-        for (let i = 0; i < oxygenCount && i < shuffledPockets.length; i++) {
-            const pocket = shuffledPockets[i];
-            this.oxygenTubes.push({
-                x: pocket.x * GRID_SIZE + GRID_SIZE / 2,
-                y: pocket.y * GRID_SIZE + GRID_SIZE / 2,
-                gridX: pocket.x,
-                gridY: pocket.y,
-                collected: false,
-                fallTimer: 0
-            });
-            // Mark in grid so blocks don't fall through
-            this.grid[pocket.y][pocket.x] = BLOCK_TYPES.ITEM;
-        }
-        
-        // Treasures
-        const treasurePockets = shuffledPockets.slice(oxygenCount);
-        
-        // Helper to add treasure
-        const addTreasure = (pocket, type, value) => {
-            this.treasures.push({
-                x: pocket.x * GRID_SIZE + GRID_SIZE / 2,
-                y: pocket.y * GRID_SIZE + GRID_SIZE / 2,
-                gridX: pocket.x,
-                gridY: pocket.y,
-                type,
-                value,
-                collected: false,
-                fallTimer: 0
-            });
-            // Mark in grid so blocks don't fall through
-            this.grid[pocket.y][pocket.x] = BLOCK_TYPES.ITEM;
-        };
-        
-        // Coins
-        const coinCount = Math.min(12, Math.floor(treasurePockets.length * 0.4));
-        for (let i = 0; i < coinCount && i < treasurePockets.length; i++) {
-            addTreasure(treasurePockets[i], 'coin', 50);
-        }
-        
-        // Money bags
-        const bagStart = coinCount;
-        const bagCount = Math.min(4, Math.floor((treasurePockets.length - bagStart) * 0.3));
-        for (let i = 0; i < bagCount && (bagStart + i) < treasurePockets.length; i++) {
-            addTreasure(treasurePockets[bagStart + i], 'bag', 200);
-        }
-        
-        // Chests (deep only)
-        const deepPockets = treasurePockets.filter(p => p.y > GRID_HEIGHT / 2);
-        for (let i = 0; i < 2 && i < deepPockets.length; i++) {
-            addTreasure(deepPockets[i], 'chest', 500);
+        // First let the terrain find a stable resting state. Item pockets are
+        // carved afterwards, so nothing can settle into the same cell as loot.
+        this.settleInitialBoard();
+        this.createItemPockets(shuffle, safeStartY, safeStartX);
+    }
+
+    createItemPockets(shuffle, safeStartY, safeStartX) {
+        const isSafeCell = (x, y) =>
+            y >= safeStartY && y < safeStartY + 2 &&
+            x >= safeStartX && x < safeStartX + 2;
+        const isSolidTerrain = value =>
+            isColoredBlockValue(value) ||
+            value === BLOCK_TYPES.XBLOCK ||
+            value === BLOCK_TYPES.BEDROCK;
+        const neighbors = [
+            [-1, -1], [0, -1], [1, -1],
+            [-1, 0],           [1, 0],
+            [-1, 1],  [0, 1], [1, 1],
+        ];
+        const candidates = [];
+
+        for (let y = 6; y <= safeStartY - 2; y++) {
+            for (let x = 1; x < GRID_WIDTH - 1; x++) {
+                if (isSafeCell(x, y) || !isColoredBlockValue(this.grid[y]?.[x])) {
+                    continue;
+                }
+
+                const hasCompleteRing = neighbors.every(([offsetX, offsetY]) => {
+                    const ringX = x + offsetX;
+                    const ringY = y + offsetY;
+                    return !isSafeCell(ringX, ringY) &&
+                        isSolidTerrain(this.grid[ringY]?.[ringX]);
+                });
+
+                if (hasCompleteRing) {
+                    candidates.push({ x, y });
+                }
+            }
         }
 
-        this.settleInitialBoard();
+        const available = shuffle(candidates);
+        const selected = [];
+        const pocketSpecs = [
+            { kind: 'treasure', type: 'chest', value: 500, targetY: 42, minY: 28 },
+            { kind: 'treasure', type: 'chest', value: 500, targetY: 34, minY: 28 },
+            { kind: 'oxygen', targetY: 8 },
+            { kind: 'treasure', type: 'coin', value: 50, targetY: 10 },
+            { kind: 'oxygen', targetY: 14 },
+            { kind: 'treasure', type: 'coin', value: 50, targetY: 16 },
+            { kind: 'treasure', type: 'bag', value: 200, targetY: 19 },
+            { kind: 'oxygen', targetY: 20 },
+            { kind: 'treasure', type: 'coin', value: 50, targetY: 23 },
+            { kind: 'oxygen', targetY: 26 },
+            { kind: 'treasure', type: 'coin', value: 50, targetY: 28 },
+            { kind: 'treasure', type: 'bag', value: 200, targetY: 30 },
+            { kind: 'oxygen', targetY: 32 },
+            { kind: 'treasure', type: 'coin', value: 50, targetY: 34 },
+            { kind: 'treasure', type: 'bag', value: 200, targetY: 37 },
+            { kind: 'oxygen', targetY: 38 },
+            { kind: 'treasure', type: 'coin', value: 50, targetY: 40 },
+            { kind: 'oxygen', targetY: 43 },
+            { kind: 'treasure', type: 'coin', value: 50, targetY: 44 },
+        ];
+
+        const takePocket = spec => {
+            const eligible = available
+                .filter(pocket => pocket.y >= (spec.minY || 6))
+                .filter(pocket => selected.every(chosen =>
+                    Math.max(
+                        Math.abs(chosen.x - pocket.x),
+                        Math.abs(chosen.y - pocket.y)
+                    ) > 1
+                ))
+                .sort((a, b) =>
+                    Math.abs(a.y - spec.targetY) - Math.abs(b.y - spec.targetY)
+                );
+
+            const pocket = eligible[0];
+            if (!pocket) return null;
+
+            available.splice(available.indexOf(pocket), 1);
+            selected.push(pocket);
+            return pocket;
+        };
+
+        for (const spec of pocketSpecs) {
+            const pocket = takePocket(spec);
+            if (!pocket) continue;
+
+            const centerBlock = this.colorBlocks.find(block =>
+                !block.destroyed && block.x === pocket.x && block.y === pocket.y
+            );
+            if (!centerBlock) continue;
+
+            centerBlock.destroyed = true;
+            this.grid[pocket.y][pocket.x] = BLOCK_TYPES.ITEM;
+
+            const item = {
+                x: pocket.x * GRID_SIZE + GRID_SIZE / 2,
+                y: pocket.y * GRID_SIZE + GRID_SIZE / 2,
+                gridX: pocket.x,
+                gridY: pocket.y,
+                type: spec.type || 'oxygen',
+                value: spec.value || 0,
+                collected: false,
+                anchored: true,
+            };
+            const key = `${pocket.x},${pocket.y}`;
+            this.itemsByCell.set(key, item);
+
+            if (spec.kind === 'oxygen') {
+                this.oxygenTubes.push(item);
+            } else {
+                this.treasures.push(item);
+            }
+        }
+
+        this.colorBlocks = this.colorBlocks.filter(block => !block.destroyed);
     }
     
     getInput() {
@@ -598,6 +834,8 @@ class Game {
     }
     
     update(deltaTime) {
+        this.updateEffects(deltaTime);
+
         if (this.gameState === 'countdown') {
             this.countdownTimer += deltaTime;
             if (this.countdownTimer >= 0.8) {
@@ -620,19 +858,114 @@ class Game {
         }
         
         this.updatePlayer(deltaTime);
-        this.updatePhysics(deltaTime);
-        this.updateOxygen(deltaTime);
-        this.updateCamera();
+        if (this.gameState === 'playing') {
+            this.checkWinCondition();
+        }
+        if (this.gameState === 'playing') {
+            this.updatePhysics(deltaTime);
+            this.updateOxygen(deltaTime);
+        }
+        this.updateCamera(deltaTime);
         
         this.keysJustPressed = {};
     }
     
+    updateEffects(deltaTime) {
+        this.visualTime += deltaTime;
+        this.screenShakePhase += deltaTime * 52;
+        this.screenShake = Math.max(0, this.screenShake - deltaTime * 34);
+
+        for (const xBlock of this.xBlocks) {
+            xBlock.hitFlash = Math.max(0, xBlock.hitFlash - deltaTime);
+        }
+
+        for (const particle of this.debrisParticles) {
+            particle.life -= deltaTime;
+            particle.x += particle.vx * deltaTime;
+            particle.y += particle.vy * deltaTime;
+            particle.vy += 760 * deltaTime;
+            particle.vx *= Math.pow(0.08, deltaTime);
+        }
+
+        this.debrisParticles = this.debrisParticles.filter(particle => particle.life > 0);
+
+        if (this.gamepadMessage && Date.now() - this.gamepadMessageTime > 3000) {
+            this.gamepadMessage = null;
+        }
+    }
+
     updatePlayer(deltaTime) {
         const input = this.getInput();
         const p = this.player;
 
-        const WALK_SPEED = 380; // Pixels per second
-        const FALL_THRESHOLD = 0.4; // How centered you need to be to fall (0.5 = perfectly centered)
+        p.moveTimer += deltaTime;
+        p.digCooldown = Math.max(0, p.digCooldown - deltaTime);
+        p.digBufferTimer = Math.max(0, p.digBufferTimer - deltaTime);
+        p.drillLockTimer = Math.max(0, p.drillLockTimer - deltaTime);
+        p.landingTimer = Math.max(0, p.landingTimer - deltaTime);
+
+        if (input.digJustPressed) {
+            p.digBufferTimer = DIG_BUFFER_DURATION;
+        }
+
+        const directionChanged = input.leftJustPressed || input.rightJustPressed ||
+            input.upJustPressed || input.downJustPressed;
+        if (directionChanged && p.isDrilling && p.drillLockTimer <= 0) {
+            p.isDrilling = false;
+            p.drillAnimFrame = 0;
+            p.drillAnimTimer = 0;
+        }
+
+        if (input.leftJustPressed) p.facing = 'left';
+        else if (input.rightJustPressed) p.facing = 'right';
+        else if (input.upJustPressed) p.facing = 'up';
+        else if (input.downJustPressed) p.facing = 'down';
+        else if (input.left && !input.right) p.facing = 'left';
+        else if (input.right && !input.left) p.facing = 'right';
+        else if (input.up && !input.down) p.facing = 'up';
+        else if (input.down && !input.up) p.facing = 'down';
+
+        if (p.isDrilling) {
+            p.drillAnimTimer -= deltaTime;
+            p.drillAnimFrame = (p.drillAnimFrame + deltaTime * DRILL_ANIM_SPEED) % 3;
+            if (p.drillAnimTimer <= 0) {
+                p.isDrilling = false;
+                p.drillAnimFrame = 0;
+                p.drillAnimTimer = 0;
+            }
+        }
+
+        if (p.drillLockTimer > 0 && p.drillSnapTargetX !== null) {
+            const snapAmount = Math.min(1, deltaTime * 28);
+            p.visualX += (p.drillSnapTargetX - p.visualX) * snapAmount;
+        } else if (p.drillSnapTargetX !== null) {
+            if (Math.abs(p.drillSnapTargetX - p.visualX) < 2) {
+                p.visualX = p.drillSnapTargetX;
+            }
+            p.drillSnapTargetX = null;
+        }
+
+        if (p.isSteppingUp) {
+            p.stepUpProgress = Math.min(1, p.stepUpProgress + deltaTime / STEP_UP_DURATION);
+            const t = p.stepUpProgress;
+            const eased = 1 - Math.pow(1 - t, 3);
+            p.visualX = p.stepUpStartX + (p.stepUpTargetX - p.stepUpStartX) * eased;
+            p.visualY = p.stepUpStartY + (p.stepUpTargetY - p.stepUpStartY) * eased -
+                Math.sin(Math.PI * t) * 7;
+            p.gridX = Math.round(p.visualX / GRID_SIZE);
+            p.gridY = Math.round(p.visualY / GRID_SIZE);
+            p.isMoving = true;
+            p.moveAnimFrame = (p.moveAnimFrame + deltaTime * 11) % 4;
+
+            if (p.stepUpProgress >= 1) {
+                p.isSteppingUp = false;
+                p.visualX = p.stepUpTargetX;
+                p.visualY = p.stepUpTargetY;
+                p.gridX = Math.round(p.visualX / GRID_SIZE);
+                p.gridY = Math.round(p.visualY / GRID_SIZE);
+            }
+            return;
+        }
 
         // Current grid cell (based on center of player)
         const centerX = p.visualX + GRID_SIZE / 2;
@@ -641,7 +974,7 @@ class Game {
 
         // How far into the current cell (0-1, 0.5 = centered)
         const cellOffsetX = (centerX % GRID_SIZE) / GRID_SIZE;
-        const isCentered = cellOffsetX > FALL_THRESHOLD && cellOffsetX < (1 - FALL_THRESHOLD);
+        const isCentered = Math.abs(cellOffsetX - 0.5) <= FALL_CENTER_WINDOW;
 
         // Check block below current position
         const blockBelow = this.grid[currentGridY + 1]?.[currentGridX];
@@ -651,7 +984,7 @@ class Game {
         const atBottom = currentGridY >= GRID_HEIGHT - 1;
 
         // Only fall if centered enough over the hole
-        const shouldFall = !isBlockSolid && !atBottom && isCentered;
+        const shouldFall = p.isFalling || (!isBlockSolid && !atBottom && isCentered);
 
         p.isGrounded = !shouldFall;
         p.gridX = currentGridX;
@@ -659,46 +992,99 @@ class Game {
 
         // FALLING
         if (shouldFall) {
-            // Track how far we've fallen (in pixels for smoother detection)
             if (!p.isFalling) {
-                p.fallStartY = p.visualY; // Remember where we started falling (in pixels)
+                p.fallStartY = p.visualY;
+                p.fallVelocity = Math.max(p.fallVelocity, FALL_START_SPEED);
             }
             p.isFalling = true;
             p.isMoving = false;
             p.showDrill = false;
 
-            // Snap X to center of cell when starting to fall
-            const targetX = currentGridX * GRID_SIZE;
-            p.visualX += (targetX - p.visualX) * 0.3; // Smooth snap
+            const airDirection = input.left && !input.right ? -1 :
+                (input.right && !input.left ? 1 : 0);
+            if (airDirection !== 0) {
+                const sideX = currentGridX + airDirection;
+                const bodyTopRow = Math.floor((p.visualY + 8) / GRID_SIZE);
+                const bodyBottomRow = Math.floor((p.visualY + PLAYER_SIZE - 8) / GRID_SIZE);
+                let canSteerSideways = sideX >= 0 && sideX < GRID_WIDTH;
 
-            // Accelerate falling
-            p.fallVelocity += deltaTime * 1500;
-            p.fallVelocity = Math.min(p.fallVelocity, 800);
+                for (let row = bodyTopRow; row <= bodyBottomRow && canSteerSideways; row++) {
+                    const sideCell = this.grid[row]?.[sideX];
+                    canSteerSideways = sideCell === BLOCK_TYPES.EMPTY ||
+                        sideCell === BLOCK_TYPES.ITEM;
+                }
 
-            // Move down
-            p.visualY += p.fallVelocity * deltaTime;
+                if (canSteerSideways) {
+                    p.visualX = Math.max(
+                        0,
+                        Math.min(
+                            (GRID_WIDTH - 1) * GRID_SIZE,
+                            p.visualX + airDirection * AIR_CONTROL_SPEED * deltaTime
+                        )
+                    );
+                    p.isMoving = true;
+                }
+            } else {
+                const targetX = currentGridX * GRID_SIZE;
+                const snapAmount = Math.min(1, deltaTime * 9);
+                p.visualX += (targetX - p.visualX) * snapAmount;
+            }
 
-            // Animate
-            p.moveAnimFrame = (p.moveAnimFrame + deltaTime * 10) % 4;
+            p.fallVelocity = Math.min(
+                FALL_MAX_SPEED,
+                p.fallVelocity + deltaTime * FALL_ACCELERATION
+            );
+            const nextVisualY = p.visualY + p.fallVelocity * deltaTime;
+            const fallGridX = Math.max(
+                0,
+                Math.min(GRID_WIDTH - 1, Math.floor((p.visualX + GRID_SIZE / 2) / GRID_SIZE))
+            );
+            const firstCollisionRow = Math.max(
+                0,
+                Math.floor((p.visualY + GRID_SIZE) / GRID_SIZE)
+            );
+            const lastCollisionRow = Math.min(
+                GRID_HEIGHT,
+                Math.floor((nextVisualY + GRID_SIZE) / GRID_SIZE)
+            );
+            let landingRow = null;
 
-            // Update grid Y as we fall
-            p.gridY = Math.floor(p.visualY / GRID_SIZE);
+            for (let row = firstCollisionRow; row <= lastCollisionRow; row++) {
+                const cell = row >= GRID_HEIGHT ?
+                    BLOCK_TYPES.BEDROCK :
+                    this.grid[row]?.[fallGridX];
+                const isSolid = cell !== undefined &&
+                    cell !== BLOCK_TYPES.EMPTY &&
+                    cell !== BLOCK_TYPES.ITEM;
+                if (isSolid) {
+                    landingRow = row;
+                    break;
+                }
+            }
 
-            // Calculate fall distance in grid cells
-            p.fallDistance = (p.visualY - p.fallStartY) / GRID_SIZE;
+            p.moveAnimFrame = (p.moveAnimFrame + deltaTime * 12) % 4;
+            p.fallDistance = (nextVisualY - p.fallStartY) / GRID_SIZE;
 
-            // Check if landed
-            const blockAtGridY = this.grid[p.gridY + 1]?.[currentGridX];
-            const solidAtGrid = blockAtGridY !== undefined &&
-                               blockAtGridY !== BLOCK_TYPES.EMPTY &&
-                               blockAtGridY !== BLOCK_TYPES.ITEM;
-
-            if (solidAtGrid || p.gridY >= GRID_HEIGHT - 1) {
-                p.visualY = p.gridY * GRID_SIZE;
-                p.visualX = currentGridX * GRID_SIZE; // Snap X when landing
+            if (landingRow !== null) {
+                const landedDistance = Math.max(0, ((landingRow - 1) * GRID_SIZE - p.fallStartY) / GRID_SIZE);
+                p.visualY = (landingRow - 1) * GRID_SIZE;
+                p.gridX = fallGridX;
+                p.gridY = landingRow - 1;
                 p.isFalling = false;
+                p.isGrounded = true;
                 p.fallVelocity = 0;
-                // Don't reset fallDistance here - keep it for one more frame
+                p.fallDistance = landedDistance;
+                p.landingTimer = landedDistance > 0.6 ? 0.11 : 0.07;
+                if (landedDistance > 0.35) {
+                    this.sound.playLand(Math.min(3, landedDistance));
+                }
+                if (landedDistance > 1) {
+                    this.screenShake = Math.max(this.screenShake, Math.min(4, landedDistance));
+                }
+            } else {
+                p.visualY = nextVisualY;
+                p.gridX = fallGridX;
+                p.gridY = Math.floor(p.visualY / GRID_SIZE);
             }
             return;
         }
@@ -711,34 +1097,11 @@ class Game {
         p.fallVelocity = 0;
         p.visualY = currentGridY * GRID_SIZE; // Keep Y snapped to grid
 
-        p.moveTimer += deltaTime;
-        p.digCooldown = Math.max(0, p.digCooldown - deltaTime);
-        p.drillLockTimer = Math.max(0, p.drillLockTimer - deltaTime);
-
         // Reset states
         p.showDrill = false;
 
-        // Update drill animation
-        if (p.isDrilling) {
-            p.drillAnimTimer -= deltaTime;
-            p.drillAnimFrame = (p.drillAnimFrame + deltaTime * DRILL_ANIM_SPEED) % 3;
-            if (p.drillAnimTimer <= 0) {
-                p.isDrilling = false;
-                p.drillAnimFrame = 0;
-                p.drillAnimTimer = 0;
-            }
-            if (p.drillLockTimer > 0) {
-                // Keep the player anchored for the impact frame, but release control fast.
-                const targetX = currentGridX * GRID_SIZE;
-                p.visualX += (targetX - p.visualX) * 0.4;
-                return;
-            }
-        }
-
-        if (p.isDrilling && (input.left || input.right || input.up || input.down || input.digJustPressed)) {
-            p.isDrilling = false;
-            p.drillAnimFrame = 0;
-            p.drillAnimTimer = 0;
+        if (p.drillLockTimer > 0) {
+            return;
         }
 
         // Check what's in each direction (from current grid cell)
@@ -756,133 +1119,240 @@ class Game {
         const hasBlockDown = blockDown !== BLOCK_TYPES.EMPTY && blockDown !== BLOCK_TYPES.ITEM && blockDown !== undefined;
         const hasBlockUp = currentGridY > 0 && blockUp !== BLOCK_TYPES.EMPTY && blockUp !== BLOCK_TYPES.ITEM && blockUp !== undefined;
 
+        if (p.digBufferTimer > 0 && p.digCooldown <= 0) {
+            let digX = currentGridX;
+            let digY = currentGridY;
+
+            if (p.facing === 'left') digX--;
+            else if (p.facing === 'right') digX++;
+            else if (p.facing === 'down') digY++;
+            else if (p.facing === 'up') digY--;
+
+            p.digBufferTimer = 0;
+            p.digCooldown = DIG_RECOVERY;
+            p.isDrilling = true;
+            p.drillAnimFrame = 0;
+            p.drillAnimTimer = DIG_ANIM_DURATION;
+            p.drillSnapTargetX = currentGridX * GRID_SIZE;
+
+            const targetBlock = this.grid[digY]?.[digX];
+            const targetIsSolid = targetBlock !== undefined &&
+                targetBlock !== BLOCK_TYPES.EMPTY &&
+                targetBlock !== BLOCK_TYPES.ITEM;
+            const didDig = digX >= 0 && digX < GRID_WIDTH &&
+                digY >= 0 && digY < GRID_HEIGHT &&
+                this.digBlock(digX, digY);
+
+            p.drillLockTimer = targetIsSolid ? DIG_LOCK_DURATION : 0.025;
+
+            if (didDig) {
+                const digStrength = Math.min(4, Math.max(1, this.lastDigStrength || 1));
+                this.sound.playDrill(digStrength, targetBlock === BLOCK_TYPES.XBLOCK);
+                this.screenShake = Math.max(
+                    this.screenShake,
+                    targetBlock === BLOCK_TYPES.XBLOCK ? 4.5 : 2.2 + digStrength * 0.55
+                );
+                this.spawnDigDebris(digX, digY, targetBlock);
+            } else if (targetIsSolid) {
+                this.sound.playDrill(1, true);
+                this.screenShake = Math.max(this.screenShake, 2.5);
+                this.spawnDigDebris(digX, digY, BLOCK_TYPES.BEDROCK, 5);
+            }
+            return;
+        }
+
         // MOVEMENT
         p.isMoving = false;
 
         if (input.left) {
-            p.facing = 'left';
-
-            // Check if there's a block directly to our left in current cell
             if (hasBlockLeft) {
-                // There's a wall to the left
+                const alignedForStepUp = Math.abs(
+                    p.visualX - currentGridX * GRID_SIZE
+                ) <= GRID_SIZE * STEP_UP_ALIGN_WINDOW;
+                const canStepUp = currentGridY > 0 &&
+                    alignedForStepUp &&
+                    (blockUp === BLOCK_TYPES.EMPTY || blockUp === BLOCK_TYPES.ITEM) &&
+                    (this.grid[currentGridY - 1]?.[currentGridX - 1] === BLOCK_TYPES.EMPTY ||
+                        this.grid[currentGridY - 1]?.[currentGridX - 1] === BLOCK_TYPES.ITEM);
+
+                if (canStepUp) {
+                    p.isSteppingUp = true;
+                    p.stepUpProgress = 0;
+                    p.stepUpStartX = p.visualX;
+                    p.stepUpStartY = p.visualY;
+                    p.stepUpTargetX = (currentGridX - 1) * GRID_SIZE;
+                    p.stepUpTargetY = (currentGridY - 1) * GRID_SIZE;
+                    p.isMoving = true;
+                    this.spawnStepDust(currentGridX, currentGridY, -1);
+                    return;
+                }
+
                 p.showDrill = true;
-                // Snap towards center
-                const targetX = currentGridX * GRID_SIZE;
-                p.visualX += (targetX - p.visualX) * 0.2;
-            } else {
-                // No wall, free to move
+                const snapAmount = Math.min(1, deltaTime * 18);
+                p.visualX += (currentGridX * GRID_SIZE - p.visualX) * snapAmount;
+            } else if (canMoveLeft) {
                 p.visualX -= WALK_SPEED * deltaTime;
                 p.visualX = Math.max(0, p.visualX);
                 p.isMoving = true;
-                p.moveAnimFrame = (p.moveAnimFrame + deltaTime * 8) % 4;
+                p.moveAnimFrame = (p.moveAnimFrame + deltaTime * 10) % 4;
             }
         }
         else if (input.right) {
-            p.facing = 'right';
-
-            // Check if there's a block directly to our right in current cell
             if (hasBlockRight) {
-                // There's a wall to the right
+                const alignedForStepUp = Math.abs(
+                    p.visualX - currentGridX * GRID_SIZE
+                ) <= GRID_SIZE * STEP_UP_ALIGN_WINDOW;
+                const canStepUp = currentGridY > 0 &&
+                    alignedForStepUp &&
+                    (blockUp === BLOCK_TYPES.EMPTY || blockUp === BLOCK_TYPES.ITEM) &&
+                    (this.grid[currentGridY - 1]?.[currentGridX + 1] === BLOCK_TYPES.EMPTY ||
+                        this.grid[currentGridY - 1]?.[currentGridX + 1] === BLOCK_TYPES.ITEM);
+
+                if (canStepUp) {
+                    p.isSteppingUp = true;
+                    p.stepUpProgress = 0;
+                    p.stepUpStartX = p.visualX;
+                    p.stepUpStartY = p.visualY;
+                    p.stepUpTargetX = (currentGridX + 1) * GRID_SIZE;
+                    p.stepUpTargetY = (currentGridY - 1) * GRID_SIZE;
+                    p.isMoving = true;
+                    this.spawnStepDust(currentGridX, currentGridY, 1);
+                    return;
+                }
+
                 p.showDrill = true;
-                // Snap towards center
-                const targetX = currentGridX * GRID_SIZE;
-                p.visualX += (targetX - p.visualX) * 0.2;
-            } else {
-                // No wall, free to move
+                const snapAmount = Math.min(1, deltaTime * 18);
+                p.visualX += (currentGridX * GRID_SIZE - p.visualX) * snapAmount;
+            } else if (canMoveRight) {
                 p.visualX += WALK_SPEED * deltaTime;
                 p.visualX = Math.min((GRID_WIDTH - 1) * GRID_SIZE, p.visualX);
                 p.isMoving = true;
-                p.moveAnimFrame = (p.moveAnimFrame + deltaTime * 8) % 4;
+                p.moveAnimFrame = (p.moveAnimFrame + deltaTime * 10) % 4;
             }
         }
         else if (input.down) {
-            p.facing = 'down';
             if (canMoveDown && isCentered) {
-                // Drop down
-                p.gridY = currentGridY + 1;
-                p.fallVelocity = 200;
+                p.isFalling = true;
+                p.isGrounded = false;
+                p.fallStartY = p.visualY;
+                p.fallVelocity = FALL_START_SPEED;
+                return;
             } else if (hasBlockDown) {
                 p.showDrill = true;
-                // Snap to center for drilling
-                const targetX = currentGridX * GRID_SIZE;
-                p.visualX += (targetX - p.visualX) * 0.2;
             } else if (canMoveDown && !isCentered) {
-                // Need to center first
-                const targetX = currentGridX * GRID_SIZE;
-                p.visualX += (targetX - p.visualX) * 0.15;
+                const snapAmount = Math.min(1, deltaTime * 14);
+                p.visualX += (currentGridX * GRID_SIZE - p.visualX) * snapAmount;
             }
         }
         else if (input.up) {
-            p.facing = 'up';
             if (hasBlockUp) {
                 p.showDrill = true;
-                // Snap to center for drilling
-                const targetX = currentGridX * GRID_SIZE;
-                p.visualX += (targetX - p.visualX) * 0.2;
-            }
-        }
-
-        // DIG ACTION - requires being reasonably centered
-        if (input.digJustPressed && p.digCooldown <= 0) {
-            // Snap to center for digging
-            p.visualX = currentGridX * GRID_SIZE;
-
-            let digX = currentGridX;
-            let digY = currentGridY;
-
-            if (p.facing === 'left' && currentGridX > 0) digX = currentGridX - 1;
-            else if (p.facing === 'right' && currentGridX < GRID_WIDTH - 1) digX = currentGridX + 1;
-            else if (p.facing === 'down') digY = currentGridY + 1;
-            else if (p.facing === 'up' && currentGridY > 0) digY = currentGridY - 1;
-
-            if (digY < GRID_HEIGHT && digY >= 0 && digX >= 0 && digX < GRID_WIDTH) {
-                const targetBlock = this.grid[digY]?.[digX];
-                if (targetBlock !== BLOCK_TYPES.EMPTY &&
-                    targetBlock !== BLOCK_TYPES.ITEM &&
-                    targetBlock !== BLOCK_TYPES.BEDROCK) {
-                    const didDig = this.digBlock(digX, digY);
-                    if (didDig) {
-                        p.digCooldown = DIG_RECOVERY;
-                        p.isDrilling = true;
-                        p.drillAnimFrame = 0;
-                        p.drillAnimTimer = DIG_ANIM_DURATION;
-                        p.drillLockTimer = DIG_LOCK_DURATION;
-                    }
-                }
             }
         }
         
-        // Win condition
-        if (p.visualX < this.safe.x + this.safe.width &&
+    }
+
+    checkWinCondition() {
+        const p = this.player;
+        const reachedSafe =
+            p.visualX < this.safe.x + this.safe.width &&
             p.visualX + PLAYER_SIZE > this.safe.x &&
             p.visualY < this.safe.y + this.safe.height &&
-            p.visualY + PLAYER_SIZE > this.safe.y) {
+            p.visualY + PLAYER_SIZE > this.safe.y;
+
+        if (reachedSafe) {
             this.gameState = 'won';
         }
+
+        return reachedSafe;
     }
     
+    spawnDigDebris(gridX, gridY, blockValue, countOverride = null) {
+        let color = '#9a7a62';
+        if (isColoredBlockValue(blockValue)) {
+            color = BLOCK_COLORS[blockValue - BLOCK_TYPES.COLORED].highlight;
+        } else if (blockValue === BLOCK_TYPES.XBLOCK) {
+            color = '#d85f7f';
+        } else if (blockValue === BLOCK_TYPES.BEDROCK) {
+            color = '#777777';
+        }
+
+        const strength = Math.max(1, this.lastDigStrength || 1);
+        const count = countOverride ?? Math.min(18, 7 + strength * 2);
+        const originX = gridX * GRID_SIZE + GRID_SIZE / 2;
+        const originY = gridY * GRID_SIZE + GRID_SIZE / 2;
+        let biasX = 0;
+        let biasY = -110;
+
+        if (this.player.facing === 'left') biasX = 145;
+        else if (this.player.facing === 'right') biasX = -145;
+        else if (this.player.facing === 'up') biasY = 145;
+
+        for (let i = 0; i < count; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const speed = 55 + Math.random() * 155;
+            const life = 0.18 + Math.random() * 0.2;
+            this.debrisParticles.push({
+                x: originX + (Math.random() - 0.5) * GRID_SIZE * 0.45,
+                y: originY + (Math.random() - 0.5) * GRID_SIZE * 0.45,
+                vx: Math.cos(angle) * speed + biasX,
+                vy: Math.sin(angle) * speed + biasY,
+                life,
+                maxLife: life,
+                size: [2, 4, 6][Math.floor(Math.random() * 3)],
+                color,
+            });
+        }
+
+        if (this.debrisParticles.length > MAX_DEBRIS_PARTICLES) {
+            this.debrisParticles.splice(
+                0,
+                this.debrisParticles.length - MAX_DEBRIS_PARTICLES
+            );
+        }
+    }
+
+    spawnStepDust(gridX, gridY, direction) {
+        const originX = gridX * GRID_SIZE + GRID_SIZE / 2;
+        const originY = (gridY + 1) * GRID_SIZE - 5;
+
+        for (let i = 0; i < 4; i++) {
+            const life = 0.16 + i * 0.025;
+            this.debrisParticles.push({
+                x: originX - direction * (10 + i * 4),
+                y: originY - i * 2,
+                vx: -direction * (28 + i * 12),
+                vy: -52 - i * 10,
+                life,
+                maxLife: life,
+                size: i % 2 === 0 ? 4 : 6,
+                color: i % 2 === 0 ? '#8f6b58' : '#c09a79',
+            });
+        }
+    }
+
     digBlock(x, y) {
         const blockInfo = this.getBlockAt(x, y);
         if (!blockInfo) return false;
         
         // Enable physics on first dig
         this.hasPlayerDug = true;
+        this.lastDigStrength = 1;
         
         if (blockInfo.type === 'xblock') {
-            // X-blocks take 3 hits to destroy
             const xBlock = blockInfo.xBlock;
             xBlock.hp--;
-            xBlock.hitFlash = 0.2; // Flash white briefly
-            this.oxygen -= 5; // Small oxygen cost per hit
+            xBlock.hitFlash = 0.12;
             
             if (xBlock.hp <= 0) {
                 xBlock.destroyed = true;
                 this.grid[y][x] = BLOCK_TYPES.EMPTY;
+                this.oxygen = Math.max(0, this.oxygen - 20);
                 this.score += 50;
+                this.lastDigStrength = 3;
             }
             return true;
         } else if (blockInfo.type === 'bedrock') {
-            // Bedrock is truly indestructible
             return false;
         } else if (blockInfo.type === 'color') {
             const block = blockInfo.block;
@@ -893,8 +1363,9 @@ class Game {
             }
             
             piece.forEach(pieceBlock => {
-                pieceBlock.destroyed = true;
-                pieceBlock.isClearing = false;
+                pieceBlock.isClearing = true;
+                pieceBlock.clearTimer = 0;
+                pieceBlock.clearDuration = DIG_CLEAR_FLASH;
                 pieceBlock.matchEligible = false;
                 
                 if (this.grid[pieceBlock.y]?.[pieceBlock.x] === pieceBlock.colorIndex + BLOCK_TYPES.COLORED) {
@@ -902,6 +1373,7 @@ class Game {
                 }
             });
             
+            this.lastDigStrength = piece.length;
             this.score += DIG_SCORE * piece.length;
             return true;
         }
@@ -971,8 +1443,7 @@ class Game {
         return map;
     }
 
-    buildColorComponents() {
-        const blockMap = this.getColorBlocksMap();
+    buildColorComponents(blockMap = this.getColorBlocksMap()) {
         const visited = new Set();
         const components = [];
         
@@ -1032,8 +1503,98 @@ class Game {
         return true;
     }
 
-    moveColorComponentDown(component) {
+    getComponentDepthFactor(component) {
+        const deepestRow = Math.max(...component.blocks.map(block => block.y));
+        return Math.max(0, Math.min(1, deepestRow / (GRID_HEIGHT - 1)));
+    }
+
+    getComponentFallDelay(component) {
+        return Math.max(0.3, FALL_DELAY - this.getComponentDepthFactor(component) * 0.22);
+    }
+
+    getComponentFallDuration(component) {
+        return Math.max(0.052, FALL_SPEED - this.getComponentDepthFactor(component) * 0.02);
+    }
+
+    colorComponentHasExternalSupport(startBlock, excludedIds, blockMap) {
+        const queue = [startBlock];
+        const componentBlocks = [];
+        const componentIds = new Set([startBlock.id]);
+
+        while (queue.length > 0) {
+            const block = queue.shift();
+            componentBlocks.push(block);
+
+            const neighbors = [
+                [block.x - 1, block.y],
+                [block.x + 1, block.y],
+                [block.x, block.y - 1],
+                [block.x, block.y + 1],
+            ];
+
+            for (const [neighborX, neighborY] of neighbors) {
+                const neighbor = blockMap.get(`${neighborX},${neighborY}`);
+                if (!neighbor || excludedIds.has(neighbor.id) || componentIds.has(neighbor.id)) continue;
+                if (neighbor.colorIndex !== startBlock.colorIndex || neighbor.isClearing) continue;
+                componentIds.add(neighbor.id);
+                queue.push(neighbor);
+            }
+        }
+
+        for (const block of componentBlocks) {
+            const belowY = block.y + 1;
+            if (belowY >= GRID_HEIGHT) return true;
+
+            const belowBlock = blockMap.get(`${block.x},${belowY}`);
+            if (belowBlock && componentIds.has(belowBlock.id)) continue;
+            if (belowBlock && excludedIds.has(belowBlock.id)) continue;
+
+            const belowValue = this.grid[belowY]?.[block.x];
+            if (belowValue !== undefined && belowValue !== BLOCK_TYPES.EMPTY) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    componentTouchesSupportedSameColor(component, previousMotion, blockMap) {
+        const ownIds = new Set(component.blocks.map(block => block.id));
+
         for (const block of component.blocks) {
+            const neighbors = [
+                [block.x - 1, block.y],
+                [block.x + 1, block.y],
+                [block.x, block.y - 1],
+                [block.x, block.y + 1],
+            ];
+
+            for (const [neighborX, neighborY] of neighbors) {
+                const neighbor = blockMap.get(`${neighborX},${neighborY}`);
+                if (!neighbor || ownIds.has(neighbor.id)) continue;
+                if (neighbor.colorIndex !== component.colorIndex || neighbor.isClearing) continue;
+
+                const motion = previousMotion.get(neighbor.id);
+                const wasStable = !motion ||
+                    (!motion.isFalling && !motion.isShaking && !motion.isClearing);
+                if (wasStable && this.colorComponentHasExternalSupport(
+                    neighbor,
+                    ownIds,
+                    blockMap
+                )) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    moveColorComponentDown(component, blockMap = null) {
+        for (const block of component.blocks) {
+            if (blockMap) {
+                blockMap.delete(`${block.x},${block.y}`);
+            }
             if (this.grid[block.y]?.[block.x] === block.colorIndex + BLOCK_TYPES.COLORED) {
                 this.grid[block.y][block.x] = BLOCK_TYPES.EMPTY;
             }
@@ -1046,6 +1607,9 @@ class Game {
         for (const block of component.blocks) {
             if (this.grid[block.y]) {
                 this.grid[block.y][block.x] = block.colorIndex + BLOCK_TYPES.COLORED;
+            }
+            if (blockMap) {
+                blockMap.set(`${block.x},${block.y}`, block);
             }
         }
     }
@@ -1095,12 +1659,21 @@ class Game {
     }
     
     updateColoredBlockPhysics(deltaTime) {
+        const previousMotion = new Map();
+        for (const block of this.colorBlocks) {
+            previousMotion.set(block.id, {
+                isFalling: block.isFalling,
+                isShaking: block.isShaking,
+                isClearing: block.isClearing,
+            });
+        }
+
         for (const block of this.colorBlocks) {
             if (block.destroyed) continue;
             
             if (block.isClearing) {
                 block.clearTimer += deltaTime;
-                if (block.clearTimer >= MATCH_CLEAR_FLASH) {
+                if (block.clearTimer >= block.clearDuration) {
                     if (this.grid[block.y]?.[block.x] === block.colorIndex + BLOCK_TYPES.COLORED) {
                         this.grid[block.y][block.x] = BLOCK_TYPES.EMPTY;
                     }
@@ -1112,7 +1685,8 @@ class Game {
             this.resetColoredBlockMotion(block);
         }
         
-        const components = this.buildColorComponents();
+        const liveBlockMap = this.getColorBlocksMap();
+        const components = this.buildColorComponents(liveBlockMap);
         const nextStates = new Map();
         
         for (const component of components) {
@@ -1126,13 +1700,18 @@ class Game {
             };
             
             if (state.isFalling) {
-                state.fallProgress += deltaTime / FALL_SPEED;
+                state.fallProgress += deltaTime / this.getComponentFallDuration(component);
                 
                 if (state.fallProgress >= 1) {
-                    this.moveColorComponentDown(component);
+                    this.moveColorComponentDown(component, liveBlockMap);
                     state.fallProgress = 0;
                     
-                    if (!this.componentCanFall(component)) {
+                    const attachedToSameColor = this.componentTouchesSupportedSameColor(
+                        component,
+                        previousMotion,
+                        liveBlockMap
+                    );
+                    if (attachedToSameColor || !this.componentCanFall(component)) {
                         state.isFalling = false;
                         state.isShaking = false;
                         state.fallTimer = 0;
@@ -1140,6 +1719,11 @@ class Game {
                         component.blocks.forEach(block => {
                             block.matchEligible = true;
                         });
+                        this.screenShake = Math.max(
+                            this.screenShake,
+                            Math.min(4, 1.4 + component.blocks.length * 0.35)
+                        );
+                        this.sound.playLand(Math.min(4, 1 + component.blocks.length * 0.35));
                         this.pendingMatchCheck = true;
                     }
                     
@@ -1156,16 +1740,18 @@ class Game {
                     if (!state.isShaking) {
                         state.isShaking = true;
                         state.shakeTimer = 0;
+                        state.fallTimer = 0;
                     }
                     
                     state.shakeTimer += deltaTime;
+                    state.fallTimer += deltaTime;
                     
-                    if (state.shakeTimer >= SHAKE_DURATION) {
-                        state.fallTimer += deltaTime;
-                        if (state.fallTimer >= FALL_DELAY - SHAKE_DURATION && this.componentCanFall(component)) {
-                            state.isFalling = true;
-                            state.fallProgress = 0;
-                        }
+                    if (state.fallTimer >= this.getComponentFallDelay(component) &&
+                        this.componentCanFall(component)) {
+                        state.isFalling = true;
+                        state.isShaking = false;
+                        state.shakeTimer = 0;
+                        state.fallProgress = 0;
                     }
                 } else {
                     state.fallTimer = 0;
@@ -1193,9 +1779,12 @@ class Game {
         
         for (const xBlock of this.xBlocks) {
             if (xBlock.destroyed) continue;
+            const depthFactor = Math.max(0, Math.min(1, xBlock.y / (GRID_HEIGHT - 1)));
+            const fallDuration = Math.max(0.052, FALL_SPEED - depthFactor * 0.02);
+            const fallDelay = Math.max(0.3, FALL_DELAY - depthFactor * 0.22);
             
             if (xBlock.isFalling) {
-                xBlock.fallProgress += deltaTime / FALL_SPEED;
+                xBlock.fallProgress += deltaTime / fallDuration;
                 
                 if (xBlock.fallProgress >= 1) {
                     this.grid[xBlock.y][xBlock.x] = BLOCK_TYPES.EMPTY;
@@ -1209,6 +1798,8 @@ class Game {
                         xBlock.isShaking = false;
                         xBlock.fallTimer = 0;
                         xBlock.shakeTimer = 0;
+                        this.screenShake = Math.max(this.screenShake, 2);
+                        this.sound.playLand(1.5);
                     }
                     
                     const playerGridX = Math.round(this.player.x / GRID_SIZE);
@@ -1224,16 +1815,17 @@ class Game {
                     if (!xBlock.isShaking) {
                         xBlock.isShaking = true;
                         xBlock.shakeTimer = 0;
+                        xBlock.fallTimer = 0;
                     }
                     
                     xBlock.shakeTimer += deltaTime;
+                    xBlock.fallTimer += deltaTime;
                     
-                    if (xBlock.shakeTimer >= SHAKE_DURATION) {
-                        xBlock.fallTimer += deltaTime;
-                        if (xBlock.fallTimer >= FALL_DELAY - SHAKE_DURATION && xBlock.canFall(this.grid)) {
-                            xBlock.isFalling = true;
-                            xBlock.fallProgress = 0;
-                        }
+                    if (xBlock.fallTimer >= fallDelay && xBlock.canFall(this.grid)) {
+                        xBlock.isFalling = true;
+                        xBlock.isShaking = false;
+                        xBlock.shakeTimer = 0;
+                        xBlock.fallProgress = 0;
                     }
                 } else {
                     xBlock.fallTimer = 0;
@@ -1244,60 +1836,7 @@ class Game {
         }
     }
     
-    updateItemsPhysics(items, deltaTime) {
-        items.forEach(item => {
-            if (item.collected) return;
-            
-            const itemGridX = Math.floor(item.x / GRID_SIZE);
-            const itemGridY = Math.floor(item.y / GRID_SIZE);
-            const blockBelow = this.grid[itemGridY + 1]?.[itemGridX];
-            
-            if (blockBelow === BLOCK_TYPES.EMPTY && itemGridY < GRID_HEIGHT - 2) {
-                item.fallTimer = (item.fallTimer || 0) + deltaTime;
-                if (item.fallTimer >= 0.08) {
-                    if (this.grid[itemGridY]?.[itemGridX] === BLOCK_TYPES.ITEM) {
-                        this.grid[itemGridY][itemGridX] = BLOCK_TYPES.EMPTY;
-                    }
-                    item.y += GRID_SIZE;
-                    const newGridY = Math.floor(item.y / GRID_SIZE);
-                    if (this.grid[newGridY]) {
-                        this.grid[newGridY][itemGridX] = BLOCK_TYPES.ITEM;
-                    }
-                    item.fallTimer = 0;
-                }
-            } else {
-                item.fallTimer = 0;
-            }
-        });
-    }
-
     settleInitialBoard() {
-        const moveItemsDownOneStep = items => {
-            let moved = false;
-            
-            for (const item of items) {
-                if (item.collected) continue;
-                
-                const itemGridX = Math.floor(item.x / GRID_SIZE);
-                const itemGridY = Math.floor(item.y / GRID_SIZE);
-                const blockBelow = this.grid[itemGridY + 1]?.[itemGridX];
-                
-                if (blockBelow === BLOCK_TYPES.EMPTY && itemGridY < GRID_HEIGHT - 2) {
-                    if (this.grid[itemGridY]?.[itemGridX] === BLOCK_TYPES.ITEM) {
-                        this.grid[itemGridY][itemGridX] = BLOCK_TYPES.EMPTY;
-                    }
-                    item.y += GRID_SIZE;
-                    const newGridY = Math.floor(item.y / GRID_SIZE);
-                    if (this.grid[newGridY]) {
-                        this.grid[newGridY][itemGridX] = BLOCK_TYPES.ITEM;
-                    }
-                    moved = true;
-                }
-            }
-            
-            return moved;
-        };
-        
         const getComponentMaxY = component =>
             Math.max(...component.blocks.map(block => block.y));
         
@@ -1324,9 +1863,6 @@ class Game {
                 this.grid[xBlock.y][xBlock.x] = BLOCK_TYPES.XBLOCK;
                 movedAny = true;
             }
-            
-            movedAny = moveItemsDownOneStep(this.oxygenTubes) || movedAny;
-            movedAny = moveItemsDownOneStep(this.treasures) || movedAny;
             
             if (!movedAny) break;
         }
@@ -1418,11 +1954,13 @@ class Game {
             
             foundMatch = true;
             this.score += cluster.length * MATCH_SCORE;
+            this.sound.playClear(cluster.length);
             
             cluster.forEach(matchBlock => {
                 matchBlock.matchEligible = false;
                 matchBlock.isClearing = true;
                 matchBlock.clearTimer = 0;
+                matchBlock.clearDuration = MATCH_CLEAR_FLASH;
                 matchBlock.isShaking = false;
                 matchBlock.isFalling = false;
                 matchBlock.fallTimer = 0;
@@ -1439,10 +1977,8 @@ class Game {
 
         this.updateColoredBlockPhysics(deltaTime);
         this.updateXBlockPhysics(deltaTime);
-        this.updateItemsPhysics(this.oxygenTubes, deltaTime);
-        this.updateItemsPhysics(this.treasures, deltaTime);
         
-        if (this.pendingMatchCheck && !this.hasActiveColorMotion()) {
+        if (this.pendingMatchCheck) {
             this.triggerColorMatches();
             this.pendingMatchCheck = false;
         }
@@ -1463,12 +1999,9 @@ class Game {
                     tube.collected = true;
                     this.oxygen = Math.min(this.maxOxygen, this.oxygen + 20);
                     this.score += 100;
-                    // Clear from grid
-                    const gx = Math.floor(tube.x / GRID_SIZE);
-                    const gy = Math.floor(tube.y / GRID_SIZE);
-                    if (this.grid[gy]?.[gx] === BLOCK_TYPES.ITEM) {
-                        this.grid[gy][gx] = BLOCK_TYPES.EMPTY;
-                    }
+                    this.spawnPickupSparkles(tube, '#69f3ff');
+                    this.sound.playPickup(true);
+                    this.releaseItemCell(tube);
                 }
             }
         });
@@ -1483,12 +2016,9 @@ class Game {
                 if (dist < GRID_SIZE * 0.8) {
                     treasure.collected = true;
                     this.score += treasure.value;
-                    // Clear from grid
-                    const gx = Math.floor(treasure.x / GRID_SIZE);
-                    const gy = Math.floor(treasure.y / GRID_SIZE);
-                    if (this.grid[gy]?.[gx] === BLOCK_TYPES.ITEM) {
-                        this.grid[gy][gx] = BLOCK_TYPES.EMPTY;
-                    }
+                    this.spawnPickupSparkles(treasure, '#ffd65a');
+                    this.sound.playPickup(false);
+                    this.releaseItemCell(treasure);
                 }
             }
         });
@@ -1499,10 +2029,46 @@ class Game {
             this.gameState = 'gameover';
         }
     }
+
+    releaseItemCell(item) {
+        const key = `${item.gridX},${item.gridY}`;
+        if (this.itemsByCell.get(key) !== item) return;
+
+        this.itemsByCell.delete(key);
+        if (this.grid[item.gridY]?.[item.gridX] === BLOCK_TYPES.ITEM) {
+            this.grid[item.gridY][item.gridX] = BLOCK_TYPES.EMPTY;
+        }
+    }
+
+    spawnPickupSparkles(item, color) {
+        for (let index = 0; index < 8; index++) {
+            const angle = index * Math.PI / 4;
+            const life = 0.24 + (index % 3) * 0.04;
+            this.debrisParticles.push({
+                x: item.x,
+                y: item.y,
+                vx: Math.cos(angle) * (80 + (index % 2) * 35),
+                vy: Math.sin(angle) * 70 - 80,
+                life,
+                maxLife: life,
+                size: index % 2 === 0 ? 4 : 2,
+                color,
+            });
+        }
+
+        if (this.debrisParticles.length > MAX_DEBRIS_PARTICLES) {
+            this.debrisParticles.splice(
+                0,
+                this.debrisParticles.length - MAX_DEBRIS_PARTICLES
+            );
+        }
+    }
     
-    updateCamera() {
+    updateCamera(deltaTime) {
         const targetCameraY = this.player.visualY - CANVAS_HEIGHT / 2 + GRID_SIZE;
-        this.cameraY += (targetCameraY - this.cameraY) * 0.15; // Slightly faster camera follow
+        const followTime = this.player.isFalling ? 0.085 : 0.12;
+        const follow = 1 - Math.exp(-deltaTime / followTime);
+        this.cameraY += (targetCameraY - this.cameraY) * follow;
         this.cameraY = Math.max(0, Math.min(this.cameraY, GRID_HEIGHT * GRID_SIZE - CANVAS_HEIGHT));
         this.depth = Math.max(0, Math.floor((this.player.visualY / GRID_SIZE) - 2));
     }
@@ -1530,17 +2096,26 @@ class Game {
             fallVelocity: 0,
             fallStartY: 0,
             fallDistance: 0,
+            landingTimer: 0,
             
             moveTimer: 0,
             moveCooldown: 0.12,
             isMoving: false,
             moveAnimFrame: 0,
+            isSteppingUp: false,
+            stepUpProgress: 0,
+            stepUpStartX: 0,
+            stepUpStartY: 0,
+            stepUpTargetX: 0,
+            stepUpTargetY: 0,
             
             digCooldown: 0,
+            digBufferTimer: 0,
             isDrilling: false,
             drillAnimFrame: 0,
             drillAnimTimer: 0,
             drillLockTimer: 0,
+            drillSnapTargetX: null,
             showDrill: false,
         };
         
@@ -1548,8 +2123,13 @@ class Game {
         this.score = 0;
         this.depth = 0;
         this.cameraY = 0;
+        this.debrisParticles = [];
+        this.screenShake = 0;
+        this.screenShakePhase = 0;
+        this.visualTime = 0;
         this.oxygenTubes = [];
         this.treasures = [];
+        this.itemsByCell = new Map();
         this.gameState = 'countdown';
         this.countdownTimer = 0;
         this.countdownNumber = 3;
@@ -1574,10 +2154,24 @@ class Game {
     }
     
     render() {
-        // Background
-        this.ctx.fillStyle = '#0a0a1a';
-        this.ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+        this.renderCaveBackground();
         
+        const shakeX = this.pixelSnap(Math.sin(this.screenShakePhase) * this.screenShake);
+        const shakeY = this.pixelSnap(
+            Math.cos(this.screenShakePhase * 1.37) * this.screenShake * 0.65
+        );
+        this.ctx.save();
+        this.ctx.translate(shakeX, shakeY);
+
+        // Recessed pockets sit behind both the surrounding terrain and loot.
+        for (const item of [...this.oxygenTubes, ...this.treasures]) {
+            if (item.collected) continue;
+            const screenY = item.y - this.cameraY;
+            if (screenY > -GRID_SIZE && screenY < CANVAS_HEIGHT + GRID_SIZE) {
+                this.renderItemPocket(item, screenY);
+            }
+        }
+
         // Render colored blocks
         for (const block of this.colorBlocks) {
             if (block.destroyed) continue;
@@ -1587,11 +2181,6 @@ class Game {
         // Render X-blocks
         for (const xBlock of this.xBlocks) {
             if (xBlock.destroyed) continue;
-            
-            // Update hit flash
-            if (xBlock.hitFlash > 0) {
-                xBlock.hitFlash -= 0.016; // Roughly 1 frame at 60fps
-            }
             
             const fallOffset = xBlock.isFalling ? xBlock.fallProgress * GRID_SIZE : 0;
             const shakeOffset = xBlock.getShakeOffset();
@@ -1618,20 +2207,8 @@ class Game {
         this.oxygenTubes.forEach(tube => {
             if (!tube.collected) {
                 const screenY = tube.y - this.cameraY;
-                if (screenY > -GRID_SIZE && screenY < CANVAS_HEIGHT) {
-                    if (ASSETS.oxygen_tube) {
-                        this.ctx.drawImage(
-                            ASSETS.oxygen_tube,
-                            tube.x - GRID_SIZE/2, screenY - GRID_SIZE/2,
-                            GRID_SIZE, GRID_SIZE
-                        );
-                    } else {
-                        // Fallback
-                        this.ctx.fillStyle = '#00c8ff';
-                        this.ctx.beginPath();
-                        this.ctx.arc(tube.x, screenY, 14, 0, Math.PI * 2);
-                        this.ctx.fill();
-                    }
+                if (screenY > -GRID_SIZE && screenY < CANVAS_HEIGHT + GRID_SIZE) {
+                    this.renderOxygenTube(tube.x, screenY);
                 }
             }
         });
@@ -1640,7 +2217,7 @@ class Game {
         this.treasures.forEach(treasure => {
             if (!treasure.collected) {
                 const screenY = treasure.y - this.cameraY;
-                if (screenY > -GRID_SIZE && screenY < CANVAS_HEIGHT) {
+                if (screenY > -GRID_SIZE && screenY < CANVAS_HEIGHT + GRID_SIZE) {
                     this.renderTreasure(treasure.x, screenY, treasure.type);
                 }
             }
@@ -1649,24 +2226,23 @@ class Game {
         // Render safe
         const safeScreenY = this.safe.y - this.cameraY;
         if (safeScreenY > -this.safe.height && safeScreenY < CANVAS_HEIGHT) {
-            this.ctx.fillStyle = '#2a2a2a';
-            this.ctx.fillRect(this.safe.x, safeScreenY, this.safe.width, this.safe.height);
-            
-            this.ctx.strokeStyle = '#ffd700';
-            this.ctx.lineWidth = 4;
-            this.ctx.strokeRect(this.safe.x + 3, safeScreenY + 3, this.safe.width - 6, this.safe.height - 6);
-            
-            this.ctx.fillStyle = '#ffd700';
-            this.ctx.font = 'bold 28px Arial';
-            this.ctx.textAlign = 'center';
-            this.ctx.textBaseline = 'middle';
-            this.ctx.fillText('$', this.safe.x + this.safe.width/2, safeScreenY + this.safe.height/2);
+            this.renderSafe(this.safe.x, safeScreenY);
         }
         
+        this.renderDebris();
+
         // Render player
         const playerScreenY = this.player.visualY - this.cameraY;
-        this.renderManny(this.player.visualX, playerScreenY, this.player.facing, this.player.isDrilling);
+        this.renderManny(
+            this.pixelSnap(this.player.visualX),
+            this.pixelSnap(playerScreenY),
+            this.player.facing,
+            this.player.isDrilling
+        );
         
+        this.ctx.restore();
+        this.renderLighting();
+
         // Render HUD
         this.renderHUD();
         
@@ -1680,204 +2256,495 @@ class Game {
             this.renderWin();
         }
     }
+
+    pixelSnap(value) {
+        return Math.round(value / 2) * 2;
+    }
+
+    hashCell(x, y, seed = 0) {
+        let value = Math.imul(x + seed * 17, 374761393);
+        value = (value + Math.imul(y - seed * 31, 668265263)) | 0;
+        value = Math.imul(value ^ (value >>> 13), 1274126177);
+        return ((value ^ (value >>> 16)) >>> 0) / 4294967295;
+    }
+
+    fillSteppedRect(x, y, width, height, cut, color) {
+        this.ctx.fillStyle = color;
+        this.ctx.fillRect(x + cut, y, width - cut * 2, height);
+        this.ctx.fillRect(x, y + cut, width, height - cut * 2);
+    }
+
+    renderCaveBackground() {
+        const ctx = this.ctx;
+        const snappedCameraY = this.pixelSnap(this.cameraY);
+        const firstWorldRow = Math.floor(snappedCameraY / GRID_SIZE) - 1;
+        const rowOffset = -(snappedCameraY % GRID_SIZE) - GRID_SIZE;
+        const strata = ['#171426', '#131426', '#101322', '#0c111e', '#090d18'];
+
+        ctx.fillStyle = '#080b15';
+        ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+        for (let visibleRow = 0; visibleRow < VIEWPORT_HEIGHT + 3; visibleRow++) {
+            const worldRow = firstWorldRow + visibleRow;
+            const screenY = rowOffset + visibleRow * GRID_SIZE;
+            const depthIndex = Math.max(
+                0,
+                Math.min(strata.length - 1, Math.floor(Math.max(0, worldRow) / 10))
+            );
+
+            ctx.fillStyle = strata[depthIndex];
+            ctx.fillRect(0, screenY, CANVAS_WIDTH, GRID_SIZE);
+
+            if (worldRow >= 0 && worldRow % 4 === 0) {
+                ctx.fillStyle = depthIndex < 2 ? '#211a31' : '#17182a';
+                for (let segment = 0; segment < GRID_WIDTH; segment++) {
+                    const notch = this.hashCell(segment, worldRow, 9) > 0.5 ? 4 : 0;
+                    ctx.fillRect(
+                        segment * GRID_SIZE,
+                        this.pixelSnap(screenY + 8 + notch),
+                        GRID_SIZE,
+                        2
+                    );
+                }
+            }
+
+            for (let x = 0; x < GRID_WIDTH; x++) {
+                const fleck = this.hashCell(x, worldRow, 3);
+                const fleckX = x * GRID_SIZE + 8 +
+                    Math.floor(this.hashCell(x, worldRow, 5) * 24) * 2;
+                const fleckY = screenY + 12 +
+                    Math.floor(this.hashCell(x, worldRow, 7) * 18) * 2;
+
+                if (fleck > 0.38) {
+                    ctx.fillStyle = depthIndex < 2 ? '#292039' : '#1a2033';
+                    ctx.fillRect(this.pixelSnap(fleckX), this.pixelSnap(fleckY), 6, 4);
+                    ctx.fillStyle = depthIndex < 2 ? '#0e0d18' : '#080b14';
+                    ctx.fillRect(this.pixelSnap(fleckX + 4), this.pixelSnap(fleckY + 4), 4, 2);
+                }
+
+                if (fleck > 0.91) {
+                    ctx.fillStyle = depthIndex > 2 ? '#29435a' : '#4b344d';
+                    ctx.fillRect(this.pixelSnap(fleckX + 18), this.pixelSnap(fleckY - 6), 4, 2);
+                    ctx.fillRect(this.pixelSnap(fleckX + 20), this.pixelSnap(fleckY - 4), 2, 4);
+                }
+            }
+        }
+    }
+
+    renderItemPocket(item, screenCenterY) {
+        const ctx = this.ctx;
+        const x = item.gridX * GRID_SIZE;
+        const y = this.pixelSnap(screenCenterY - GRID_SIZE / 2);
+        const isOxygen = item.type === 'oxygen';
+        const accent = isOxygen ? '#4de8ff' : '#f4bd21';
+        const accentDark = isOxygen ? '#15536b' : '#69420e';
+
+        ctx.fillStyle = '#050711';
+        ctx.fillRect(x + 3, y + 3, GRID_SIZE - 6, GRID_SIZE - 6);
+        ctx.fillStyle = '#342742';
+        ctx.fillRect(x + 6, y + 6, GRID_SIZE - 12, 4);
+        ctx.fillRect(x + 6, y + 6, 4, GRID_SIZE - 12);
+        ctx.fillStyle = '#0a0b17';
+        ctx.fillRect(x + 10, y + 10, GRID_SIZE - 20, GRID_SIZE - 20);
+        ctx.fillStyle = '#171426';
+        ctx.fillRect(x + 12, y + 12, GRID_SIZE - 24, 4);
+        ctx.fillRect(x + 12, y + 12, 4, GRID_SIZE - 24);
+        ctx.fillStyle = '#03050c';
+        ctx.fillRect(x + 14, y + GRID_SIZE - 16, GRID_SIZE - 28, 3);
+
+        ctx.fillStyle = accentDark;
+        ctx.fillRect(x + 8, y + 8, 10, 2);
+        ctx.fillRect(x + 8, y + 8, 2, 10);
+        ctx.fillRect(x + GRID_SIZE - 18, y + GRID_SIZE - 10, 10, 2);
+        ctx.fillRect(x + GRID_SIZE - 10, y + GRID_SIZE - 18, 2, 10);
+        ctx.fillStyle = accent;
+        ctx.fillRect(x + 10, y + 10, 4, 2);
+        ctx.fillRect(x + GRID_SIZE - 14, y + GRID_SIZE - 12, 4, 2);
+    }
+
+    renderOxygenTube(x, y) {
+        const ctx = this.ctx;
+        const bob = this.pixelSnap(Math.sin(this.visualTime * 4.5 + x) * 2);
+        const centerX = this.pixelSnap(x);
+        const centerY = this.pixelSnap(y + bob);
+
+        ctx.fillStyle = '#0b2837';
+        ctx.fillRect(centerX - 18, centerY - 24, 36, 48);
+        ctx.fillStyle = '#1b8da8';
+        ctx.fillRect(centerX - 16, centerY - 22, 32, 44);
+        ctx.fillStyle = '#6cf4ff';
+        ctx.fillRect(centerX - 12, centerY - 20, 4, 4);
+        ctx.fillRect(centerX + 8, centerY + 16, 4, 4);
+
+        if (ASSETS.oxygen_tube) {
+            ctx.drawImage(
+                ASSETS.oxygen_tube,
+                centerX - 24,
+                centerY - 24,
+                48,
+                48
+            );
+        } else {
+            ctx.fillStyle = '#c9fbff';
+            ctx.fillRect(centerX - 7, centerY - 16, 14, 32);
+            ctx.fillStyle = '#28cbea';
+            ctx.fillRect(centerX - 5, centerY - 10, 10, 22);
+        }
+    }
+
+    renderSafe(x, y) {
+        const ctx = this.ctx;
+        const screenX = this.pixelSnap(x);
+        const screenY = this.pixelSnap(y);
+        const width = this.safe.width;
+        const height = this.safe.height;
+
+        ctx.fillStyle = '#04050b';
+        ctx.fillRect(screenX + 6, screenY + 8, width, height);
+        this.fillSteppedRect(screenX, screenY, width, height, 6, '#171522');
+        this.fillSteppedRect(screenX + 4, screenY + 4, width - 8, height - 8, 4, '#4b4855');
+        ctx.fillStyle = '#242530';
+        ctx.fillRect(screenX + 10, screenY + 10, width - 20, height - 20);
+        ctx.fillStyle = '#77737d';
+        ctx.fillRect(screenX + 10, screenY + 10, width - 20, 4);
+        ctx.fillRect(screenX + 10, screenY + 10, 4, height - 20);
+        ctx.fillStyle = '#11131c';
+        ctx.fillRect(screenX + width - 16, screenY + 12, 5, height - 24);
+        ctx.fillRect(screenX + 12, screenY + height - 16, width - 24, 5);
+
+        const doorX = screenX + 24;
+        const doorY = screenY + 24;
+        this.fillSteppedRect(doorX, doorY, 80, 80, 8, '#0d0f17');
+        this.fillSteppedRect(doorX + 5, doorY + 5, 70, 70, 7, '#343640');
+        this.fillSteppedRect(doorX + 11, doorY + 11, 58, 58, 6, '#1b1e28');
+
+        const centerX = screenX + width / 2;
+        const centerY = screenY + height / 2;
+        ctx.fillStyle = '#8a5b17';
+        ctx.fillRect(centerX - 4, centerY - 28, 8, 56);
+        ctx.fillRect(centerX - 28, centerY - 4, 56, 8);
+        ctx.fillStyle = '#e4ad31';
+        ctx.fillRect(centerX - 3, centerY - 25, 6, 50);
+        ctx.fillRect(centerX - 25, centerY - 3, 50, 6);
+        this.fillSteppedRect(centerX - 13, centerY - 13, 26, 26, 4, '#68420f');
+        this.fillSteppedRect(centerX - 9, centerY - 9, 18, 18, 3, '#ffd65a');
+
+        const rivets = [
+            [16, 16], [width - 22, 16],
+            [16, height - 22], [width - 22, height - 22],
+        ];
+        for (const [rivetX, rivetY] of rivets) {
+            ctx.fillStyle = '#0b0c12';
+            ctx.fillRect(screenX + rivetX, screenY + rivetY, 7, 7);
+            ctx.fillStyle = '#d0c998';
+            ctx.fillRect(screenX + rivetX + 1, screenY + rivetY + 1, 4, 4);
+        }
+    }
+
+    renderLighting() {
+        if (!this.lightingOverlay) {
+            const overlay = document.createElement('canvas');
+            overlay.width = CANVAS_WIDTH;
+            overlay.height = CANVAS_HEIGHT;
+            const overlayCtx = overlay.getContext('2d');
+            overlayCtx.imageSmoothingEnabled = false;
+
+            for (let step = 0; step < 5; step++) {
+                const inset = step * 12;
+                const width = CANVAS_WIDTH - inset * 2;
+                const height = CANVAS_HEIGHT - inset * 2;
+                overlayCtx.fillStyle = 'rgba(2, 3, 10, 0.035)';
+                overlayCtx.fillRect(inset, inset, width, 12);
+                overlayCtx.fillRect(inset, inset + height - 12, width, 12);
+                overlayCtx.fillRect(inset, inset + 12, 12, height - 24);
+                overlayCtx.fillRect(inset + width - 12, inset + 12, 12, height - 24);
+            }
+
+            overlayCtx.fillStyle = 'rgba(2, 3, 10, 0.12)';
+            overlayCtx.fillRect(0, CANVAS_HEIGHT - 44, CANVAS_WIDTH, 44);
+            this.lightingOverlay = overlay;
+        }
+
+        this.ctx.drawImage(this.lightingOverlay, 0, 0);
+    }
     
+    renderDebris() {
+        for (const particle of this.debrisParticles) {
+            const alpha = Math.max(0, particle.life / particle.maxLife);
+            const screenY = particle.y - this.cameraY;
+            if (screenY < -16 || screenY > CANVAS_HEIGHT + 16) continue;
+
+            this.ctx.globalAlpha = alpha;
+            this.ctx.fillStyle = particle.color;
+            this.ctx.fillRect(
+                this.pixelSnap(particle.x - particle.size / 2),
+                this.pixelSnap(screenY - particle.size / 2),
+                particle.size,
+                particle.size
+            );
+        }
+        this.ctx.globalAlpha = 1;
+    }
+
+    getBlockTile(colorIndex, edgeMask, variant) {
+        if (!this.blockTileCache) {
+            this.blockTileCache = new Map();
+        }
+
+        const cacheKey = `${colorIndex}:${edgeMask}:${variant}`;
+        if (this.blockTileCache.has(cacheKey)) {
+            return this.blockTileCache.get(cacheKey);
+        }
+
+        const tile = document.createElement('canvas');
+        tile.width = 32;
+        tile.height = 32;
+        const tileCtx = tile.getContext('2d');
+        tileCtx.imageSmoothingEnabled = false;
+
+        const color = BLOCK_COLORS[colorIndex];
+        const hasTop = Boolean(edgeMask & 1);
+        const hasRight = Boolean(edgeMask & 2);
+        const hasBottom = Boolean(edgeMask & 4);
+        const hasLeft = Boolean(edgeMask & 8);
+        const drawShape = (left, top, right, bottom, cut, fill) => {
+            tileCtx.fillStyle = fill;
+
+            for (let row = top; row < bottom; row++) {
+                let rowLeft = left;
+                let rowRight = right;
+
+                if (!hasTop && row < top + cut) {
+                    const amount = top + cut - row;
+                    if (!hasLeft) rowLeft += amount;
+                    if (!hasRight) rowRight -= amount;
+                }
+                if (!hasBottom && row >= bottom - cut) {
+                    const amount = row - (bottom - cut) + 1;
+                    if (!hasLeft) rowLeft += amount;
+                    if (!hasRight) rowRight -= amount;
+                }
+
+                tileCtx.fillRect(rowLeft, row, Math.max(0, rowRight - rowLeft), 1);
+            }
+        };
+
+        const outerLeft = hasLeft ? 0 : 1;
+        const outerTop = hasTop ? 0 : 1;
+        const outerRight = hasRight ? 32 : 31;
+        const outerBottom = hasBottom ? 32 : 31;
+        drawShape(outerLeft, outerTop, outerRight, outerBottom, 3, color.deep);
+
+        const innerLeft = hasLeft ? 0 : outerLeft + 2;
+        const innerTop = hasTop ? 0 : outerTop + 2;
+        const innerRight = hasRight ? 32 : outerRight - 2;
+        const innerBottom = hasBottom ? 32 : outerBottom - 2;
+        drawShape(innerLeft, innerTop, innerRight, innerBottom, 2, color.color);
+
+        tileCtx.fillStyle = color.light;
+        if (!hasTop) tileCtx.fillRect(7, 4, 18, 2);
+        if (!hasLeft) tileCtx.fillRect(4, 8, 2, 16);
+        tileCtx.fillStyle = color.highlight;
+        if (!hasTop && !hasLeft) {
+            tileCtx.fillRect(7, 6, 6, 3);
+            tileCtx.fillRect(8, 5, 4, 1);
+        }
+
+        tileCtx.fillStyle = color.shadow;
+        if (!hasBottom) tileCtx.fillRect(7, 27, 18, 2);
+        if (!hasRight) tileCtx.fillRect(27, 8, 2, 17);
+        tileCtx.fillStyle = color.deep;
+        if (!hasBottom) tileCtx.fillRect(10, 29, 13, 1);
+        if (!hasRight) tileCtx.fillRect(29, 11, 1, 12);
+
+        const chipSets = [
+            [[19, 10, 3, 2], [21, 12, 2, 1]],
+            [[11, 20, 4, 2], [10, 22, 2, 1]],
+            [[22, 18, 2, 4], [20, 20, 2, 2]],
+        ];
+        tileCtx.fillStyle = color.shadow;
+        for (const [chipX, chipY, chipWidth, chipHeight] of chipSets[variant]) {
+            tileCtx.fillRect(chipX, chipY, chipWidth, chipHeight);
+        }
+
+        this.blockTileCache.set(cacheKey, tile);
+        return tile;
+    }
+
     renderColoredBlock(block) {
         if (block.destroyed) return;
-        
-        const color = BLOCK_COLORS[block.colorIndex];
+
         const fallOffset = block.isFalling ? block.fallProgress * GRID_SIZE : 0;
-        const shakeOffset = block.getShakeOffset();
-        const ctx = this.ctx;
-        const outerPadding = 2;
-        const radius = 6;
         const colorValue = block.colorIndex + BLOCK_TYPES.COLORED;
-        const baseX = block.x * GRID_SIZE + shakeOffset;
-        const baseY = block.y * GRID_SIZE - this.cameraY + fallOffset;
-        
-        if (baseY < -GRID_SIZE || baseY > CANVAS_HEIGHT + GRID_SIZE) return;
-        
+        const screenX = this.pixelSnap(block.x * GRID_SIZE + block.getShakeOffset());
+        const screenY = this.pixelSnap(
+            block.y * GRID_SIZE - this.cameraY + fallOffset
+        );
+
+        if (screenY < -GRID_SIZE || screenY > CANVAS_HEIGHT + GRID_SIZE) return;
+
         const hasTop = this.grid[block.y - 1]?.[block.x] === colorValue;
+        const hasRight = this.grid[block.y]?.[block.x + 1] === colorValue;
         const hasBottom = this.grid[block.y + 1]?.[block.x] === colorValue;
         const hasLeft = this.grid[block.y]?.[block.x - 1] === colorValue;
-        const hasRight = this.grid[block.y]?.[block.x + 1] === colorValue;
-        const topInset = hasTop ? 0 : outerPadding;
-        const bottomInset = hasBottom ? 0 : outerPadding;
-        const leftInset = hasLeft ? 0 : outerPadding;
-        const rightInset = hasRight ? 0 : outerPadding;
-        const screenX = baseX + leftInset;
-        const screenY = baseY + topInset;
-        const width = GRID_SIZE - leftInset - rightInset;
-        const height = GRID_SIZE - topInset - bottomInset;
-        
-        // Determine which corners should be rounded
-        const tl = !hasTop && !hasLeft ? radius : 0;
-        const tr = !hasTop && !hasRight ? radius : 0;
-        const bl = !hasBottom && !hasLeft ? radius : 0;
-        const br = !hasBottom && !hasRight ? radius : 0;
-        
-        // Draw rounded rectangle
-        ctx.beginPath();
-        ctx.moveTo(screenX + tl, screenY);
-        ctx.lineTo(screenX + width - tr, screenY);
-        if (tr) ctx.arcTo(screenX + width, screenY, screenX + width, screenY + tr, tr);
-        else ctx.lineTo(screenX + width, screenY);
-        ctx.lineTo(screenX + width, screenY + height - br);
-        if (br) ctx.arcTo(screenX + width, screenY + height, screenX + width - br, screenY + height, br);
-        else ctx.lineTo(screenX + width, screenY + height);
-        ctx.lineTo(screenX + bl, screenY + height);
-        if (bl) ctx.arcTo(screenX, screenY + height, screenX, screenY + height - bl, bl);
-        else ctx.lineTo(screenX, screenY + height);
-        ctx.lineTo(screenX, screenY + tl);
-        if (tl) ctx.arcTo(screenX, screenY, screenX + tl, screenY, tl);
-        else ctx.lineTo(screenX, screenY);
-        ctx.closePath();
-        
+        const edgeMask =
+            (hasTop ? 1 : 0) |
+            (hasRight ? 2 : 0) |
+            (hasBottom ? 4 : 0) |
+            (hasLeft ? 8 : 0);
+        const variant = Math.abs(block.id) % 3;
+        const tile = this.getBlockTile(block.colorIndex, edgeMask, variant);
+
+        this.ctx.drawImage(tile, screenX, screenY, GRID_SIZE, GRID_SIZE);
+
         if (block.isClearing && Math.floor(block.clearTimer * 24) % 2 === 0) {
-            ctx.fillStyle = '#ffffff';
-            ctx.fill();
-        } else {
-            const gradient = ctx.createLinearGradient(screenX, screenY, screenX, screenY + height);
-            gradient.addColorStop(0, color.highlight);
-            gradient.addColorStop(0.3, color.color);
-            gradient.addColorStop(1, color.shadow);
-            ctx.fillStyle = gradient;
-            ctx.fill();
-        }
-        
-        if (!hasTop && !hasLeft && !block.isClearing) {
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
-            ctx.beginPath();
-            ctx.ellipse(screenX + 8, screenY + 8, 5, 4, -0.3, 0, Math.PI * 2);
-            ctx.fill();
-            
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
-            ctx.beginPath();
-            ctx.ellipse(screenX + 14, screenY + 12, 3, 2, -0.3, 0, Math.PI * 2);
-            ctx.fill();
-        }
-        
-        ctx.strokeStyle = block.isClearing ? 'rgba(255, 255, 255, 0.95)' : 'rgba(0, 0, 0, 0.8)';
-        ctx.lineWidth = 3;
-        ctx.lineCap = 'round';
-        
-        // Only draw edges that are on the outside of the same-color cluster
-        if (!hasTop) {
-            ctx.beginPath();
-            ctx.moveTo(screenX, screenY);
-            ctx.lineTo(screenX + width, screenY);
-            ctx.stroke();
-        }
-        if (!hasBottom) {
-            ctx.beginPath();
-            ctx.moveTo(screenX, screenY + height);
-            ctx.lineTo(screenX + width, screenY + height);
-            ctx.stroke();
-        }
-        if (!hasLeft) {
-            ctx.beginPath();
-            ctx.moveTo(screenX, screenY);
-            ctx.lineTo(screenX, screenY + height);
-            ctx.stroke();
-        }
-        if (!hasRight) {
-            ctx.beginPath();
-            ctx.moveTo(screenX + width, screenY);
-            ctx.lineTo(screenX + width, screenY + height);
-            ctx.stroke();
+            this.ctx.fillStyle = 'rgba(255, 255, 255, 0.68)';
+            this.ctx.fillRect(screenX + 4, screenY + 4, GRID_SIZE - 8, GRID_SIZE - 8);
         }
     }
     
     renderXBlock(x, y, xBlock) {
-        // Hit flash effect
-        if (xBlock && xBlock.hitFlash > 0) {
-            this.ctx.fillStyle = '#ffffff';
-            this.ctx.fillRect(x, y, GRID_SIZE, GRID_SIZE);
-            return;
+        const ctx = this.ctx;
+        const screenX = this.pixelSnap(x);
+        const screenY = this.pixelSnap(y);
+        const isFlashing = xBlock && xBlock.hitFlash > 0;
+
+        ctx.fillStyle = '#080913';
+        ctx.fillRect(screenX + 2, screenY + 4, 60, 60);
+        this.fillSteppedRect(
+            screenX + 2,
+            screenY + 2,
+            60,
+            60,
+            5,
+            isFlashing ? '#fff6e6' : '#292936'
+        );
+        ctx.fillStyle = isFlashing ? '#ffd2c5' : '#4c4d5b';
+        ctx.fillRect(screenX + 8, screenY + 8, 48, 4);
+        ctx.fillRect(screenX + 8, screenY + 8, 4, 48);
+        ctx.fillStyle = isFlashing ? '#ff6f74' : '#171823';
+        ctx.fillRect(screenX + 52, screenY + 12, 4, 42);
+        ctx.fillRect(screenX + 12, screenY + 52, 42, 4);
+
+        const xColor = isFlashing ? '#ffffff' : '#d34e69';
+        const xShadow = isFlashing ? '#ff9b91' : '#6e243e';
+        for (let step = 0; step < 6; step++) {
+            const offset = 13 + step * 6;
+            ctx.fillStyle = xShadow;
+            ctx.fillRect(screenX + offset - 2, screenY + offset - 2, 10, 10);
+            ctx.fillRect(screenX + 51 - step * 6 - 2, screenY + offset - 2, 10, 10);
+            ctx.fillStyle = xColor;
+            ctx.fillRect(screenX + offset, screenY + offset, 6, 6);
+            ctx.fillRect(screenX + 51 - step * 6, screenY + offset, 6, 6);
         }
-        
-        // Use sprite if available
-        if (ASSETS.x_block) {
-            this.ctx.drawImage(ASSETS.x_block, x, y, GRID_SIZE, GRID_SIZE);
-        } else {
-            // Fallback
-            this.ctx.fillStyle = '#cc4466';
-            this.ctx.fillRect(x, y, GRID_SIZE, GRID_SIZE);
+
+        const rivets = [[8, 8], [50, 8], [8, 50], [50, 50]];
+        for (const [rivetX, rivetY] of rivets) {
+            ctx.fillStyle = '#b5b1a9';
+            ctx.fillRect(screenX + rivetX, screenY + rivetY, 5, 5);
+            ctx.fillStyle = '#4b4750';
+            ctx.fillRect(screenX + rivetX + 3, screenY + rivetY + 3, 2, 2);
         }
-        
-        // Show HP as dots
-        if (xBlock && xBlock.hp < 3) {
-            this.ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-            // Show cracks based on damage
-            if (xBlock.hp <= 2) {
-                this.ctx.fillRect(x + 5, y + 5, 8, 2);
-                this.ctx.fillRect(x + 8, y + 5, 2, 8);
+
+        if (xBlock && xBlock.hp < xBlock.maxHp) {
+            const damage = xBlock.maxHp - xBlock.hp;
+            ctx.fillStyle = '#070811';
+            ctx.fillRect(screenX + 10, screenY + 18, 8, 3);
+            ctx.fillRect(screenX + 15, screenY + 20, 3, 8);
+            if (damage >= 2) {
+                ctx.fillRect(screenX + 43, screenY + 10, 3, 12);
+                ctx.fillRect(screenX + 38, screenY + 19, 8, 3);
             }
-            if (xBlock.hp <= 1) {
-                this.ctx.fillRect(x + 18, y + 18, 10, 2);
-                this.ctx.fillRect(x + 22, y + 14, 2, 10);
+            if (damage >= 3) {
+                ctx.fillRect(screenX + 34, screenY + 43, 14, 3);
+                ctx.fillRect(screenX + 34, screenY + 38, 3, 8);
+            }
+            if (damage >= 4) {
+                ctx.fillRect(screenX + 18, screenY + 38, 3, 14);
+                ctx.fillRect(screenX + 13, screenY + 45, 8, 3);
             }
         }
     }
     
     renderBedrock(x, y) {
-        if (ASSETS.bedrock) {
-            this.ctx.drawImage(ASSETS.bedrock, x, y, GRID_SIZE, GRID_SIZE);
-        } else {
-            // Fallback
-            this.ctx.fillStyle = '#2a2a2a';
-            this.ctx.fillRect(x, y, GRID_SIZE, GRID_SIZE);
-        }
+        const ctx = this.ctx;
+        const screenX = this.pixelSnap(x);
+        const screenY = this.pixelSnap(y);
+
+        ctx.fillStyle = '#070710';
+        ctx.fillRect(screenX, screenY, GRID_SIZE, GRID_SIZE);
+        ctx.fillStyle = '#292437';
+        ctx.fillRect(screenX + 2, screenY + 2, GRID_SIZE - 4, GRID_SIZE - 4);
+        ctx.fillStyle = '#514561';
+        ctx.fillRect(screenX + 4, screenY + 4, GRID_SIZE - 8, 5);
+        ctx.fillRect(screenX + 4, screenY + 4, 5, GRID_SIZE - 8);
+        ctx.fillStyle = '#171421';
+        ctx.fillRect(screenX + 8, screenY + 54, 48, 6);
+        ctx.fillRect(screenX + 54, screenY + 8, 6, 48);
+        ctx.fillStyle = '#75647f';
+        ctx.fillRect(screenX + 14, screenY + 16, 16, 4);
+        ctx.fillRect(screenX + 12, screenY + 20, 4, 14);
+        ctx.fillStyle = '#110f19';
+        ctx.fillRect(screenX + 38, screenY + 24, 4, 22);
+        ctx.fillRect(screenX + 32, screenY + 42, 10, 4);
+    }
+
+    renderTreasureGlint(x, y, phaseOffset = 0) {
+        const phase = Math.floor(this.visualTime * 5 + phaseOffset) % 12;
+        if (phase > 2) return;
+
+        const ctx = this.ctx;
+        const offset = phase * 2;
+        ctx.fillStyle = '#fffbe2';
+        ctx.fillRect(x + offset, y, 4, 4);
+        ctx.fillRect(x + 1 + offset, y - 4, 2, 12);
+        ctx.fillRect(x - 4 + offset, y + 1, 12, 2);
     }
     
     renderTreasure(x, y, type) {
         const ctx = this.ctx;
-        
-        // Use gold spritesheet by Clint Bellanger (CC-BY 3.0)
-        // Layout 4x4 grid, 32x32 each:
-        // Row 0: [palette takes 2 tiles], empty, empty
-        // Row 1: coin-stack, coin-pile, chalice, gold bars
-        // Row 2: chest-closed, chest-open?, crown, sword-pile
-        // Row 3: more items...
-        
-        if (ASSETS.gold) {
-            let srcX = 0, srcY = 32; // Default: first item on row 1
-            
-            if (type === 'coin') {
-                srcX = 0; srcY = 32; // Coin stack (row 1, col 0)
-            } else if (type === 'bag') {
-                srcX = 32; srcY = 32; // Coin pile (row 1, col 1)
-            } else if (type === 'chest') {
-                srcX = 0; srcY = 64; // Treasure chest (row 2, col 0)
-            }
-            
-            ctx.drawImage(
-                ASSETS.gold,
-                srcX, srcY, 32, 32,
-                x - GRID_SIZE/2, y - GRID_SIZE/2, GRID_SIZE, GRID_SIZE
-            );
-        } else {
-            // Fallback procedural rendering
-            const scale = GRID_SIZE / 32;
-            
-            if (type === 'coin') {
-                ctx.fillStyle = '#ffd700';
-                ctx.beginPath();
-                ctx.arc(x, y, 10 * scale, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.strokeStyle = '#b8860b';
-                ctx.lineWidth = 2 * scale;
-                ctx.stroke();
-            } else if (type === 'bag') {
-                ctx.fillStyle = '#ffd700';
-                ctx.beginPath();
-                ctx.arc(x, y, 12 * scale, 0, Math.PI * 2);
-                ctx.fill();
-            } else if (type === 'chest') {
-                ctx.fillStyle = '#8b4513';
-                ctx.fillRect(x - 14*scale, y - 10*scale, 28*scale, 20*scale);
-                ctx.fillStyle = '#ffd700';
-                ctx.fillRect(x - 3*scale, y - 10*scale, 6*scale, 20*scale);
-            }
+        const centerX = this.pixelSnap(x);
+        const bob = this.pixelSnap(Math.sin(this.visualTime * 4 + x * 0.02) * 2);
+        const centerY = this.pixelSnap(y + bob);
+
+        if (type === 'coin') {
+            this.fillSteppedRect(centerX - 14, centerY - 18, 28, 36, 6, '#5c3308');
+            this.fillSteppedRect(centerX - 10, centerY - 15, 20, 30, 4, '#f0a719');
+            ctx.fillStyle = '#ffe678';
+            ctx.fillRect(centerX - 6, centerY - 11, 5, 20);
+            ctx.fillRect(centerX - 2, centerY - 11, 8, 4);
+            ctx.fillStyle = '#b66a0a';
+            ctx.fillRect(centerX + 4, centerY - 7, 4, 18);
+            ctx.fillRect(centerX - 4, centerY + 9, 10, 3);
+            this.renderTreasureGlint(centerX - 12, centerY - 15, x * 0.01);
+        } else if (type === 'bag') {
+            ctx.fillStyle = '#5b2e0a';
+            ctx.fillRect(centerX - 9, centerY - 19, 18, 8);
+            ctx.fillRect(centerX - 5, centerY - 23, 10, 5);
+            this.fillSteppedRect(centerX - 18, centerY - 12, 36, 32, 6, '#6e3b0b');
+            this.fillSteppedRect(centerX - 14, centerY - 9, 28, 26, 5, '#e6a725');
+            ctx.fillStyle = '#ffdb5a';
+            ctx.fillRect(centerX - 9, centerY - 7, 5, 17);
+            ctx.fillStyle = '#9f5d0e';
+            ctx.fillRect(centerX + 8, centerY - 5, 4, 17);
+            ctx.fillStyle = '#fff1a2';
+            ctx.fillRect(centerX - 3, centerY - 2, 6, 8);
+            ctx.fillRect(centerX - 5, centerY, 10, 4);
+            this.renderTreasureGlint(centerX - 15, centerY - 10, x * 0.015);
+        } else if (type === 'chest') {
+            ctx.fillStyle = '#36190b';
+            ctx.fillRect(centerX - 22, centerY - 12, 44, 31);
+            this.fillSteppedRect(centerX - 20, centerY - 19, 40, 19, 5, '#7d3512');
+            ctx.fillStyle = '#bc5c1d';
+            ctx.fillRect(centerX - 15, centerY - 15, 30, 10);
+            ctx.fillStyle = '#4b220c';
+            ctx.fillRect(centerX - 20, centerY + 1, 40, 15);
+            ctx.fillStyle = '#e1a625';
+            ctx.fillRect(centerX - 22, centerY - 3, 44, 6);
+            ctx.fillRect(centerX - 4, centerY - 17, 8, 34);
+            ctx.fillStyle = '#ffdc5b';
+            ctx.fillRect(centerX - 2, centerY + 3, 5, 7);
+            this.renderTreasureGlint(centerX + 13, centerY - 17, x * 0.02);
         }
     }
     
@@ -1889,22 +2756,37 @@ class Game {
         let sprite = null;
         let frameWidth = 32;
         let frameIndex = 0;
+
+        if (!p.isFalling && !p.isSteppingUp) {
+            ctx.fillStyle = 'rgba(3, 4, 10, 0.42)';
+            ctx.fillRect(x + 14, y + 55, 36, 6);
+            ctx.fillRect(x + 20, y + 52, 24, 3);
+        }
         
         // Bounce effect when drilling down
         let offsetY = 0;
         let scaleX = 1;
         let scaleY = 1;
         
+        if (p.landingTimer > 0 && !isDrilling) {
+            const squash = Math.min(1, p.landingTimer / 0.11);
+            scaleX = 1 + squash * 0.13;
+            scaleY = 1 - squash * 0.16;
+            offsetY = (1 - scaleY) * GRID_SIZE / 2;
+        }
+
         if (isDrilling && facing === 'down') {
             const progress = p.drillAnimTimer / DIG_ANIM_DURATION;
             if (progress > 0.5) {
-                offsetY = -8 * (progress - 0.5) * 2;
-                scaleY = 1.1;
-                scaleX = 0.9;
+                const lift = (progress - 0.5) * 2;
+                offsetY = this.pixelSnap(-6 * lift);
+                scaleY = Math.round((1 + 0.08 * lift) * 50) / 50;
+                scaleX = Math.round((1 - 0.06 * lift) * 50) / 50;
             } else {
-                offsetY = 2 * (1 - progress * 2);
-                scaleY = 0.85;
-                scaleX = 1.15;
+                const impact = Math.sin(progress * Math.PI * 2);
+                offsetY = this.pixelSnap(2 * impact);
+                scaleY = Math.round((1 - 0.11 * impact) * 50) / 50;
+                scaleX = Math.round((1 + 0.11 * impact) * 50) / 50;
             }
         }
         
@@ -2006,72 +2888,117 @@ class Game {
         }
     }
     
-    renderHUD() {
-        const padding = 12;
-        const barWidth = 120;
-        const barHeight = 18;
-        
-        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
-        this.ctx.fillRect(0, 0, CANVAS_WIDTH, 55);
-        
-        // Depth
-        this.ctx.fillStyle = '#888';
-        this.ctx.font = 'bold 12px Arial';
-        this.ctx.textAlign = 'left';
-        this.ctx.textBaseline = 'middle';
-        this.ctx.fillText('DEPTH', padding, 14);
-        this.ctx.fillStyle = '#00c8ff';
-        this.ctx.font = 'bold 20px Arial';
-        this.ctx.fillText(this.depth + 'm', padding, 38);
-        
-        // Score
-        this.ctx.fillStyle = '#888';
-        this.ctx.font = 'bold 12px Arial';
-        this.ctx.textAlign = 'center';
-        this.ctx.fillText('SCORE', CANVAS_WIDTH / 2, 14);
-        this.ctx.fillStyle = '#ffd700';
-        this.ctx.font = 'bold 20px Arial';
-        this.ctx.fillText(this.score.toString(), CANVAS_WIDTH / 2, 38);
-        
-        // Oxygen
-        const oxygenX = CANVAS_WIDTH - barWidth - padding;
-        
-        this.ctx.fillStyle = '#888';
-        this.ctx.font = 'bold 12px Arial';
-        this.ctx.textAlign = 'right';
-        this.ctx.fillText('AIR', CANVAS_WIDTH - padding, 14);
-        
-        this.ctx.fillStyle = '#222';
-        this.ctx.fillRect(oxygenX, 28, barWidth, barHeight);
-        
-        const oxygenPercent = Math.max(0, this.oxygen / this.maxOxygen);
-        let barColor = oxygenPercent > 0.5 ? '#00c8ff' : oxygenPercent > 0.25 ? '#ffaa00' : '#ff3333';
-        
-        this.ctx.fillStyle = barColor;
-        this.ctx.fillRect(oxygenX, 28, barWidth * oxygenPercent, barHeight);
-        
-        this.ctx.strokeStyle = '#555';
-        this.ctx.lineWidth = 2;
-        this.ctx.strokeRect(oxygenX, 28, barWidth, barHeight);
-        
-        this.ctx.fillStyle = '#fff';
-        this.ctx.font = 'bold 12px Arial';
-        this.ctx.textAlign = 'center';
-        this.ctx.fillText(Math.floor(this.oxygen) + '%', oxygenX + barWidth/2, 37);
-        
-        // Show gamepad info if connected (small text at bottom)
-        if (this.gamepadMessage) {
-            this.ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-            this.ctx.fillRect(0, CANVAS_HEIGHT - 25, CANVAS_WIDTH, 25);
-            this.ctx.fillStyle = '#0f0';
-            this.ctx.font = '11px Arial';
-            this.ctx.textAlign = 'center';
-            this.ctx.fillText(this.gamepadMessage, CANVAS_WIDTH / 2, CANVAS_HEIGHT - 10);
-            
-            // Clear message after 3 seconds
-            if (Date.now() - this.gamepadMessageTime > 3000) {
-                this.gamepadMessage = null;
+    drawPixelText(text, x, y, scale, color, align = 'left') {
+        const normalized = String(text).toUpperCase();
+        const glyphWidth = 5 * scale;
+        const letterSpacing = scale;
+        const textWidth = normalized.length > 0 ?
+            normalized.length * (glyphWidth + letterSpacing) - letterSpacing :
+            0;
+        let startX = x;
+
+        if (align === 'center') startX -= textWidth / 2;
+        else if (align === 'right') startX -= textWidth;
+
+        this.ctx.fillStyle = color;
+        for (let index = 0; index < normalized.length; index++) {
+            const glyph = PIXEL_FONT[normalized[index]] || PIXEL_FONT[' '];
+            const glyphX = Math.round(startX + index * (glyphWidth + letterSpacing));
+
+            for (let row = 0; row < glyph.length; row++) {
+                for (let column = 0; column < glyph[row].length; column++) {
+                    if (glyph[row][column] === '1') {
+                        this.ctx.fillRect(
+                            glyphX + column * scale,
+                            y + row * scale,
+                            scale,
+                            scale
+                        );
+                    }
+                }
             }
+        }
+    }
+
+    renderHUD() {
+        const ctx = this.ctx;
+        const panelHeight = 64;
+        const oxygenPercent = Math.max(0, this.oxygen / this.maxOxygen);
+        const barColor = oxygenPercent > 0.5 ?
+            '#43e8ff' :
+            oxygenPercent > 0.25 ? '#f6bd2f' : '#ff5166';
+
+        ctx.fillStyle = '#060812';
+        ctx.fillRect(0, 0, CANVAS_WIDTH, panelHeight);
+        ctx.fillStyle = '#171426';
+        ctx.fillRect(4, 4, CANVAS_WIDTH - 8, panelHeight - 8);
+        ctx.fillStyle = '#352b49';
+        ctx.fillRect(4, 4, CANVAS_WIDTH - 8, 3);
+        ctx.fillRect(4, 4, 3, panelHeight - 8);
+        ctx.fillStyle = '#050710';
+        ctx.fillRect(0, panelHeight - 6, CANVAS_WIDTH, 6);
+        ctx.fillStyle = '#7b506a';
+        ctx.fillRect(0, panelHeight - 6, CANVAS_WIDTH, 2);
+
+        // Depth module
+        ctx.fillStyle = '#43e8ff';
+        ctx.fillRect(13, 12, 4, 12);
+        ctx.fillRect(9, 20, 12, 4);
+        ctx.fillRect(11, 24, 8, 4);
+        this.drawPixelText('DEPTH', 29, 10, 2, '#817c93');
+        this.drawPixelText(`${this.depth}M`, 13, 34, 3, '#64edff');
+
+        // Score module
+        const scoreCenter = CANVAS_WIDTH / 2;
+        this.fillSteppedRect(scoreCenter - 45, 8, 12, 14, 3, '#7b470d');
+        this.fillSteppedRect(scoreCenter - 42, 10, 6, 10, 2, '#ffd75a');
+        this.drawPixelText('SCORE', scoreCenter + 10, 10, 2, '#817c93', 'center');
+        this.drawPixelText(this.score.toString(), scoreCenter, 34, 3, '#ffd75a', 'center');
+
+        // Air module
+        const barX = CANVAS_WIDTH - 130;
+        const barY = 36;
+        this.drawPixelText('AIR', barX, 10, 2, '#817c93');
+        this.drawPixelText(
+            `${Math.floor(this.oxygen)}%`,
+            CANVAS_WIDTH - 12,
+            10,
+            2,
+            barColor,
+            'right'
+        );
+
+        for (let segment = 0; segment < 10; segment++) {
+            const segmentX = barX + segment * 12;
+            ctx.fillStyle = '#050711';
+            ctx.fillRect(segmentX, barY, 10, 18);
+            ctx.fillStyle = '#252637';
+            ctx.fillRect(segmentX + 2, barY + 2, 6, 14);
+
+            if (oxygenPercent * 10 > segment) {
+                ctx.fillStyle = barColor;
+                ctx.fillRect(segmentX + 2, barY + 2, 6, 14);
+                ctx.fillStyle = oxygenPercent > 0.5 ? '#b8f9ff' : '#ffe8a0';
+                ctx.fillRect(segmentX + 2, barY + 2, 6, 3);
+            }
+        }
+
+        if (oxygenPercent <= 0.25 && Math.floor(this.visualTime * 4) % 2 === 0) {
+            ctx.fillStyle = '#ff5166';
+            ctx.fillRect(CANVAS_WIDTH - 136, 6, 2, panelHeight - 14);
+            ctx.fillRect(CANVAS_WIDTH - 136, 6, 130, 2);
+        }
+
+        if (this.gamepadMessage) {
+            ctx.save();
+            ctx.fillStyle = 'rgba(5, 7, 16, 0.92)';
+            ctx.fillRect(0, CANVAS_HEIGHT - 26, CANVAS_WIDTH, 26);
+            ctx.fillStyle = '#75f0a2';
+            ctx.font = 'bold 11px monospace';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(this.gamepadMessage, CANVAS_WIDTH / 2, CANVAS_HEIGHT - 13);
+            ctx.restore();
         }
     }
     
@@ -2096,64 +3023,115 @@ class Game {
     }
     
     renderOverlay(text, color) {
-        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-        this.ctx.fillRect(0, CANVAS_HEIGHT / 2 - 50, CANVAS_WIDTH, 100);
-        
-        this.ctx.fillStyle = color;
-        this.ctx.font = 'bold 56px Arial';
-        this.ctx.textAlign = 'center';
-        this.ctx.textBaseline = 'middle';
-        this.ctx.fillText(text, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
+        const panelY = CANVAS_HEIGHT / 2 - 58;
+        this.ctx.fillStyle = 'rgba(4, 5, 12, 0.9)';
+        this.ctx.fillRect(0, panelY, CANVAS_WIDTH, 116);
+        this.ctx.fillStyle = '#392d4b';
+        this.ctx.fillRect(0, panelY, CANVAS_WIDTH, 4);
+        this.ctx.fillRect(0, panelY + 112, CANVAS_WIDTH, 4);
+        this.drawPixelText(
+            text,
+            CANVAS_WIDTH / 2,
+            panelY + 28,
+            text.length > 1 ? 8 : 10,
+            color,
+            'center'
+        );
     }
     
     renderGameOver() {
-        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+        this.ctx.fillStyle = 'rgba(3, 4, 10, 0.92)';
         this.ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-        
-        this.ctx.fillStyle = '#ff4444';
-        this.ctx.font = 'bold 36px Arial';
-        this.ctx.textAlign = 'center';
-        this.ctx.fillText('GAME OVER', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 60);
-        
-        this.ctx.fillStyle = '#fff';
-        this.ctx.font = '22px Arial';
-        this.ctx.fillText(`Score: ${this.score}`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
-        this.ctx.fillText(`Depth: ${this.depth}m`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 35);
-        
-        this.ctx.fillStyle = '#00c8ff';
-        this.ctx.font = '16px Arial';
-        this.ctx.fillText('Press SPACE to retry', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 90);
+        this.ctx.fillStyle = '#251b31';
+        this.ctx.fillRect(24, CANVAS_HEIGHT / 2 - 126, CANVAS_WIDTH - 48, 252);
+        this.ctx.fillStyle = '#6f3248';
+        this.ctx.fillRect(24, CANVAS_HEIGHT / 2 - 126, CANVAS_WIDTH - 48, 4);
+        this.ctx.fillRect(24, CANVAS_HEIGHT / 2 + 122, CANVAS_WIDTH - 48, 4);
+        this.drawPixelText(
+            'GAME OVER',
+            CANVAS_WIDTH / 2,
+            CANVAS_HEIGHT / 2 - 88,
+            4,
+            '#ff5a6c',
+            'center'
+        );
+        this.drawPixelText(
+            `SCORE ${this.score}`,
+            CANVAS_WIDTH / 2,
+            CANVAS_HEIGHT / 2 - 20,
+            3,
+            '#ffe071',
+            'center'
+        );
+        this.drawPixelText(
+            `DEPTH ${this.depth}M`,
+            CANVAS_WIDTH / 2,
+            CANVAS_HEIGHT / 2 + 20,
+            2,
+            '#d8d4e5',
+            'center'
+        );
+        this.drawPixelText(
+            'SPACE TO RETRY',
+            CANVAS_WIDTH / 2,
+            CANVAS_HEIGHT / 2 + 80,
+            2,
+            '#64edff',
+            'center'
+        );
     }
     
     renderWin() {
-        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+        this.ctx.fillStyle = 'rgba(3, 4, 10, 0.92)';
         this.ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-        
-        this.ctx.fillStyle = '#ffd700';
-        this.ctx.font = 'bold 32px Arial';
-        this.ctx.textAlign = 'center';
-        this.ctx.fillText('HEIST COMPLETE!', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 60);
-        
-        this.ctx.fillStyle = '#fff';
-        this.ctx.font = '22px Arial';
-        this.ctx.fillText(`Score: ${this.score}`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
-        this.ctx.fillText(`Air: ${Math.floor(this.oxygen)}%`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 35);
-        
-        this.ctx.fillStyle = '#00c8ff';
-        this.ctx.font = '16px Arial';
-        this.ctx.fillText('Press SPACE to continue', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 90);
+        this.ctx.fillStyle = '#251f2b';
+        this.ctx.fillRect(18, CANVAS_HEIGHT / 2 - 130, CANVAS_WIDTH - 36, 260);
+        this.ctx.fillStyle = '#9a6a1d';
+        this.ctx.fillRect(18, CANVAS_HEIGHT / 2 - 130, CANVAS_WIDTH - 36, 4);
+        this.ctx.fillRect(18, CANVAS_HEIGHT / 2 + 126, CANVAS_WIDTH - 36, 4);
+        this.drawPixelText(
+            'HEIST COMPLETE!',
+            CANVAS_WIDTH / 2,
+            CANVAS_HEIGHT / 2 - 92,
+            3,
+            '#ffd75a',
+            'center'
+        );
+        this.drawPixelText(
+            `SCORE ${this.score}`,
+            CANVAS_WIDTH / 2,
+            CANVAS_HEIGHT / 2 - 22,
+            3,
+            '#fff0ad',
+            'center'
+        );
+        this.drawPixelText(
+            `AIR ${Math.floor(this.oxygen)}%`,
+            CANVAS_WIDTH / 2,
+            CANVAS_HEIGHT / 2 + 20,
+            2,
+            '#64edff',
+            'center'
+        );
+        this.drawPixelText(
+            'SPACE TO CONTINUE',
+            CANVAS_WIDTH / 2,
+            CANVAS_HEIGHT / 2 + 82,
+            2,
+            '#7cf0a0',
+            'center'
+        );
     }
     
     gameLoop(currentTime) {
-        const deltaTime = (currentTime - this.lastTime) / 1000;
+        const rawDeltaTime = (currentTime - this.lastTime) / 1000;
+        const deltaTime = Math.min(1 / 30, Math.max(0, rawDeltaTime));
         this.lastTime = currentTime;
         
-        if (deltaTime < 0.1) {
-            this.update(deltaTime);
-            this.render();
-        }
+        this.update(deltaTime);
+        this.render();
         
-        requestAnimationFrame(this.gameLoop.bind(this));
+        requestAnimationFrame(this.boundGameLoop);
     }
 }
 
