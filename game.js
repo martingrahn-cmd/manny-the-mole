@@ -21,7 +21,9 @@ const FALL_START_SPEED = 390;
 const FALL_ACCELERATION = 2300;
 const FALL_MAX_SPEED = 1100;
 const FALL_CENTER_WINDOW = 0.12;
+const LONG_FALL_VISUAL_THRESHOLD = 1.05;
 const STEP_UP_DURATION = 0.15;
+const STEP_UP_HOLD_DELAY = 0.1;
 const STEP_UP_ALIGN_WINDOW = 0.20;
 const DIG_BUFFER_DURATION = 0.055;
 const DIG_RECOVERY = 0.105;
@@ -44,10 +46,6 @@ const ASSETS = {
     mole_walk_left: null,
     mole_walk_right: null,
     mole_falling: null,
-    bedrock: null,
-    x_block: null,
-    oxygen_tube: null,
-    gold: null, // Treasure spritesheet by Clint Bellanger (CC-BY 3.0)
     loaded: false
 };
 
@@ -62,10 +60,6 @@ function loadAssets() {
             ['mole_walk_left', 'assets/mole_walk_left.png'],
             ['mole_walk_right', 'assets/mole_walk_right.png'],
             ['mole_falling', 'assets/mole_falling.png'],
-            ['bedrock', 'assets/bedrock.png'],
-            ['x_block', 'assets/x_block.png'],
-            ['oxygen_tube', 'assets/oxygen_tube.png'],
-            ['gold', 'assets/gold.png'], // Clint Bellanger CC-BY 3.0
         ];
         
         let loadedCount = 0;
@@ -109,42 +103,6 @@ const BLOCK_TYPES = {
     XBLOCK: 10,
     BEDROCK: 11,
     ITEM: 12, // Treasures and oxygen - blocks can't fall through them
-};
-
-const PIXEL_FONT = {
-    '0': ['11111', '10001', '10011', '10101', '11001', '10001', '11111'],
-    '1': ['00100', '01100', '00100', '00100', '00100', '00100', '01110'],
-    '2': ['11110', '00001', '00001', '11110', '10000', '10000', '11111'],
-    '3': ['11110', '00001', '00001', '01110', '00001', '00001', '11110'],
-    '4': ['10010', '10010', '10010', '11111', '00010', '00010', '00010'],
-    '5': ['11111', '10000', '10000', '11110', '00001', '00001', '11110'],
-    '6': ['01111', '10000', '10000', '11110', '10001', '10001', '01110'],
-    '7': ['11111', '00001', '00010', '00100', '01000', '01000', '01000'],
-    '8': ['01110', '10001', '10001', '01110', '10001', '10001', '01110'],
-    '9': ['01110', '10001', '10001', '01111', '00001', '00001', '11110'],
-    'A': ['01110', '10001', '10001', '11111', '10001', '10001', '10001'],
-    'C': ['01111', '10000', '10000', '10000', '10000', '10000', '01111'],
-    'D': ['11110', '10001', '10001', '10001', '10001', '10001', '11110'],
-    'E': ['11111', '10000', '10000', '11110', '10000', '10000', '11111'],
-    'G': ['01111', '10000', '10000', '10111', '10001', '10001', '01111'],
-    'H': ['10001', '10001', '10001', '11111', '10001', '10001', '10001'],
-    'I': ['11111', '00100', '00100', '00100', '00100', '00100', '11111'],
-    'L': ['10000', '10000', '10000', '10000', '10000', '10000', '11111'],
-    'M': ['10001', '11011', '10101', '10101', '10001', '10001', '10001'],
-    'N': ['10001', '11001', '11001', '10101', '10011', '10011', '10001'],
-    'O': ['01110', '10001', '10001', '10001', '10001', '10001', '01110'],
-    'P': ['11110', '10001', '10001', '11110', '10000', '10000', '10000'],
-    'R': ['11110', '10001', '10001', '11110', '10100', '10010', '10001'],
-    'S': ['01111', '10000', '10000', '01110', '00001', '00001', '11110'],
-    'T': ['11111', '00100', '00100', '00100', '00100', '00100', '00100'],
-    'U': ['10001', '10001', '10001', '10001', '10001', '10001', '01110'],
-    'V': ['10001', '10001', '10001', '10001', '10001', '01010', '00100'],
-    'Y': ['10001', '10001', '01010', '00100', '00100', '00100', '00100'],
-    '%': ['11001', '11010', '00100', '01000', '10110', '00110', '00000'],
-    '$': ['00100', '01111', '10100', '01110', '00101', '11110', '00100'],
-    '!': ['00100', '00100', '00100', '00100', '00100', '00000', '00100'],
-    ':': ['00000', '00100', '00100', '00000', '00100', '00100', '00000'],
-    ' ': ['00000', '00000', '00000', '00000', '00000', '00000', '00000'],
 };
 
 function isColoredBlockValue(value) {
@@ -446,6 +404,7 @@ class GameUI {
         this.airFill = document.getElementById('hudAirFill');
         this.airModule = document.getElementById('hudAirModule');
         this.pauseButton = document.getElementById('pauseButton');
+        this.sideDrillHint = document.getElementById('sideDrillHint');
         this.countdown = document.getElementById('countdownDisplay');
         this.toast = document.getElementById('gameToast');
         this.gameoverScore = document.getElementById('gameoverScore');
@@ -511,6 +470,18 @@ class GameUI {
 
         this.hud.hidden = game.gameState === 'menu';
         this.pauseButton.hidden = game.gameState !== 'playing';
+        const showSideDrillHint =
+            game.gameState === 'playing' &&
+            !game.hasSideDrilled &&
+            (
+                game.depth < 7 ||
+                (
+                    game.player.isGrounded &&
+                    game.player.showDrill &&
+                    (game.player.facing === 'left' || game.player.facing === 'right')
+                )
+            );
+        this.sideDrillHint.hidden = !showSideDrillHint;
         this.countdown.hidden = game.gameState !== 'countdown';
         if (game.gameState === 'countdown') {
             this.countdown.textContent = Math.max(1, game.countdownNumber).toString();
@@ -583,6 +554,8 @@ class Game {
             stepUpStartY: 0,
             stepUpTargetX: 0,
             stepUpTargetY: 0,
+            stepUpHoldTimer: 0,
+            stepUpHoldDirection: 0,
             
             // Drilling
             digCooldown: 0,
@@ -604,6 +577,7 @@ class Game {
         this.oxygenTubes = [];
         this.treasures = []; // Coins, bags, chests
         this.itemsByCell = new Map();
+        this.reinforcedRoofCells = new Set();
         this.safe = null;
         this.debrisParticles = [];
         this.screenShake = 0;
@@ -619,6 +593,7 @@ class Game {
         this.countdownTimer = 0;
         this.countdownNumber = 3;
         this.hasPlayerDug = false; // Physics paused until first dig
+        this.hasSideDrilled = false;
         this.pendingMatchCheck = false;
         
         this.gamepadMessage = null;
@@ -916,6 +891,24 @@ class Game {
             return pocket;
         };
 
+        const reinforcePocketRoof = pocket => {
+            for (let offsetX = -1; offsetX <= 1; offsetX++) {
+                const roofX = pocket.x + offsetX;
+                const roofY = pocket.y - 1;
+                const colorBlock = this.colorBlocks.find(block =>
+                    !block.destroyed && block.x === roofX && block.y === roofY
+                );
+                const xBlock = this.xBlocks.find(block =>
+                    !block.destroyed && block.x === roofX && block.y === roofY
+                );
+
+                if (colorBlock) colorBlock.destroyed = true;
+                if (xBlock) xBlock.destroyed = true;
+                this.grid[roofY][roofX] = BLOCK_TYPES.BEDROCK;
+                this.reinforcedRoofCells.add(`${roofX},${roofY}`);
+            }
+        };
+
         for (const spec of pocketSpecs) {
             const pocket = takePocket(spec);
             if (!pocket) continue;
@@ -927,6 +920,9 @@ class Game {
 
             centerBlock.destroyed = true;
             this.grid[pocket.y][pocket.x] = BLOCK_TYPES.ITEM;
+            if (spec.kind === 'oxygen') {
+                reinforcePocketRoof(pocket);
+            }
 
             const item = {
                 x: pocket.x * GRID_SIZE + GRID_SIZE / 2,
@@ -936,7 +932,6 @@ class Game {
                 type: spec.type || 'oxygen',
                 value: spec.value || 0,
                 collected: false,
-                anchored: true,
             };
             const key = `${pocket.x},${pocket.y}`;
             this.itemsByCell.set(key, item);
@@ -949,6 +944,7 @@ class Game {
         }
 
         this.colorBlocks = this.colorBlocks.filter(block => !block.destroyed);
+        this.xBlocks = this.xBlocks.filter(block => !block.destroyed);
     }
     
     getInput() {
@@ -1112,6 +1108,22 @@ class Game {
             p.drillSnapTargetX = null;
         }
 
+        const cancelStepForSideDrill =
+            p.isSteppingUp &&
+            input.digJustPressed &&
+            (p.facing === 'left' || p.facing === 'right');
+        if (cancelStepForSideDrill) {
+            p.isSteppingUp = false;
+            p.stepUpProgress = 0;
+            p.visualX = p.stepUpStartX;
+            p.visualY = p.stepUpStartY;
+            p.gridX = Math.round(p.visualX / GRID_SIZE);
+            p.gridY = Math.round(p.visualY / GRID_SIZE);
+            p.isMoving = false;
+            p.stepUpHoldTimer = 0;
+            p.stepUpHoldDirection = 0;
+        }
+
         if (p.isSteppingUp) {
             p.stepUpProgress = Math.min(1, p.stepUpProgress + deltaTime / STEP_UP_DURATION);
             const t = p.stepUpProgress;
@@ -1130,6 +1142,8 @@ class Game {
                 p.visualY = p.stepUpTargetY;
                 p.gridX = Math.round(p.visualX / GRID_SIZE);
                 p.gridY = Math.round(p.visualY / GRID_SIZE);
+                p.stepUpHoldTimer = 0;
+                p.stepUpHoldDirection = 0;
             }
             return;
         }
@@ -1166,6 +1180,8 @@ class Game {
             p.isFalling = true;
             p.isMoving = false;
             p.showDrill = false;
+            p.stepUpHoldTimer = 0;
+            p.stepUpHoldDirection = 0;
 
             const airDirection = input.left && !input.right ? -1 :
                 (input.right && !input.left ? 1 : 0);
@@ -1330,6 +1346,11 @@ class Game {
             p.drillLockTimer = targetIsSolid ? DIG_LOCK_DURATION : 0.025;
 
             if (didDig) {
+                if (p.facing === 'left' || p.facing === 'right') {
+                    this.hasSideDrilled = true;
+                }
+                p.stepUpHoldTimer = 0;
+                p.stepUpHoldDirection = 0;
                 const digStrength = Math.min(4, Math.max(1, this.lastDigStrength || 1));
                 this.sound.playDrill(digStrength, targetBlock === BLOCK_TYPES.XBLOCK);
                 this.screenShake = Math.max(
@@ -1360,6 +1381,16 @@ class Game {
                         this.grid[currentGridY - 1]?.[currentGridX - 1] === BLOCK_TYPES.ITEM);
 
                 if (canStepUp) {
+                    if (p.stepUpHoldDirection !== -1) {
+                        p.stepUpHoldDirection = -1;
+                        p.stepUpHoldTimer = 0;
+                    }
+                    p.stepUpHoldTimer += deltaTime;
+                    p.showDrill = true;
+                    if (p.stepUpHoldTimer < STEP_UP_HOLD_DELAY) {
+                        return;
+                    }
+
                     p.isSteppingUp = true;
                     p.stepUpProgress = 0;
                     p.stepUpStartX = p.visualX;
@@ -1367,14 +1398,21 @@ class Game {
                     p.stepUpTargetX = (currentGridX - 1) * GRID_SIZE;
                     p.stepUpTargetY = (currentGridY - 1) * GRID_SIZE;
                     p.isMoving = true;
+                    p.showDrill = false;
+                    p.stepUpHoldTimer = 0;
+                    p.stepUpHoldDirection = 0;
                     this.spawnStepDust(currentGridX, currentGridY, -1);
                     return;
                 }
 
+                p.stepUpHoldTimer = 0;
+                p.stepUpHoldDirection = 0;
                 p.showDrill = true;
                 const snapAmount = Math.min(1, deltaTime * 18);
                 p.visualX += (currentGridX * GRID_SIZE - p.visualX) * snapAmount;
             } else if (canMoveLeft) {
+                p.stepUpHoldTimer = 0;
+                p.stepUpHoldDirection = 0;
                 p.visualX -= WALK_SPEED * deltaTime;
                 p.visualX = Math.max(0, p.visualX);
                 p.isMoving = true;
@@ -1393,6 +1431,16 @@ class Game {
                         this.grid[currentGridY - 1]?.[currentGridX + 1] === BLOCK_TYPES.ITEM);
 
                 if (canStepUp) {
+                    if (p.stepUpHoldDirection !== 1) {
+                        p.stepUpHoldDirection = 1;
+                        p.stepUpHoldTimer = 0;
+                    }
+                    p.stepUpHoldTimer += deltaTime;
+                    p.showDrill = true;
+                    if (p.stepUpHoldTimer < STEP_UP_HOLD_DELAY) {
+                        return;
+                    }
+
                     p.isSteppingUp = true;
                     p.stepUpProgress = 0;
                     p.stepUpStartX = p.visualX;
@@ -1400,14 +1448,21 @@ class Game {
                     p.stepUpTargetX = (currentGridX + 1) * GRID_SIZE;
                     p.stepUpTargetY = (currentGridY - 1) * GRID_SIZE;
                     p.isMoving = true;
+                    p.showDrill = false;
+                    p.stepUpHoldTimer = 0;
+                    p.stepUpHoldDirection = 0;
                     this.spawnStepDust(currentGridX, currentGridY, 1);
                     return;
                 }
 
+                p.stepUpHoldTimer = 0;
+                p.stepUpHoldDirection = 0;
                 p.showDrill = true;
                 const snapAmount = Math.min(1, deltaTime * 18);
                 p.visualX += (currentGridX * GRID_SIZE - p.visualX) * snapAmount;
             } else if (canMoveRight) {
+                p.stepUpHoldTimer = 0;
+                p.stepUpHoldDirection = 0;
                 p.visualX += WALK_SPEED * deltaTime;
                 p.visualX = Math.min((GRID_WIDTH - 1) * GRID_SIZE, p.visualX);
                 p.isMoving = true;
@@ -1415,6 +1470,8 @@ class Game {
             }
         }
         else if (input.down) {
+            p.stepUpHoldTimer = 0;
+            p.stepUpHoldDirection = 0;
             if (canMoveDown && isCentered) {
                 p.isFalling = true;
                 p.isGrounded = false;
@@ -1429,9 +1486,14 @@ class Game {
             }
         }
         else if (input.up) {
+            p.stepUpHoldTimer = 0;
+            p.stepUpHoldDirection = 0;
             if (hasBlockUp) {
                 p.showDrill = true;
             }
+        } else {
+            p.stepUpHoldTimer = 0;
+            p.stepUpHoldDirection = 0;
         }
         
     }
@@ -2179,7 +2241,7 @@ class Game {
                     Math.pow(this.player.x + PLAYER_SIZE/2 - tube.x, 2) + 
                     Math.pow(this.player.y + PLAYER_SIZE/2 - tube.y, 2)
                 );
-                if (dist < GRID_SIZE) {
+                if (dist < GRID_SIZE * 0.5) {
                     tube.collected = true;
                     this.oxygen = Math.min(this.maxOxygen, this.oxygen + 20);
                     this.score += 100;
@@ -2249,15 +2311,24 @@ class Game {
     }
     
     updateCamera(deltaTime) {
-        const fallLookahead = this.player.isFalling ?
-            Math.min(GRID_SIZE, this.player.fallVelocity * 0.055) :
+        const longFallBlend = this.player.isFalling ?
+            Math.max(
+                0,
+                Math.min(
+                    1,
+                    (this.player.fallDistance - LONG_FALL_VISUAL_THRESHOLD) / 0.55
+                )
+            ) :
             0;
+        const fallLookahead =
+            Math.min(GRID_SIZE, this.player.fallVelocity * 0.055) *
+            longFallBlend;
         const targetCameraY =
             this.player.visualY -
             CANVAS_HEIGHT / 2 +
             GRID_SIZE +
             fallLookahead;
-        const followTime = this.player.isFalling ? 0.085 : 0.12;
+        const followTime = 0.12 - longFallBlend * 0.035;
         const follow = 1 - Math.exp(-deltaTime / followTime);
         this.cameraY += (targetCameraY - this.cameraY) * follow;
         this.cameraY = Math.max(0, Math.min(this.cameraY, GRID_HEIGHT * GRID_SIZE - CANVAS_HEIGHT));
@@ -2322,6 +2393,8 @@ class Game {
             stepUpStartY: 0,
             stepUpTargetX: 0,
             stepUpTargetY: 0,
+            stepUpHoldTimer: 0,
+            stepUpHoldDirection: 0,
             
             digCooldown: 0,
             digBufferTimer: 0,
@@ -2344,10 +2417,12 @@ class Game {
         this.oxygenTubes = [];
         this.treasures = [];
         this.itemsByCell = new Map();
+        this.reinforcedRoofCells = new Set();
         this.gameState = 'countdown';
         this.countdownTimer = 0;
         this.countdownNumber = 3;
         this.hasPlayerDug = false;
+        this.hasSideDrilled = false;
         this.pendingMatchCheck = false;
         this.clearKeyboardInput();
         
@@ -2383,7 +2458,6 @@ class Game {
 
         // Recessed pockets sit behind both the surrounding terrain and loot.
         for (const item of [...this.oxygenTubes, ...this.treasures]) {
-            if (item.collected) continue;
             const screenY = item.y - this.cameraY;
             if (screenY > -GRID_SIZE && screenY < CANVAS_HEIGHT + GRID_SIZE) {
                 this.renderItemPocket(item, screenY);
@@ -2417,7 +2491,11 @@ class Game {
                 if (this.grid[y][x] === BLOCK_TYPES.BEDROCK) {
                     const screenY = y * GRID_SIZE - this.cameraY;
                     if (screenY > -GRID_SIZE && screenY < CANVAS_HEIGHT + GRID_SIZE) {
-                        this.renderBedrock(x * GRID_SIZE, screenY);
+                        this.renderBedrock(
+                            x * GRID_SIZE,
+                            screenY,
+                            this.reinforcedRoofCells.has(`${x},${y}`)
+                        );
                     }
                 }
             }
@@ -2682,10 +2760,16 @@ class Game {
     }
 
     renderFallSpeedLines() {
-        if (!this.player.isFalling || this.player.fallDistance < 1.15) return;
+        if (
+            !this.player.isFalling ||
+            this.player.fallDistance < LONG_FALL_VISUAL_THRESHOLD
+        ) return;
 
         const ctx = this.ctx;
-        const intensity = Math.min(1, (this.player.fallDistance - 1.15) / 3);
+        const intensity = Math.min(
+            1,
+            (this.player.fallDistance - LONG_FALL_VISUAL_THRESHOLD) / 3
+        );
         ctx.save();
         ctx.fillStyle = `rgba(186, 221, 239, ${0.08 + intensity * 0.13})`;
 
@@ -2714,68 +2798,115 @@ class Game {
         const y = this.pixelSnap(screenCenterY - GRID_SIZE / 2);
         const isOxygen = item.type === 'oxygen';
         const accent = isOxygen ? '#4de8ff' : '#f4bd21';
-        const accentDark = isOxygen ? '#123b4a' : '#56380d';
 
-        // A carved alcove rather than a UI-card: deep cavity, chipped stone rim,
-        // and a small practical light beneath the pickup.
-        ctx.fillStyle = '#03050b';
-        this.fillSteppedRect(x + 2, y + 3, GRID_SIZE - 4, GRID_SIZE - 5, 7, '#03050b');
-        ctx.fillStyle = '#0a0d17';
-        this.fillSteppedRect(x + 6, y + 7, GRID_SIZE - 12, GRID_SIZE - 12, 6, '#0a0d17');
-        ctx.fillStyle = '#171b27';
-        ctx.fillRect(x + 11, y + 11, GRID_SIZE - 22, 4);
-        ctx.fillRect(x + 11, y + 15, 4, GRID_SIZE - 29);
-        ctx.fillStyle = '#070910';
-        ctx.fillRect(x + 16, y + 16, GRID_SIZE - 32, GRID_SIZE - 29);
+        // Uneven rock cavity; the surrounding world blocks are the frame.
+        this.fillSteppedRect(x + 3, y + 4, GRID_SIZE - 6, GRID_SIZE - 7, 8, '#02040a');
+        this.fillSteppedRect(x + 8, y + 9, GRID_SIZE - 16, GRID_SIZE - 17, 6, '#090c15');
+        ctx.fillStyle = '#151a25';
+        ctx.fillRect(x + 14, y + 12, GRID_SIZE - 29, 3);
+        ctx.fillRect(x + 11, y + 16, 3, GRID_SIZE - 31);
+        ctx.fillStyle = '#05070d';
+        ctx.fillRect(x + 16, y + 17, GRID_SIZE - 31, GRID_SIZE - 31);
 
-        ctx.fillStyle = '#363946';
-        ctx.fillRect(x + 5, y + 8, 11, 8);
-        ctx.fillRect(x + GRID_SIZE - 17, y + 7, 12, 10);
-        ctx.fillRect(x + 6, y + GRID_SIZE - 18, 9, 12);
-        ctx.fillRect(x + GRID_SIZE - 17, y + GRID_SIZE - 17, 11, 11);
-        ctx.fillStyle = '#5b5e68';
-        ctx.fillRect(x + 7, y + 8, 8, 3);
-        ctx.fillRect(x + GRID_SIZE - 15, y + 8, 8, 3);
-        ctx.fillStyle = '#171923';
-        ctx.fillRect(x + 8, y + GRID_SIZE - 9, GRID_SIZE - 16, 5);
-        ctx.fillRect(x + GRID_SIZE - 13, y + 17, 6, GRID_SIZE - 31);
+        for (let index = 0; index < 6; index++) {
+            const chipX = x + 8 +
+                Math.floor(this.hashCell(item.gridX, item.gridY, 80 + index) * 44);
+            const chipY = y + 10 +
+                Math.floor(this.hashCell(item.gridY, item.gridX, 94 + index) * 34);
+            ctx.fillStyle = index % 2 === 0 ? '#303641' : '#1c222d';
+            ctx.fillRect(
+                this.pixelSnap(chipX),
+                this.pixelSnap(chipY),
+                3 + index % 3 * 2,
+                2 + index % 2 * 2
+            );
+        }
 
-        ctx.fillStyle = accentDark;
-        ctx.fillRect(x + 17, y + GRID_SIZE - 17, GRID_SIZE - 34, 8);
-        ctx.fillStyle = accent;
-        ctx.globalAlpha = 0.42 + Math.sin(this.visualTime * 4.2 + item.gridY) * 0.08;
-        ctx.fillRect(x + 21, y + GRID_SIZE - 16, GRID_SIZE - 42, 3);
-        ctx.globalAlpha = 1;
+        ctx.fillStyle = '#171c25';
+        ctx.fillRect(x + 9, y + GRID_SIZE - 13, GRID_SIZE - 18, 7);
+        ctx.fillStyle = '#454d58';
+        ctx.fillRect(x + 14, y + GRID_SIZE - 14, GRID_SIZE - 28, 3);
+        ctx.fillStyle = '#080b11';
+        ctx.fillRect(x + 15, y + GRID_SIZE - 6, GRID_SIZE - 30, 3);
+
+        if (!item.collected) {
+            ctx.save();
+            ctx.globalAlpha = 0.19 +
+                Math.sin(this.visualTime * 4.2 + item.gridY) * 0.04;
+            ctx.fillStyle = accent;
+            ctx.fillRect(x + 25, y + GRID_SIZE - 17, 14, 2);
+            ctx.fillRect(x + 29, y + GRID_SIZE - 19, 6, 2);
+            ctx.restore();
+        }
     }
 
     renderOxygenTube(x, y) {
         const ctx = this.ctx;
-        const bob = this.pixelSnap(Math.sin(this.visualTime * 4.5 + x) * 2);
+        const bob = this.pixelSnap(Math.sin(this.visualTime * 4.2 + x) * 1);
         const centerX = this.pixelSnap(x);
         const centerY = this.pixelSnap(y + bob);
 
-        ctx.fillStyle = '#0b2837';
-        ctx.fillRect(centerX - 18, centerY - 24, 36, 48);
-        ctx.fillStyle = '#1b8da8';
-        ctx.fillRect(centerX - 16, centerY - 22, 32, 44);
-        ctx.fillStyle = '#6cf4ff';
-        ctx.fillRect(centerX - 12, centerY - 20, 4, 4);
-        ctx.fillRect(centerX + 8, centerY + 16, 4, 4);
+        ctx.save();
+        ctx.fillStyle = 'rgba(1, 4, 9, 0.55)';
+        ctx.fillRect(centerX - 15, centerY + 23, 30, 3);
+        ctx.fillRect(centerX - 10, centerY + 26, 20, 2);
 
-        if (ASSETS.oxygen_tube) {
-            ctx.drawImage(
-                ASSETS.oxygen_tube,
-                centerX - 24,
-                centerY - 24,
-                48,
-                48
-            );
-        } else {
-            ctx.fillStyle = '#c9fbff';
-            ctx.fillRect(centerX - 7, centerY - 16, 14, 32);
-            ctx.fillStyle = '#28cbea';
-            ctx.fillRect(centerX - 5, centerY - 10, 10, 22);
-        }
+        this.fillSteppedRect(centerX - 11, centerY - 19, 27, 43, 4, '#01070b');
+        this.fillSteppedRect(centerX - 13, centerY - 21, 26, 42, 4, '#041019');
+
+        // Handle and brass valve.
+        ctx.fillStyle = '#202a31';
+        ctx.fillRect(centerX - 8, centerY - 27, 16, 8);
+        ctx.fillStyle = '#8da0a6';
+        ctx.fillRect(centerX - 6, centerY - 26, 12, 3);
+        ctx.fillStyle = '#050b0f';
+        ctx.fillRect(centerX - 4, centerY - 24, 8, 4);
+        ctx.fillStyle = '#9a6720';
+        ctx.fillRect(centerX + 10, centerY - 23, 7, 6);
+        ctx.fillStyle = '#ffd369';
+        ctx.fillRect(centerX + 11, centerY - 22, 4, 2);
+
+        // Cylindrical glass body.
+        this.fillSteppedRect(centerX - 10, centerY - 17, 20, 34, 3, '#086779');
+        ctx.fillStyle = '#073845';
+        ctx.fillRect(centerX - 10, centerY - 13, 4, 26);
+        ctx.fillStyle = '#12adbf';
+        ctx.fillRect(centerX - 6, centerY - 14, 12, 28);
+        ctx.fillStyle = '#72edf4';
+        ctx.fillRect(centerX - 5, centerY - 12, 3, 23);
+        ctx.fillStyle = '#d9ffff';
+        ctx.fillRect(centerX - 4, centerY - 11, 2, 9);
+        ctx.fillStyle = '#065264';
+        ctx.fillRect(centerX + 6, centerY - 12, 4, 25);
+
+        // Steel collars give the capsule weight and readable silhouette.
+        ctx.fillStyle = '#343d47';
+        ctx.fillRect(centerX - 13, centerY - 20, 26, 5);
+        ctx.fillRect(centerX - 13, centerY + 15, 26, 5);
+        ctx.fillStyle = '#7f9198';
+        ctx.fillRect(centerX - 10, centerY - 19, 18, 2);
+        ctx.fillRect(centerX - 10, centerY + 16, 18, 2);
+        ctx.fillStyle = '#d5e3e3';
+        ctx.fillRect(centerX - 8, centerY - 19, 6, 1);
+
+        // Inset O2 label and tiny status bubbles.
+        ctx.fillStyle = '#032a35';
+        ctx.fillRect(centerX - 7, centerY - 5, 14, 12);
+        ctx.fillStyle = '#bffbff';
+        ctx.fillRect(centerX - 5, centerY - 2, 2, 6);
+        ctx.fillRect(centerX - 3, centerY - 3, 3, 2);
+        ctx.fillRect(centerX - 3, centerY + 3, 3, 2);
+        ctx.fillRect(centerX, centerY - 2, 2, 6);
+        ctx.fillRect(centerX + 3, centerY - 2, 3, 2);
+        ctx.fillRect(centerX + 4, centerY, 2, 2);
+        ctx.fillRect(centerX + 2, centerY + 2, 4, 2);
+        ctx.fillStyle = '#e9ffff';
+        ctx.fillRect(centerX + 3, centerY - 11, 2, 2);
+        ctx.fillStyle = `rgba(111, 255, 239, ${
+            0.62 + Math.sin(this.visualTime * 5.5 + x) * 0.2
+        })`;
+        ctx.fillRect(centerX + 9, centerY + 8, 2, 3);
+        ctx.restore();
     }
 
     renderSafe(x, y) {
@@ -3227,10 +3358,36 @@ class Game {
         }
     }
     
-    renderBedrock(x, y) {
+    renderBedrock(x, y, isReinforcedRoof = false) {
         const ctx = this.ctx;
         const screenX = this.pixelSnap(x);
         const screenY = this.pixelSnap(y);
+
+        if (isReinforcedRoof) {
+            ctx.fillStyle = '#05070c';
+            ctx.fillRect(screenX, screenY + 3, GRID_SIZE, GRID_SIZE - 1);
+            ctx.fillStyle = '#242b34';
+            ctx.fillRect(screenX + 2, screenY + 2, GRID_SIZE - 4, GRID_SIZE - 5);
+            ctx.fillStyle = '#65717a';
+            ctx.fillRect(screenX + 5, screenY + 5, GRID_SIZE - 10, 5);
+            ctx.fillRect(screenX + 5, screenY + 10, 4, GRID_SIZE - 20);
+            ctx.fillStyle = '#11161d';
+            ctx.fillRect(screenX + 9, screenY + GRID_SIZE - 13, GRID_SIZE - 18, 7);
+            ctx.fillRect(screenX + GRID_SIZE - 13, screenY + 10, 7, GRID_SIZE - 23);
+            ctx.fillStyle = '#343e48';
+            ctx.fillRect(screenX + 13, screenY + 25, GRID_SIZE - 26, 9);
+            ctx.fillStyle = '#171d25';
+            ctx.fillRect(screenX + 17, screenY + 28, GRID_SIZE - 34, 3);
+
+            const rivets = [[9, 11], [50, 11], [9, 47], [50, 47]];
+            for (const [rivetX, rivetY] of rivets) {
+                ctx.fillStyle = '#0a0d12';
+                ctx.fillRect(screenX + rivetX, screenY + rivetY, 5, 5);
+                ctx.fillStyle = '#aeb9bd';
+                ctx.fillRect(screenX + rivetX + 1, screenY + rivetY + 1, 2, 2);
+            }
+            return;
+        }
 
         ctx.fillStyle = '#070710';
         ctx.fillRect(screenX, screenY, GRID_SIZE, GRID_SIZE);
@@ -3354,17 +3511,23 @@ class Game {
         // Priority: Falling > Drilling > ShowDrill > Walking / Idle
         
         if (p.isFalling) {
-            if (p.fallDistance >= 1.5 && ASSETS.mole_falling) {
-                // LONG FALL (1.5+ cells) - use falling sprite with animation
+            if (
+                p.fallDistance >= LONG_FALL_VISUAL_THRESHOLD &&
+                ASSETS.mole_falling
+            ) {
+                // Dedicated animation only after Manny has fallen beyond one cell.
                 sprite = ASSETS.mole_falling;
                 frameIndex = Math.floor(p.moveAnimFrame) % 4;
             } else {
-                // SHORT FALL - use falling sprite but frame 0 (still)
-                if (ASSETS.mole_falling) {
-                    sprite = ASSETS.mole_falling;
-                    frameIndex = 0;
-                } else if (facing === 'left' && ASSETS.mole_walk_left) {
+                // A one-cell drop keeps the normal pose and only gets landing squash.
+                if (facing === 'left' && ASSETS.mole_walk_left) {
                     sprite = ASSETS.mole_walk_left;
+                    frameIndex = 0;
+                } else if (facing === 'right' && ASSETS.mole_walk_right) {
+                    sprite = ASSETS.mole_walk_right;
+                    frameIndex = 0;
+                } else if (ASSETS.mole) {
+                    sprite = ASSETS.mole;
                     frameIndex = 0;
                 } else if (ASSETS.mole_walk_right) {
                     sprite = ASSETS.mole_walk_right;
@@ -3449,120 +3612,6 @@ class Game {
         }
     }
     
-    drawPixelText(text, x, y, scale, color, align = 'left') {
-        const normalized = String(text).toUpperCase();
-        const glyphWidth = 5 * scale;
-        const letterSpacing = scale;
-        const textWidth = normalized.length > 0 ?
-            normalized.length * (glyphWidth + letterSpacing) - letterSpacing :
-            0;
-        let startX = x;
-
-        if (align === 'center') startX -= textWidth / 2;
-        else if (align === 'right') startX -= textWidth;
-
-        this.ctx.fillStyle = color;
-        for (let index = 0; index < normalized.length; index++) {
-            const glyph = PIXEL_FONT[normalized[index]] || PIXEL_FONT[' '];
-            const glyphX = Math.round(startX + index * (glyphWidth + letterSpacing));
-
-            for (let row = 0; row < glyph.length; row++) {
-                for (let column = 0; column < glyph[row].length; column++) {
-                    if (glyph[row][column] === '1') {
-                        this.ctx.fillRect(
-                            glyphX + column * scale,
-                            y + row * scale,
-                            scale,
-                            scale
-                        );
-                    }
-                }
-            }
-        }
-    }
-
-    renderHUD() {
-        const ctx = this.ctx;
-        const panelHeight = 64;
-        const oxygenPercent = Math.max(0, this.oxygen / this.maxOxygen);
-        const barColor = oxygenPercent > 0.5 ?
-            '#43e8ff' :
-            oxygenPercent > 0.25 ? '#f6bd2f' : '#ff5166';
-
-        ctx.fillStyle = '#060812';
-        ctx.fillRect(0, 0, CANVAS_WIDTH, panelHeight);
-        ctx.fillStyle = '#171426';
-        ctx.fillRect(4, 4, CANVAS_WIDTH - 8, panelHeight - 8);
-        ctx.fillStyle = '#352b49';
-        ctx.fillRect(4, 4, CANVAS_WIDTH - 8, 3);
-        ctx.fillRect(4, 4, 3, panelHeight - 8);
-        ctx.fillStyle = '#050710';
-        ctx.fillRect(0, panelHeight - 6, CANVAS_WIDTH, 6);
-        ctx.fillStyle = '#7b506a';
-        ctx.fillRect(0, panelHeight - 6, CANVAS_WIDTH, 2);
-
-        // Depth module
-        ctx.fillStyle = '#43e8ff';
-        ctx.fillRect(13, 12, 4, 12);
-        ctx.fillRect(9, 20, 12, 4);
-        ctx.fillRect(11, 24, 8, 4);
-        this.drawPixelText('DEPTH', 29, 10, 2, '#817c93');
-        this.drawPixelText(`${this.depth}M`, 13, 34, 3, '#64edff');
-
-        // Score module
-        const scoreCenter = CANVAS_WIDTH / 2;
-        this.fillSteppedRect(scoreCenter - 45, 8, 12, 14, 3, '#7b470d');
-        this.fillSteppedRect(scoreCenter - 42, 10, 6, 10, 2, '#ffd75a');
-        this.drawPixelText('SCORE', scoreCenter + 10, 10, 2, '#817c93', 'center');
-        this.drawPixelText(this.score.toString(), scoreCenter, 34, 3, '#ffd75a', 'center');
-
-        // Air module
-        const barX = CANVAS_WIDTH - 130;
-        const barY = 36;
-        this.drawPixelText('AIR', barX, 10, 2, '#817c93');
-        this.drawPixelText(
-            `${Math.floor(this.oxygen)}%`,
-            CANVAS_WIDTH - 12,
-            10,
-            2,
-            barColor,
-            'right'
-        );
-
-        for (let segment = 0; segment < 10; segment++) {
-            const segmentX = barX + segment * 12;
-            ctx.fillStyle = '#050711';
-            ctx.fillRect(segmentX, barY, 10, 18);
-            ctx.fillStyle = '#252637';
-            ctx.fillRect(segmentX + 2, barY + 2, 6, 14);
-
-            if (oxygenPercent * 10 > segment) {
-                ctx.fillStyle = barColor;
-                ctx.fillRect(segmentX + 2, barY + 2, 6, 14);
-                ctx.fillStyle = oxygenPercent > 0.5 ? '#b8f9ff' : '#ffe8a0';
-                ctx.fillRect(segmentX + 2, barY + 2, 6, 3);
-            }
-        }
-
-        if (oxygenPercent <= 0.25 && Math.floor(this.visualTime * 4) % 2 === 0) {
-            ctx.fillStyle = '#ff5166';
-            ctx.fillRect(CANVAS_WIDTH - 136, 6, 2, panelHeight - 14);
-            ctx.fillRect(CANVAS_WIDTH - 136, 6, 130, 2);
-        }
-
-        if (this.gamepadMessage) {
-            ctx.save();
-            ctx.fillStyle = 'rgba(5, 7, 16, 0.92)';
-            ctx.fillRect(0, CANVAS_HEIGHT - 26, CANVAS_WIDTH, 26);
-            ctx.fillStyle = '#75f0a2';
-            ctx.font = 'bold 11px monospace';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(this.gamepadMessage, CANVAS_WIDTH / 2, CANVAS_HEIGHT - 13);
-            ctx.restore();
-        }
-    }
-    
     cycleGamepad() {
         const gamepads = this.gamepad.getGamepadList();
         if (gamepads.length === 0) {
@@ -3581,107 +3630,6 @@ class Game {
         const name = gamepads[currentIdx].id.substring(0, 40);
         this.gamepadMessage = `Gamepad ${currentIdx + 1}/${gamepads.length}: ${name}`;
         this.gamepadMessageTime = Date.now();
-    }
-    
-    renderOverlay(text, color) {
-        const panelY = CANVAS_HEIGHT / 2 - 58;
-        this.ctx.fillStyle = 'rgba(4, 5, 12, 0.9)';
-        this.ctx.fillRect(0, panelY, CANVAS_WIDTH, 116);
-        this.ctx.fillStyle = '#392d4b';
-        this.ctx.fillRect(0, panelY, CANVAS_WIDTH, 4);
-        this.ctx.fillRect(0, panelY + 112, CANVAS_WIDTH, 4);
-        this.drawPixelText(
-            text,
-            CANVAS_WIDTH / 2,
-            panelY + 28,
-            text.length > 1 ? 8 : 10,
-            color,
-            'center'
-        );
-    }
-    
-    renderGameOver() {
-        this.ctx.fillStyle = 'rgba(3, 4, 10, 0.92)';
-        this.ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-        this.ctx.fillStyle = '#251b31';
-        this.ctx.fillRect(24, CANVAS_HEIGHT / 2 - 126, CANVAS_WIDTH - 48, 252);
-        this.ctx.fillStyle = '#6f3248';
-        this.ctx.fillRect(24, CANVAS_HEIGHT / 2 - 126, CANVAS_WIDTH - 48, 4);
-        this.ctx.fillRect(24, CANVAS_HEIGHT / 2 + 122, CANVAS_WIDTH - 48, 4);
-        this.drawPixelText(
-            'GAME OVER',
-            CANVAS_WIDTH / 2,
-            CANVAS_HEIGHT / 2 - 88,
-            4,
-            '#ff5a6c',
-            'center'
-        );
-        this.drawPixelText(
-            `SCORE ${this.score}`,
-            CANVAS_WIDTH / 2,
-            CANVAS_HEIGHT / 2 - 20,
-            3,
-            '#ffe071',
-            'center'
-        );
-        this.drawPixelText(
-            `DEPTH ${this.depth}M`,
-            CANVAS_WIDTH / 2,
-            CANVAS_HEIGHT / 2 + 20,
-            2,
-            '#d8d4e5',
-            'center'
-        );
-        this.drawPixelText(
-            'SPACE TO RETRY',
-            CANVAS_WIDTH / 2,
-            CANVAS_HEIGHT / 2 + 80,
-            2,
-            '#64edff',
-            'center'
-        );
-    }
-    
-    renderWin() {
-        this.ctx.fillStyle = 'rgba(3, 4, 10, 0.92)';
-        this.ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-        this.ctx.fillStyle = '#251f2b';
-        this.ctx.fillRect(18, CANVAS_HEIGHT / 2 - 130, CANVAS_WIDTH - 36, 260);
-        this.ctx.fillStyle = '#9a6a1d';
-        this.ctx.fillRect(18, CANVAS_HEIGHT / 2 - 130, CANVAS_WIDTH - 36, 4);
-        this.ctx.fillRect(18, CANVAS_HEIGHT / 2 + 126, CANVAS_WIDTH - 36, 4);
-        this.drawPixelText(
-            'HEIST COMPLETE!',
-            CANVAS_WIDTH / 2,
-            CANVAS_HEIGHT / 2 - 92,
-            3,
-            '#ffd75a',
-            'center'
-        );
-        this.drawPixelText(
-            `SCORE ${this.score}`,
-            CANVAS_WIDTH / 2,
-            CANVAS_HEIGHT / 2 - 22,
-            3,
-            '#fff0ad',
-            'center'
-        );
-        this.drawPixelText(
-            `AIR ${Math.floor(this.oxygen)}%`,
-            CANVAS_WIDTH / 2,
-            CANVAS_HEIGHT / 2 + 20,
-            2,
-            '#64edff',
-            'center'
-        );
-        this.drawPixelText(
-            'SPACE TO CONTINUE',
-            CANVAS_WIDTH / 2,
-            CANVAS_HEIGHT / 2 + 82,
-            2,
-            '#7cf0a0',
-            'center'
-        );
     }
     
     gameLoop(currentTime) {

@@ -260,6 +260,38 @@
             background: #eef4ff;
         }
 
+        .side-drill-hint {
+            position: absolute;
+            top: max(56px, calc(72px * var(--game-scale)));
+            left: 50%;
+            display: flex;
+            gap: calc(5px * var(--game-scale));
+            align-items: center;
+            max-width: 92%;
+            padding: calc(7px * var(--game-scale)) calc(10px * var(--game-scale));
+            transform: translateX(-50%);
+            border: max(1px, calc(1px * var(--game-scale))) solid rgba(105, 231, 246, 0.22);
+            border-radius: 999px;
+            background: rgba(7, 12, 22, 0.82);
+            box-shadow: 0 calc(6px * var(--game-scale)) calc(20px * var(--game-scale)) rgba(0, 0, 0, 0.3);
+            color: rgba(231, 240, 249, 0.68);
+            font-size: max(8px, calc(9px * var(--game-scale)));
+            line-height: 1;
+            white-space: nowrap;
+            backdrop-filter: blur(calc(10px * var(--game-scale)));
+        }
+
+        .side-drill-hint strong {
+            color: #7ceaf4;
+            font-weight: 760;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
+
+        .side-drill-hint kbd {
+            color: #f4fbff;
+        }
+
         .countdown {
             position: absolute;
             top: 50%;
@@ -505,6 +537,9 @@
                 </button>
             </header>
 
+            <div id="sideDrillHint" class="side-drill-hint" role="status" hidden>
+                <kbd>←/→</kbd><span>+</span><kbd>Space</kbd><strong>Borra åt sidan</strong>
+            </div>
             <div id="countdownDisplay" class="countdown" aria-live="assertive" hidden>3</div>
             <div id="gameToast" class="toast" role="status" hidden></div>
 
@@ -517,8 +552,10 @@
                         <button class="menu-button menu-button--primary" type="button" data-action="start">Starta kuppen</button>
                     </div>
                     <div class="controls" aria-label="Kontroller">
-                        <span class="control"><kbd>WASD</kbd> Flytta</span>
-                        <span class="control"><kbd>Space</kbd> Borra</span>
+                        <span class="control"><kbd>←/→</kbd> Gå och kliv</span>
+                        <span class="control"><kbd>↓</kbd> Fall ned</span>
+                        <span class="control"><kbd>←/→ + Space</kbd> Sidoborra</span>
+                        <span class="control"><kbd>↑/↓ + Space</kbd> Borra lodrätt</span>
                         <span class="control"><kbd>P</kbd> Paus</span>
                     </div>
                 </div>
