@@ -23,7 +23,7 @@ const FALL_MAX_SPEED = 1100;
 const FALL_CENTER_WINDOW = 0.12;
 const LONG_FALL_VISUAL_THRESHOLD = 1.05;
 const STEP_UP_DURATION = 0.15;
-const STEP_UP_HOLD_DELAY = 0.1;
+const STEP_UP_HOLD_DELAY = 0.3;
 const STEP_UP_ALIGN_WINDOW = 0.20;
 const DIG_BUFFER_DURATION = 0.055;
 const DIG_RECOVERY = 0.105;
@@ -1374,7 +1374,9 @@ class Game {
                 const alignedForStepUp = Math.abs(
                     p.visualX - currentGridX * GRID_SIZE
                 ) <= GRID_SIZE * STEP_UP_ALIGN_WINDOW;
-                const canStepUp = currentGridY > 0 &&
+                const canStepUp = !input.dig &&
+                    !p.isDrilling &&
+                    currentGridY > 0 &&
                     alignedForStepUp &&
                     (blockUp === BLOCK_TYPES.EMPTY || blockUp === BLOCK_TYPES.ITEM) &&
                     (this.grid[currentGridY - 1]?.[currentGridX - 1] === BLOCK_TYPES.EMPTY ||
@@ -1424,7 +1426,9 @@ class Game {
                 const alignedForStepUp = Math.abs(
                     p.visualX - currentGridX * GRID_SIZE
                 ) <= GRID_SIZE * STEP_UP_ALIGN_WINDOW;
-                const canStepUp = currentGridY > 0 &&
+                const canStepUp = !input.dig &&
+                    !p.isDrilling &&
+                    currentGridY > 0 &&
                     alignedForStepUp &&
                     (blockUp === BLOCK_TYPES.EMPTY || blockUp === BLOCK_TYPES.ITEM) &&
                     (this.grid[currentGridY - 1]?.[currentGridX + 1] === BLOCK_TYPES.EMPTY ||
