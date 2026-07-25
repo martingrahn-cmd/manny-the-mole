@@ -11,7 +11,6 @@ const FALL_SPEED = 0.105; // Seconds per grid cell while blocks are falling
 const MIN_FALL_SPEED = 0.08;
 const FALL_SPEED_DEPTH_REDUCTION = 0.025;
 const SHAKE_DURATION = 0.5; // Reach a strong warning shake early in the hang time
-const CRUSH_GRACE_DURATION = 0.34;
 const DEATH_BEAT_DURATION = 0.52;
 const MATCH_CLEAR_SIZE = 4;
 const MATCH_CLEAR_FLASH = 0.42;
@@ -685,8 +684,6 @@ class Game {
         this.hasPlayerDug = false; // Physics paused until first dig
         this.hasSideDrilled = false;
         this.pendingMatchCheck = false;
-        this.pendingCrush = null;
-        this.crushGraceTimer = 0;
         this.deathCause = null;
         this.deathTimer = 0;
         this.deathImpact = null;
@@ -1135,7 +1132,6 @@ class Game {
         }
         if (this.gameState === 'playing') {
             this.updatePhysics(deltaTime);
-            this.updateCrushThreat(deltaTime);
         }
         if (this.gameState === 'playing') {
             this.updateOxygen(deltaTime);
@@ -1663,78 +1659,18 @@ class Game {
         );
     }
 
-    beginCrushThreat(x, y, blockValue, sourceBlock, sourceKind) {
+    triggerCrush(blockValue, sourceBlock, sourceKind) {
         if (this.gameState !== 'playing' || !sourceBlock) return;
+        const playerGridX = Math.round(this.player.x / GRID_SIZE);
+        const playerGridY = Math.round(this.player.y / GRID_SIZE);
 
-        const isSameThreat =
-            this.pendingCrush &&
-            this.pendingCrush.x === x &&
-            this.pendingCrush.y === y &&
-            this.pendingCrush.sourceBlock === sourceBlock;
-        if (isSameThreat) return;
-
-        this.pendingCrush = {
-            x,
-            y,
+        this.triggerDeath('crushed', {
+            x: playerGridX,
+            y: playerGridY,
             blockValue,
             sourceBlock,
             sourceKind,
-            sourceX: sourceBlock.x,
-            sourceY: sourceBlock.y,
-        };
-        this.crushGraceTimer = CRUSH_GRACE_DURATION;
-        this.screenShake = Math.max(
-            this.screenShake,
-            this.reducedMotion ? 1 : 3.5
-        );
-        this.sound.playFallWarning();
-        this.showWarningMessage('Fara · flytta dig ur raset!', 1.1);
-    }
-
-    playerRemainsInCrushTarget() {
-        if (!this.pendingCrush) return false;
-
-        const playerGridX = Math.round(this.player.x / GRID_SIZE);
-        const playerGridY = Math.round(this.player.y / GRID_SIZE);
-        return playerGridX === this.pendingCrush.x &&
-            playerGridY === this.pendingCrush.y;
-    }
-
-    crushSourceIsActive() {
-        if (!this.pendingCrush?.sourceBlock) return false;
-
-        const source = this.pendingCrush.sourceBlock;
-        return !source.destroyed &&
-            !source.isClearing &&
-            source.isFalling &&
-            source.x === this.pendingCrush.sourceX &&
-            source.y === this.pendingCrush.sourceY &&
-            source.fallProgress >= 0.9;
-    }
-
-    updateCrushThreat(deltaTime) {
-        if (!this.pendingCrush) return;
-
-        if (
-            !this.playerRemainsInCrushTarget() ||
-            !this.crushSourceIsActive()
-        ) {
-            this.pendingCrush = null;
-            this.crushGraceTimer = 0;
-            return;
-        }
-
-        this.crushGraceTimer = Math.max(0, this.crushGraceTimer - deltaTime);
-        this.screenShake = Math.max(
-            this.screenShake,
-            this.reducedMotion ?
-                0.5 :
-                1.2 + this.crushGraceTimer * 4
-        );
-
-        if (this.crushGraceTimer === 0) {
-            this.triggerDeath('crushed', this.pendingCrush);
-        }
+        });
     }
 
     spawnCrushDebris(impact) {
@@ -1816,8 +1752,6 @@ class Game {
         this.deathCause = cause;
         this.deathTimer = DEATH_BEAT_DURATION;
         this.deathImpact = impact;
-        this.pendingCrush = null;
-        this.crushGraceTimer = 0;
         this.warningMessage = null;
         this.warningMessageTimer = 0;
         this.gameState = 'dying';
@@ -2295,6 +2229,12 @@ class Game {
                 isShaking: false,
                 shakeTimer: 0,
             };
+
+            if (this.gameState !== 'playing') {
+                this.applyComponentMotionState(component, state);
+                nextStates.set(component.key, state);
+                continue;
+            }
             
             if (state.isFalling) {
                 state.fallProgress += deltaTime / this.getComponentFallDuration(component);
@@ -2307,22 +2247,20 @@ class Game {
                         block.y + 1 === playerGridY
                     );
 
+                    this.moveColorComponentDown(component, liveBlockMap);
+                    state.fallProgress = 0;
+
                     if (crushingBlock) {
-                        // Hold the block just above its destination for a brief,
-                        // visible escape window instead of embedding it in Manny
-                        // and ending the run on the same physics frame.
-                        state.fallProgress = 0.96;
-                        this.beginCrushThreat(
-                            playerGridX,
-                            playerGridY,
+                        state.isFalling = false;
+                        state.isShaking = false;
+                        state.fallTimer = 0;
+                        state.shakeTimer = 0;
+                        this.triggerCrush(
                             crushingBlock.colorIndex + BLOCK_TYPES.COLORED,
                             crushingBlock,
                             'color'
                         );
                     } else {
-                        this.moveColorComponentDown(component, liveBlockMap);
-                        state.fallProgress = 0;
-
                         const attachedToSameColor = this.componentTouchesSupportedSameColor(
                             component,
                             previousMotion,
@@ -2410,26 +2348,28 @@ class Game {
                 if (xBlock.fallProgress >= 1) {
                     const playerGridX = Math.round(this.player.x / GRID_SIZE);
                     const playerGridY = Math.round(this.player.y / GRID_SIZE);
-
-                    if (
+                    const crushesPlayer =
                         xBlock.x === playerGridX &&
-                        xBlock.y + 1 === playerGridY
-                    ) {
-                        xBlock.fallProgress = 0.96;
-                        this.beginCrushThreat(
-                            playerGridX,
-                            playerGridY,
+                        xBlock.y + 1 === playerGridY;
+
+                    this.grid[xBlock.y][xBlock.x] = BLOCK_TYPES.EMPTY;
+                    xBlock.fall();
+                    if (this.grid[xBlock.y]) {
+                        this.grid[xBlock.y][xBlock.x] = BLOCK_TYPES.XBLOCK;
+                    }
+
+                    if (crushesPlayer) {
+                        xBlock.isFalling = false;
+                        xBlock.isShaking = false;
+                        xBlock.fallTimer = 0;
+                        xBlock.shakeTimer = 0;
+                        this.triggerCrush(
                             BLOCK_TYPES.XBLOCK,
                             xBlock,
                             'x'
                         );
+                        return;
                     } else {
-                        this.grid[xBlock.y][xBlock.x] = BLOCK_TYPES.EMPTY;
-                        xBlock.fall();
-                        if (this.grid[xBlock.y]) {
-                            this.grid[xBlock.y][xBlock.x] = BLOCK_TYPES.XBLOCK;
-                        }
-
                         if (!xBlock.canFall(this.grid)) {
                             xBlock.isFalling = false;
                             xBlock.isShaking = false;
@@ -2609,7 +2549,10 @@ class Game {
         if (!this.hasPlayerDug) return;
 
         this.updateColoredBlockPhysics(deltaTime);
+        if (this.gameState !== 'playing') return;
+
         this.updateXBlockPhysics(deltaTime);
+        if (this.gameState !== 'playing') return;
         
         if (this.pendingMatchCheck) {
             this.triggerColorMatches();
@@ -2815,8 +2758,6 @@ class Game {
         this.hasPlayerDug = false;
         this.hasSideDrilled = false;
         this.pendingMatchCheck = false;
-        this.pendingCrush = null;
-        this.crushGraceTimer = 0;
         this.deathCause = null;
         this.deathTimer = 0;
         this.deathImpact = null;
@@ -2975,104 +2916,40 @@ class Game {
     renderCrushForeground() {
         if (!this.deathImpact) return;
 
-        const sourceY = this.deathImpact.y - 1;
-        const colorBlock = this.colorBlocks.find(block =>
-            !block.destroyed &&
-            block.x === this.deathImpact.x &&
-            block.y === sourceY
-        );
-        if (colorBlock) {
-            this.renderColoredBlock(colorBlock);
+        const sourceBlock = this.deathImpact.sourceBlock;
+        if (
+            this.deathImpact.sourceKind === 'color' &&
+            sourceBlock &&
+            !sourceBlock.destroyed
+        ) {
+            this.renderColoredBlock(sourceBlock);
             return;
         }
 
-        const xBlock = this.xBlocks.find(block =>
-            !block.destroyed &&
-            block.x === this.deathImpact.x &&
-            block.y === sourceY
-        );
-        if (!xBlock) return;
+        if (
+            this.deathImpact.sourceKind !== 'x' ||
+            !sourceBlock ||
+            sourceBlock.destroyed
+        ) return;
 
-        const fallOffset = xBlock.isFalling ?
-            xBlock.fallProgress * GRID_SIZE :
+        const fallOffset = sourceBlock.isFalling ?
+            sourceBlock.fallProgress * GRID_SIZE :
             0;
         const screenY =
-            xBlock.y * GRID_SIZE -
+            sourceBlock.y * GRID_SIZE -
             this.cameraY +
             fallOffset;
         this.renderXBlock(
-            xBlock.x * GRID_SIZE + xBlock.getShakeOffset(this.reducedMotion),
+            sourceBlock.x * GRID_SIZE +
+                sourceBlock.getShakeOffset(this.reducedMotion),
             screenY,
-            xBlock
+            sourceBlock
         );
     }
 
     renderDangerOverlay() {
         const ctx = this.ctx;
         ctx.save();
-
-        if (this.pendingCrush && this.gameState === 'playing') {
-            const pulse = this.reducedMotion ?
-                0.68 :
-                0.45 + Math.sin(this.visualTime * 22) * 0.22;
-            const targetX = this.pixelSnap(
-                this.pendingCrush.x * GRID_SIZE +
-                (this.renderShakeX || 0)
-            );
-            const targetY = this.pixelSnap(
-                this.pendingCrush.y * GRID_SIZE -
-                this.cameraY +
-                (this.renderShakeY || 0)
-            );
-            ctx.fillStyle = `rgba(255, 173, 62, ${pulse})`;
-
-            const corner = 13;
-            const thickness = 3;
-            ctx.fillRect(targetX + 4, targetY + 4, corner, thickness);
-            ctx.fillRect(targetX + 4, targetY + 4, thickness, corner);
-            ctx.fillRect(
-                targetX + GRID_SIZE - 4 - corner,
-                targetY + 4,
-                corner,
-                thickness
-            );
-            ctx.fillRect(
-                targetX + GRID_SIZE - 7,
-                targetY + 4,
-                thickness,
-                corner
-            );
-            ctx.fillRect(
-                targetX + 4,
-                targetY + GRID_SIZE - 7,
-                corner,
-                thickness
-            );
-            ctx.fillRect(
-                targetX + 4,
-                targetY + GRID_SIZE - 4 - corner,
-                thickness,
-                corner
-            );
-            ctx.fillRect(
-                targetX + GRID_SIZE - 4 - corner,
-                targetY + GRID_SIZE - 7,
-                corner,
-                thickness
-            );
-            ctx.fillRect(
-                targetX + GRID_SIZE - 7,
-                targetY + GRID_SIZE - 4 - corner,
-                thickness,
-                corner
-            );
-
-            ctx.globalAlpha = pulse * 0.55;
-            ctx.fillRect(0, 0, CANVAS_WIDTH, 5);
-            ctx.fillRect(0, CANVAS_HEIGHT - 5, CANVAS_WIDTH, 5);
-            ctx.fillRect(0, 5, 5, CANVAS_HEIGHT - 10);
-            ctx.fillRect(CANVAS_WIDTH - 5, 5, 5, CANVAS_HEIGHT - 10);
-        }
 
         if (this.gameState === 'dying') {
             const progress = Math.max(
