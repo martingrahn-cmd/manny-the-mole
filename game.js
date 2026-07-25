@@ -4,9 +4,15 @@ const PLAYER_SIZE = 64;
 const GRID_WIDTH = 7; // Like Mr. Driller / Tetris
 const GRID_HEIGHT = 50;
 const VIEWPORT_HEIGHT = 11;
-const FALL_DELAY = 0.52; // Total warning time before unsupported blocks drop
-const FALL_SPEED = 0.075; // Seconds per grid cell while blocks are falling
-const SHAKE_DURATION = 0.34; // Readable warning before the drop
+const FALL_DELAY = 0.68; // Early-level warning time before unsupported blocks drop
+const MIN_FALL_DELAY = 0.5;
+const FALL_DELAY_DEPTH_REDUCTION = 0.18;
+const FALL_SPEED = 0.105; // Seconds per grid cell while blocks are falling
+const MIN_FALL_SPEED = 0.08;
+const FALL_SPEED_DEPTH_REDUCTION = 0.025;
+const SHAKE_DURATION = 0.5; // Readable warning before the drop
+const CRUSH_GRACE_DURATION = 0.34;
+const DEATH_BEAT_DURATION = 0.52;
 const MATCH_CLEAR_SIZE = 4;
 const MATCH_CLEAR_FLASH = 0.42;
 const DIG_CLEAR_FLASH = 0.09;
@@ -152,8 +158,8 @@ class ColoredBlock {
         return this.x === playerGridX && this.y === playerGridY;
     }
     
-    getShakeOffset() {
-        if (!this.isShaking) return 0;
+    getShakeOffset(reducedMotion = false) {
+        if (!this.isShaking || reducedMotion) return 0;
         // Shake intensity increases as timer progresses
         const intensity = 2 + Math.min(1, this.shakeTimer / SHAKE_DURATION) * 3;
         return Math.sin(this.shakeTimer * 40) * intensity;
@@ -187,8 +193,8 @@ class XBlock {
         this.fallProgress = 0;
     }
     
-    getShakeOffset() {
-        if (!this.isShaking) return 0;
+    getShakeOffset(reducedMotion = false) {
+        if (!this.isShaking || reducedMotion) return 0;
         const intensity = 2 + Math.min(1, this.shakeTimer / SHAKE_DURATION) * 3;
         return Math.sin(this.shakeTimer * 40) * intensity;
     }
@@ -297,6 +303,7 @@ class ArcadeSound {
         this.context = null;
         this.noiseBuffer = null;
         this.lastLandTime = -1;
+        this.lastFallWarningTime = -1;
     }
 
     unlock() {
@@ -305,7 +312,7 @@ class ArcadeSound {
 
         if (!this.context) {
             this.context = new AudioContextClass();
-            const sampleCount = Math.floor(this.context.sampleRate * 0.2);
+            const sampleCount = Math.floor(this.context.sampleRate * 0.5);
             this.noiseBuffer = this.context.createBuffer(1, sampleCount, this.context.sampleRate);
             const samples = this.noiseBuffer.getChannelData(0);
             for (let i = 0; i < sampleCount; i++) {
@@ -381,6 +388,29 @@ class ArcadeSound {
         this.playNoise(0.045, 0.015 + weight * 0.007, 190);
     }
 
+    playFallWarning() {
+        const context = this.unlock();
+        if (
+            !context ||
+            context.currentTime - this.lastFallWarningTime < 0.12
+        ) return;
+        this.lastFallWarningTime = context.currentTime;
+        this.playTone(118, 62, 0.13, 0.026, 'triangle');
+        this.playNoise(0.09, 0.018, 145);
+    }
+
+    playCrush() {
+        this.playTone(92, 28, 0.24, 0.085, 'sawtooth');
+        this.playNoise(0.18, 0.085, 125);
+        this.playTone(52, 24, 0.2, 0.045, 'triangle', 0.06);
+    }
+
+    playAirOut() {
+        this.playTone(360, 145, 0.3, 0.045, 'sine');
+        this.playTone(240, 82, 0.32, 0.032, 'triangle', 0.12);
+        this.playNoise(0.28, 0.024, 920);
+    }
+
     playClear(size) {
         const lift = Math.min(5, Math.max(0, size - MATCH_CLEAR_SIZE));
         this.playTone(330 + lift * 25, 510 + lift * 35, 0.11, 0.045, 'square');
@@ -417,6 +447,9 @@ class GameUI {
         this.sideDrillHint = document.getElementById('sideDrillHint');
         this.countdown = document.getElementById('countdownDisplay');
         this.toast = document.getElementById('gameToast');
+        this.gameoverEyebrow = document.getElementById('gameoverEyebrow');
+        this.gameoverTitle = document.getElementById('gameoverTitle');
+        this.gameoverCopy = document.getElementById('gameoverCopy');
         this.gameoverScore = document.getElementById('gameoverScore');
         this.gameoverDepth = document.getElementById('gameoverDepth');
         this.wonScore = document.getElementById('wonScore');
@@ -473,6 +506,28 @@ class GameUI {
         this.airFill.style.transform = `scaleX(${airPercent})`;
         this.airModule.classList.toggle('is-low', airPercent <= 0.25);
 
+        const deathPresentation = game.deathCause === 'crushed' ? {
+            eyebrow: 'Rasvarning',
+            title: 'Krossad av raset',
+            copy: 'Flytta dig ur kolumnen så fort blocken börjar skaka.',
+        } : game.deathCause === 'oxygen' ? {
+            eyebrow: 'Luften tog slut',
+            title: 'Slut på syre',
+            copy: 'Planera en väg till nästa syretub och lämna marginal för returen.',
+        } : {
+            eyebrow: 'Kuppen misslyckades',
+            title: 'Gruvan vann',
+            copy: 'Försök igen och ta dig djupare nästa gång.',
+        };
+        if (this.gameoverEyebrow) {
+            this.gameoverEyebrow.textContent = deathPresentation.eyebrow;
+        }
+        if (this.gameoverTitle) {
+            this.gameoverTitle.textContent = deathPresentation.title;
+        }
+        if (this.gameoverCopy) {
+            this.gameoverCopy.textContent = deathPresentation.copy;
+        }
         this.gameoverScore.textContent = game.score.toString();
         this.gameoverDepth.textContent = `${game.depth} m`;
         this.wonScore.textContent = game.score.toString();
@@ -505,9 +560,25 @@ class GameUI {
             screen.setAttribute('aria-hidden', isActive ? 'false' : 'true');
         }
 
-        const toastMessage = game.gamepadMessage;
+        const activeWarning = game.gameState === 'playing' ?
+            game.warningMessage :
+            null;
+        const toastMessage = game.gameState === 'playing' ?
+            (activeWarning || game.gamepadMessage) :
+            null;
+        this.toast.classList.toggle('is-danger', Boolean(activeWarning));
+        this.toast.setAttribute(
+            'role',
+            activeWarning ? 'alert' : 'status'
+        );
+        this.toast.setAttribute(
+            'aria-live',
+            activeWarning ? 'assertive' : 'polite'
+        );
+        if (toastMessage) {
+            this.toast.textContent = toastMessage;
+        }
         this.toast.hidden = !toastMessage;
-        if (toastMessage) this.toast.textContent = toastMessage;
 
         if (this.lastState !== game.gameState) {
             this.lastState = game.gameState;
@@ -594,6 +665,14 @@ class Game {
         this.screenShake = 0;
         this.screenShakePhase = 0;
         this.visualTime = 0;
+        this.reducedMotionQuery = window.matchMedia?.(
+            '(prefers-reduced-motion: reduce)'
+        );
+        this.reducedMotion = Boolean(this.reducedMotionQuery?.matches);
+        this.reducedMotionQuery?.addEventListener?.('change', event => {
+            this.reducedMotion = event.matches;
+            if (event.matches) this.screenShake = 0;
+        });
         
         this.keys = {};
         this.keysJustPressed = {};
@@ -606,6 +685,14 @@ class Game {
         this.hasPlayerDug = false; // Physics paused until first dig
         this.hasSideDrilled = false;
         this.pendingMatchCheck = false;
+        this.pendingCrush = null;
+        this.crushGraceTimer = 0;
+        this.deathCause = null;
+        this.deathTimer = 0;
+        this.deathImpact = null;
+        this.warningMessage = null;
+        this.warningMessageTimer = 0;
+        this.hasShownFallWarning = false;
         
         this.gamepadMessage = null;
         this.gamepadMessageTime = 0;
@@ -1018,6 +1105,15 @@ class Game {
             this.keysJustPressed = {};
             return;
         }
+
+        if (this.gameState === 'dying') {
+            this.deathTimer = Math.max(0, this.deathTimer - deltaTime);
+            if (this.deathTimer === 0) {
+                this.gameState = 'gameover';
+            }
+            this.keysJustPressed = {};
+            return;
+        }
         
         if (this.gameState === 'gameover' || this.gameState === 'won') {
             if (this.keysJustPressed['Enter'] || input.digJustPressed) {
@@ -1039,6 +1135,9 @@ class Game {
         }
         if (this.gameState === 'playing') {
             this.updatePhysics(deltaTime);
+            this.updateCrushThreat(deltaTime);
+        }
+        if (this.gameState === 'playing') {
             this.updateOxygen(deltaTime);
         }
         this.updateCamera(deltaTime);
@@ -1064,6 +1163,16 @@ class Game {
         }
 
         this.debrisParticles = this.debrisParticles.filter(particle => particle.life > 0);
+
+        if (this.warningMessageTimer > 0) {
+            this.warningMessageTimer = Math.max(
+                0,
+                this.warningMessageTimer - deltaTime
+            );
+            if (this.warningMessageTimer === 0) {
+                this.warningMessage = null;
+            }
+        }
 
         if (this.gamepadMessage && Date.now() - this.gamepadMessageTime > 3000) {
             this.gamepadMessage = null;
@@ -1531,6 +1640,201 @@ class Game {
 
         return reachedSafe;
     }
+
+    showWarningMessage(message, duration = 2.4) {
+        this.warningMessage = message;
+        this.warningMessageTimer = duration;
+    }
+
+    triggerFallWarning(worldY) {
+        const screenY = worldY * GRID_SIZE - this.cameraY;
+        const isVisible =
+            screenY + GRID_SIZE > 0 &&
+            screenY < CANVAS_HEIGHT;
+        if (!isVisible) return;
+
+        this.sound.playFallWarning();
+        if (this.hasShownFallWarning) return;
+
+        this.hasShownFallWarning = true;
+        this.showWarningMessage(
+            'Rasvarning · skakande block faller — flytta dig!',
+            3
+        );
+    }
+
+    beginCrushThreat(x, y, blockValue, sourceBlock, sourceKind) {
+        if (this.gameState !== 'playing' || !sourceBlock) return;
+
+        const isSameThreat =
+            this.pendingCrush &&
+            this.pendingCrush.x === x &&
+            this.pendingCrush.y === y &&
+            this.pendingCrush.sourceBlock === sourceBlock;
+        if (isSameThreat) return;
+
+        this.pendingCrush = {
+            x,
+            y,
+            blockValue,
+            sourceBlock,
+            sourceKind,
+            sourceX: sourceBlock.x,
+            sourceY: sourceBlock.y,
+        };
+        this.crushGraceTimer = CRUSH_GRACE_DURATION;
+        this.screenShake = Math.max(
+            this.screenShake,
+            this.reducedMotion ? 1 : 3.5
+        );
+        this.sound.playFallWarning();
+        this.showWarningMessage('Fara · flytta dig ur raset!', 1.1);
+    }
+
+    playerRemainsInCrushTarget() {
+        if (!this.pendingCrush) return false;
+
+        const playerGridX = Math.round(this.player.x / GRID_SIZE);
+        const playerGridY = Math.round(this.player.y / GRID_SIZE);
+        return playerGridX === this.pendingCrush.x &&
+            playerGridY === this.pendingCrush.y;
+    }
+
+    crushSourceIsActive() {
+        if (!this.pendingCrush?.sourceBlock) return false;
+
+        const source = this.pendingCrush.sourceBlock;
+        return !source.destroyed &&
+            !source.isClearing &&
+            source.isFalling &&
+            source.x === this.pendingCrush.sourceX &&
+            source.y === this.pendingCrush.sourceY &&
+            source.fallProgress >= 0.9;
+    }
+
+    updateCrushThreat(deltaTime) {
+        if (!this.pendingCrush) return;
+
+        if (
+            !this.playerRemainsInCrushTarget() ||
+            !this.crushSourceIsActive()
+        ) {
+            this.pendingCrush = null;
+            this.crushGraceTimer = 0;
+            return;
+        }
+
+        this.crushGraceTimer = Math.max(0, this.crushGraceTimer - deltaTime);
+        this.screenShake = Math.max(
+            this.screenShake,
+            this.reducedMotion ?
+                0.5 :
+                1.2 + this.crushGraceTimer * 4
+        );
+
+        if (this.crushGraceTimer === 0) {
+            this.triggerDeath('crushed', this.pendingCrush);
+        }
+    }
+
+    spawnCrushDebris(impact) {
+        const originX = impact.x * GRID_SIZE + GRID_SIZE / 2;
+        const originY = impact.y * GRID_SIZE + GRID_SIZE / 2;
+        let bright = '#c7b6a7';
+        let dark = '#57424b';
+
+        if (isColoredBlockValue(impact.blockValue)) {
+            const palette = BLOCK_COLORS[
+                impact.blockValue - BLOCK_TYPES.COLORED
+            ];
+            bright = palette.highlight;
+            dark = palette.shadow;
+        } else if (impact.blockValue === BLOCK_TYPES.XBLOCK) {
+            bright = '#f06b8d';
+            dark = '#4b2635';
+        }
+
+        for (let index = 0; index < 18; index++) {
+            const life = 0.26 + Math.random() * 0.24;
+            const isDust = index % 4 === 0;
+            this.debrisParticles.push({
+                x: originX + (Math.random() - 0.5) * GRID_SIZE * 0.7,
+                y: originY + (Math.random() - 0.5) * GRID_SIZE * 0.4,
+                vx: (Math.random() - 0.5) * 280,
+                vy: -80 - Math.random() * 190,
+                life,
+                maxLife: life,
+                size: isDust ? 8 + Math.floor(Math.random() * 5) :
+                    [3, 5, 7][index % 3],
+                color: isDust ? bright : (index % 2 ? bright : dark),
+                kind: isDust ? 'dust' : 'chip',
+                gravity: isDust ? 360 : 900,
+                drag: isDust ? 0.04 : 0.14,
+            });
+        }
+
+        if (this.debrisParticles.length > MAX_DEBRIS_PARTICLES) {
+            this.debrisParticles.splice(
+                0,
+                this.debrisParticles.length - MAX_DEBRIS_PARTICLES
+            );
+        }
+    }
+
+    spawnAirOutParticles() {
+        const centerX = this.player.x + PLAYER_SIZE / 2;
+        const centerY = this.player.y + PLAYER_SIZE / 2;
+
+        for (let index = 0; index < 10; index++) {
+            const life = 0.38 + index * 0.025;
+            this.debrisParticles.push({
+                x: centerX + (Math.random() - 0.5) * 30,
+                y: centerY + (Math.random() - 0.5) * 20,
+                vx: (Math.random() - 0.5) * 34,
+                vy: -34 - Math.random() * 42,
+                life,
+                maxLife: life,
+                size: index % 3 === 0 ? 4 : 2,
+                color: index % 2 === 0 ? '#bffaff' : '#5dd9e8',
+                kind: 'sparkle',
+                gravity: -28,
+                drag: 0.24,
+            });
+        }
+
+        if (this.debrisParticles.length > MAX_DEBRIS_PARTICLES) {
+            this.debrisParticles.splice(
+                0,
+                this.debrisParticles.length - MAX_DEBRIS_PARTICLES
+            );
+        }
+    }
+
+    triggerDeath(cause, impact = null) {
+        if (this.gameState !== 'playing') return;
+
+        this.deathCause = cause;
+        this.deathTimer = DEATH_BEAT_DURATION;
+        this.deathImpact = impact;
+        this.pendingCrush = null;
+        this.crushGraceTimer = 0;
+        this.warningMessage = null;
+        this.warningMessageTimer = 0;
+        this.gameState = 'dying';
+        this.clearKeyboardInput();
+
+        if (cause === 'crushed' && impact) {
+            this.screenShake = Math.max(
+                this.screenShake,
+                this.reducedMotion ? 2 : 9
+            );
+            this.spawnCrushDebris(impact);
+            this.sound.playCrush();
+        } else {
+            this.spawnAirOutParticles();
+            this.sound.playAirOut();
+        }
+    }
     
     spawnDigDebris(gridX, gridY, blockValue, countOverride = null) {
         let color = '#9a7a62';
@@ -1792,11 +2096,21 @@ class Game {
     }
 
     getComponentFallDelay(component) {
-        return Math.max(0.3, FALL_DELAY - this.getComponentDepthFactor(component) * 0.22);
+        return Math.max(
+            MIN_FALL_DELAY,
+            FALL_DELAY -
+                this.getComponentDepthFactor(component) *
+                FALL_DELAY_DEPTH_REDUCTION
+        );
     }
 
     getComponentFallDuration(component) {
-        return Math.max(0.052, FALL_SPEED - this.getComponentDepthFactor(component) * 0.02);
+        return Math.max(
+            MIN_FALL_SPEED,
+            FALL_SPEED -
+                this.getComponentDepthFactor(component) *
+                FALL_SPEED_DEPTH_REDUCTION
+        );
     }
 
     colorComponentHasExternalSupport(startBlock, excludedIds, blockMap) {
@@ -1986,34 +2300,49 @@ class Game {
                 state.fallProgress += deltaTime / this.getComponentFallDuration(component);
                 
                 if (state.fallProgress >= 1) {
-                    this.moveColorComponentDown(component, liveBlockMap);
-                    state.fallProgress = 0;
-                    
-                    const attachedToSameColor = this.componentTouchesSupportedSameColor(
-                        component,
-                        previousMotion,
-                        liveBlockMap
-                    );
-                    if (attachedToSameColor || !this.componentCanFall(component)) {
-                        state.isFalling = false;
-                        state.isShaking = false;
-                        state.fallTimer = 0;
-                        state.shakeTimer = 0;
-                        component.blocks.forEach(block => {
-                            block.matchEligible = true;
-                        });
-                        this.screenShake = Math.max(
-                            this.screenShake,
-                            Math.min(4, 1.4 + component.blocks.length * 0.35)
-                        );
-                        this.sound.playLand(Math.min(4, 1 + component.blocks.length * 0.35));
-                        this.pendingMatchCheck = true;
-                    }
-                    
                     const playerGridX = Math.round(this.player.x / GRID_SIZE);
                     const playerGridY = Math.round(this.player.y / GRID_SIZE);
-                    if (this.componentOverlapsPlayer(component, playerGridX, playerGridY)) {
-                        this.gameState = 'gameover';
+                    const crushingBlock = component.blocks.find(block =>
+                        block.x === playerGridX &&
+                        block.y + 1 === playerGridY
+                    );
+
+                    if (crushingBlock) {
+                        // Hold the block just above its destination for a brief,
+                        // visible escape window instead of embedding it in Manny
+                        // and ending the run on the same physics frame.
+                        state.fallProgress = 0.96;
+                        this.beginCrushThreat(
+                            playerGridX,
+                            playerGridY,
+                            crushingBlock.colorIndex + BLOCK_TYPES.COLORED,
+                            crushingBlock,
+                            'color'
+                        );
+                    } else {
+                        this.moveColorComponentDown(component, liveBlockMap);
+                        state.fallProgress = 0;
+
+                        const attachedToSameColor = this.componentTouchesSupportedSameColor(
+                            component,
+                            previousMotion,
+                            liveBlockMap
+                        );
+                        if (attachedToSameColor || !this.componentCanFall(component)) {
+                            state.isFalling = false;
+                            state.isShaking = false;
+                            state.fallTimer = 0;
+                            state.shakeTimer = 0;
+                            component.blocks.forEach(block => {
+                                block.matchEligible = true;
+                            });
+                            this.screenShake = Math.max(
+                                this.screenShake,
+                                Math.min(4, 1.4 + component.blocks.length * 0.35)
+                            );
+                            this.sound.playLand(Math.min(4, 1 + component.blocks.length * 0.35));
+                            this.pendingMatchCheck = true;
+                        }
                     }
                 }
             } else {
@@ -2024,6 +2353,9 @@ class Game {
                         state.isShaking = true;
                         state.shakeTimer = 0;
                         state.fallTimer = 0;
+                        this.triggerFallWarning(
+                            Math.max(...component.blocks.map(block => block.y))
+                        );
                     }
                     
                     state.shakeTimer += deltaTime;
@@ -2063,32 +2395,49 @@ class Game {
         for (const xBlock of this.xBlocks) {
             if (xBlock.destroyed) continue;
             const depthFactor = Math.max(0, Math.min(1, xBlock.y / (GRID_HEIGHT - 1)));
-            const fallDuration = Math.max(0.052, FALL_SPEED - depthFactor * 0.02);
-            const fallDelay = Math.max(0.3, FALL_DELAY - depthFactor * 0.22);
+            const fallDuration = Math.max(
+                MIN_FALL_SPEED,
+                FALL_SPEED - depthFactor * FALL_SPEED_DEPTH_REDUCTION
+            );
+            const fallDelay = Math.max(
+                MIN_FALL_DELAY,
+                FALL_DELAY - depthFactor * FALL_DELAY_DEPTH_REDUCTION
+            );
             
             if (xBlock.isFalling) {
                 xBlock.fallProgress += deltaTime / fallDuration;
                 
                 if (xBlock.fallProgress >= 1) {
-                    this.grid[xBlock.y][xBlock.x] = BLOCK_TYPES.EMPTY;
-                    xBlock.fall();
-                    if (this.grid[xBlock.y]) {
-                        this.grid[xBlock.y][xBlock.x] = BLOCK_TYPES.XBLOCK;
-                    }
-                    
-                    if (!xBlock.canFall(this.grid)) {
-                        xBlock.isFalling = false;
-                        xBlock.isShaking = false;
-                        xBlock.fallTimer = 0;
-                        xBlock.shakeTimer = 0;
-                        this.screenShake = Math.max(this.screenShake, 2);
-                        this.sound.playLand(1.5);
-                    }
-                    
                     const playerGridX = Math.round(this.player.x / GRID_SIZE);
                     const playerGridY = Math.round(this.player.y / GRID_SIZE);
-                    if (xBlock.x === playerGridX && xBlock.y === playerGridY) {
-                        this.gameState = 'gameover';
+
+                    if (
+                        xBlock.x === playerGridX &&
+                        xBlock.y + 1 === playerGridY
+                    ) {
+                        xBlock.fallProgress = 0.96;
+                        this.beginCrushThreat(
+                            playerGridX,
+                            playerGridY,
+                            BLOCK_TYPES.XBLOCK,
+                            xBlock,
+                            'x'
+                        );
+                    } else {
+                        this.grid[xBlock.y][xBlock.x] = BLOCK_TYPES.EMPTY;
+                        xBlock.fall();
+                        if (this.grid[xBlock.y]) {
+                            this.grid[xBlock.y][xBlock.x] = BLOCK_TYPES.XBLOCK;
+                        }
+
+                        if (!xBlock.canFall(this.grid)) {
+                            xBlock.isFalling = false;
+                            xBlock.isShaking = false;
+                            xBlock.fallTimer = 0;
+                            xBlock.shakeTimer = 0;
+                            this.screenShake = Math.max(this.screenShake, 2);
+                            this.sound.playLand(1.5);
+                        }
                     }
                 }
             } else {
@@ -2099,6 +2448,7 @@ class Game {
                         xBlock.isShaking = true;
                         xBlock.shakeTimer = 0;
                         xBlock.fallTimer = 0;
+                        this.triggerFallWarning(xBlock.y);
                     }
                     
                     xBlock.shakeTimer += deltaTime;
@@ -2309,7 +2659,7 @@ class Game {
         this.oxygen -= deltaTime * 1.2;
         if (this.oxygen <= 0) {
             this.oxygen = 0;
-            this.gameState = 'gameover';
+            this.triggerDeath('oxygen');
         }
     }
 
@@ -2465,6 +2815,14 @@ class Game {
         this.hasPlayerDug = false;
         this.hasSideDrilled = false;
         this.pendingMatchCheck = false;
+        this.pendingCrush = null;
+        this.crushGraceTimer = 0;
+        this.deathCause = null;
+        this.deathTimer = 0;
+        this.deathImpact = null;
+        this.warningMessage = null;
+        this.warningMessageTimer = 0;
+        this.hasShownFallWarning = false;
         this.clearKeyboardInput();
         
         for (let y = 0; y < GRID_HEIGHT; y++) {
@@ -2488,10 +2846,16 @@ class Game {
         this.renderCaveBackground();
         this.renderAmbientDust();
         
-        const shakeX = this.pixelSnap(Math.sin(this.screenShakePhase) * this.screenShake);
-        const shakeY = this.pixelSnap(
-            Math.cos(this.screenShakePhase * 1.37) * this.screenShake * 0.65
-        );
+        const shakeX = this.reducedMotion ?
+            0 :
+            this.pixelSnap(Math.sin(this.screenShakePhase) * this.screenShake);
+        const shakeY = this.reducedMotion ?
+            0 :
+            this.pixelSnap(
+                Math.cos(this.screenShakePhase * 1.37) *
+                this.screenShake *
+                0.65
+            );
         this.renderShakeX = shakeX;
         this.renderShakeY = shakeY;
         this.ctx.save();
@@ -2518,7 +2882,7 @@ class Game {
             if (xBlock.destroyed) continue;
             
             const fallOffset = xBlock.isFalling ? xBlock.fallProgress * GRID_SIZE : 0;
-            const shakeOffset = xBlock.getShakeOffset();
+            const shakeOffset = xBlock.getShakeOffset(this.reducedMotion);
             const screenY = xBlock.y * GRID_SIZE - this.cameraY + fallOffset;
             
             if (screenY > -GRID_SIZE && screenY < CANVAS_HEIGHT + GRID_SIZE) {
@@ -2579,10 +2943,15 @@ class Game {
             this.player.facing,
             this.player.isDrilling
         );
+
+        if (this.gameState === 'dying' && this.deathCause === 'crushed') {
+            this.renderCrushForeground();
+        }
         
         this.ctx.restore();
         this.renderLighting();
         this.renderPostProcess();
+        this.renderDangerOverlay();
         this.ui.sync(this);
     }
 
@@ -2601,6 +2970,148 @@ class Game {
         this.ctx.fillStyle = color;
         this.ctx.fillRect(x + cut, y, width - cut * 2, height);
         this.ctx.fillRect(x, y + cut, width, height - cut * 2);
+    }
+
+    renderCrushForeground() {
+        if (!this.deathImpact) return;
+
+        const sourceY = this.deathImpact.y - 1;
+        const colorBlock = this.colorBlocks.find(block =>
+            !block.destroyed &&
+            block.x === this.deathImpact.x &&
+            block.y === sourceY
+        );
+        if (colorBlock) {
+            this.renderColoredBlock(colorBlock);
+            return;
+        }
+
+        const xBlock = this.xBlocks.find(block =>
+            !block.destroyed &&
+            block.x === this.deathImpact.x &&
+            block.y === sourceY
+        );
+        if (!xBlock) return;
+
+        const fallOffset = xBlock.isFalling ?
+            xBlock.fallProgress * GRID_SIZE :
+            0;
+        const screenY =
+            xBlock.y * GRID_SIZE -
+            this.cameraY +
+            fallOffset;
+        this.renderXBlock(
+            xBlock.x * GRID_SIZE + xBlock.getShakeOffset(this.reducedMotion),
+            screenY,
+            xBlock
+        );
+    }
+
+    renderDangerOverlay() {
+        const ctx = this.ctx;
+        ctx.save();
+
+        if (this.pendingCrush && this.gameState === 'playing') {
+            const pulse = this.reducedMotion ?
+                0.68 :
+                0.45 + Math.sin(this.visualTime * 22) * 0.22;
+            const targetX = this.pixelSnap(
+                this.pendingCrush.x * GRID_SIZE +
+                (this.renderShakeX || 0)
+            );
+            const targetY = this.pixelSnap(
+                this.pendingCrush.y * GRID_SIZE -
+                this.cameraY +
+                (this.renderShakeY || 0)
+            );
+            ctx.fillStyle = `rgba(255, 173, 62, ${pulse})`;
+
+            const corner = 13;
+            const thickness = 3;
+            ctx.fillRect(targetX + 4, targetY + 4, corner, thickness);
+            ctx.fillRect(targetX + 4, targetY + 4, thickness, corner);
+            ctx.fillRect(
+                targetX + GRID_SIZE - 4 - corner,
+                targetY + 4,
+                corner,
+                thickness
+            );
+            ctx.fillRect(
+                targetX + GRID_SIZE - 7,
+                targetY + 4,
+                thickness,
+                corner
+            );
+            ctx.fillRect(
+                targetX + 4,
+                targetY + GRID_SIZE - 7,
+                corner,
+                thickness
+            );
+            ctx.fillRect(
+                targetX + 4,
+                targetY + GRID_SIZE - 4 - corner,
+                thickness,
+                corner
+            );
+            ctx.fillRect(
+                targetX + GRID_SIZE - 4 - corner,
+                targetY + GRID_SIZE - 7,
+                corner,
+                thickness
+            );
+            ctx.fillRect(
+                targetX + GRID_SIZE - 7,
+                targetY + GRID_SIZE - 4 - corner,
+                thickness,
+                corner
+            );
+
+            ctx.globalAlpha = pulse * 0.55;
+            ctx.fillRect(0, 0, CANVAS_WIDTH, 5);
+            ctx.fillRect(0, CANVAS_HEIGHT - 5, CANVAS_WIDTH, 5);
+            ctx.fillRect(0, 5, 5, CANVAS_HEIGHT - 10);
+            ctx.fillRect(CANVAS_WIDTH - 5, 5, 5, CANVAS_HEIGHT - 10);
+        }
+
+        if (this.gameState === 'dying') {
+            const progress = Math.max(
+                0,
+                Math.min(1, 1 - this.deathTimer / DEATH_BEAT_DURATION)
+            );
+
+            if (this.deathCause === 'crushed') {
+                const flash = this.reducedMotion ?
+                    0 :
+                    Math.max(0, 1 - progress / 0.32);
+                ctx.globalAlpha = 0.26 * flash;
+                ctx.fillStyle = '#fff0c5';
+                ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+                ctx.globalAlpha = 0.12 + progress * 0.22;
+                ctx.fillStyle = '#7b1723';
+                for (let step = 0; step < 5; step++) {
+                    const inset = step * 9;
+                    ctx.fillRect(inset, inset, CANVAS_WIDTH - inset * 2, 6);
+                    ctx.fillRect(
+                        inset,
+                        CANVAS_HEIGHT - inset - 6,
+                        CANVAS_WIDTH - inset * 2,
+                        6
+                    );
+                }
+            } else {
+                ctx.globalAlpha = 0.12 + progress * 0.38;
+                ctx.fillStyle = '#03101a';
+                ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+                ctx.globalAlpha = Math.max(0, 0.18 - progress * 0.12);
+                ctx.fillStyle = '#5cecff';
+                ctx.fillRect(0, 0, CANVAS_WIDTH, 4);
+                ctx.fillRect(0, CANVAS_HEIGHT - 4, CANVAS_WIDTH, 4);
+            }
+        }
+
+        ctx.restore();
     }
 
     renderCaveBackground() {
@@ -2878,7 +3389,8 @@ class Game {
             const fallOffset = block.isFalling ? block.fallProgress * GRID_SIZE : 0;
             const screenY = block.y * GRID_SIZE - this.cameraY + fallOffset;
             if (screenY < -GRID_SIZE || screenY > CANVAS_HEIGHT + GRID_SIZE) continue;
-            const screenX = block.x * GRID_SIZE + block.getShakeOffset();
+            const screenX = block.x * GRID_SIZE +
+                block.getShakeOffset(this.reducedMotion);
             drawContactShadow(
                 screenX,
                 screenY,
@@ -2893,7 +3405,8 @@ class Game {
             const screenY = block.y * GRID_SIZE - this.cameraY + fallOffset;
             if (screenY < -GRID_SIZE || screenY > CANVAS_HEIGHT + GRID_SIZE) continue;
             drawContactShadow(
-                block.x * GRID_SIZE + block.getShakeOffset(),
+                block.x * GRID_SIZE +
+                    block.getShakeOffset(this.reducedMotion),
                 screenY,
                 isOpenCell(block.x + 1, block.y),
                 isOpenCell(block.x, block.y + 1)
@@ -3559,12 +4072,49 @@ class Game {
         return tile;
     }
 
+    renderFallWarningMarker(x, y, phaseOffset = 0) {
+        const ctx = this.ctx;
+        const phase = this.reducedMotion ?
+            0.35 :
+            (
+                this.visualTime * 8.5 +
+                phaseOffset * 0.17
+            ) % 1;
+        const pulse = this.reducedMotion ?
+            1 :
+            Math.floor(this.visualTime * 12 + phaseOffset) % 2;
+        const arrowY = this.pixelSnap(y + GRID_SIZE + 5 + phase * 6);
+        const centerX = this.pixelSnap(x + GRID_SIZE / 2);
+
+        ctx.save();
+        ctx.globalAlpha = pulse ? 0.95 : 0.58;
+        ctx.fillStyle = pulse ? '#fff1a6' : '#f0a33a';
+        ctx.fillRect(
+            this.pixelSnap(x + 12),
+            this.pixelSnap(y + GRID_SIZE - 6),
+            GRID_SIZE - 24,
+            3
+        );
+
+        // Downward chevron and small grit are readable even without color.
+        ctx.fillRect(centerX - 8, arrowY, 4, 3);
+        ctx.fillRect(centerX + 4, arrowY, 4, 3);
+        ctx.fillRect(centerX - 4, arrowY + 3, 8, 3);
+        ctx.fillStyle = '#d8b780';
+        ctx.fillRect(centerX - 18, arrowY - 4, 3, 3);
+        ctx.fillRect(centerX + 15, arrowY + 2, 2, 4);
+        ctx.restore();
+    }
+
     renderColoredBlock(block) {
         if (block.destroyed) return;
 
         const fallOffset = block.isFalling ? block.fallProgress * GRID_SIZE : 0;
         const colorValue = block.colorIndex + BLOCK_TYPES.COLORED;
-        const screenX = this.pixelSnap(block.x * GRID_SIZE + block.getShakeOffset());
+        const screenX = this.pixelSnap(
+            block.x * GRID_SIZE +
+            block.getShakeOffset(this.reducedMotion)
+        );
         const screenY = this.pixelSnap(
             block.y * GRID_SIZE - this.cameraY + fallOffset
         );
@@ -3584,6 +4134,13 @@ class Game {
         const tile = this.getBlockTile(block.colorIndex, edgeMask, variant);
 
         this.ctx.drawImage(tile, screenX, screenY, GRID_SIZE, GRID_SIZE);
+
+        if (
+            block.isShaking &&
+            this.grid[block.y + 1]?.[block.x] === BLOCK_TYPES.EMPTY
+        ) {
+            this.renderFallWarningMarker(screenX, screenY, block.id);
+        }
 
         if (block.isClearing && Math.floor(block.clearTimer * 24) % 2 === 0) {
             this.ctx.fillStyle = 'rgba(255, 255, 255, 0.68)';
@@ -3659,6 +4216,17 @@ class Game {
                 ctx.fillRect(screenX + 18, screenY + 38, 3, 14);
                 ctx.fillRect(screenX + 13, screenY + 45, 8, 3);
             }
+        }
+
+        if (
+            xBlock?.isShaking &&
+            this.grid[xBlock.y + 1]?.[xBlock.x] === BLOCK_TYPES.EMPTY
+        ) {
+            this.renderFallWarningMarker(
+                screenX,
+                screenY,
+                xBlock.x + xBlock.y * GRID_WIDTH
+            );
         }
     }
     

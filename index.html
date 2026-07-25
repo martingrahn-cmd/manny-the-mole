@@ -486,6 +486,15 @@
             backdrop-filter: blur(calc(10px * var(--game-scale)));
         }
 
+        .toast.is-danger {
+            border-color: rgba(255, 173, 62, 0.42);
+            background: rgba(30, 13, 12, 0.9);
+            box-shadow:
+                0 calc(8px * var(--game-scale)) calc(24px * var(--game-scale)) rgba(0, 0, 0, 0.35),
+                0 0 calc(18px * var(--game-scale)) rgba(255, 116, 50, 0.14);
+            color: #ffd69a;
+        }
+
         button:focus-visible {
             outline: max(2px, calc(2px * var(--game-scale))) solid #8ceffc;
             outline-offset: calc(3px * var(--game-scale));
@@ -574,10 +583,19 @@
                 </div>
             </section>
 
-            <section id="screenGameover" class="screen" aria-label="Spelet är slut" hidden>
+            <section
+                id="screenGameover"
+                class="screen"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="gameoverTitle"
+                aria-describedby="gameoverCopy"
+                hidden
+            >
                 <div class="screen-panel">
-                    <p class="eyebrow">Kuppen misslyckades</p>
-                    <h2>Gruvan vann</h2>
+                    <p id="gameoverEyebrow" class="eyebrow">Kuppen misslyckades</p>
+                    <h2 id="gameoverTitle">Gruvan vann</h2>
+                    <p id="gameoverCopy" class="screen-copy">Försök igen och ta dig djupare nästa gång.</p>
                     <div class="result-stats">
                         <div class="result-stat"><span>Poäng</span><strong id="gameoverScore">0</strong></div>
                         <div class="result-stat"><span>Djup</span><strong id="gameoverDepth">0 m</strong></div>
