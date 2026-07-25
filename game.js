@@ -46,6 +46,7 @@ const ASSETS = {
     mole_walk_left: null,
     mole_walk_right: null,
     mole_falling: null,
+    gold: null,
     loaded: false
 };
 
@@ -60,6 +61,7 @@ function loadAssets() {
             ['mole_walk_left', 'assets/mole_walk_left.png'],
             ['mole_walk_right', 'assets/mole_walk_right.png'],
             ['mole_falling', 'assets/mole_falling.png'],
+            ['gold', 'assets/gold.png'],
         ];
         
         let loadedCount = 0;
@@ -96,6 +98,14 @@ const BLOCK_COLORS = [
     { name: 'green', color: '#38b95e', highlight: '#9af5a0', light: '#63dc78', shadow: '#17753d', deep: '#0b4329' },
     { name: 'pink', color: '#e94fb7', highlight: '#ffb1e4', light: '#fa79ca', shadow: '#9a297a', deep: '#561648' },
 ];
+
+// Hand-painted loot from the original artwork sheet. Each region keeps a little
+// transparent breathing room so it reads cleanly inside a 64 px item pocket.
+const TREASURE_ATLAS_REGIONS = {
+    coin: { sx: 40, sy: 39, sw: 16, sh: 16, size: 48 },
+    bag: { sx: 0, sy: 64, sw: 32, sh: 32, size: 64 },
+    chest: { sx: 96, sy: 64, sw: 32, sh: 32, size: 64 },
+};
 
 const BLOCK_TYPES = {
     EMPTY: 0,
@@ -565,6 +575,7 @@ class Game {
             drillAnimTimer: 0,
             drillLockTimer: 0,
             drillSnapTargetX: null,
+            drillMadeContact: false,
             showDrill: false, // True when facing a block
         };
         
@@ -640,6 +651,7 @@ class Game {
         this.playerLightSprite = null;
         this.dynamicLightMap = null;
         this.glowSprites = null;
+        this.spriteSilhouetteCache = null;
 
         const displayWidth = CANVAS_WIDTH * SCALE;
         const displayHeight = CANVAS_HEIGHT * SCALE;
@@ -1047,8 +1059,8 @@ class Game {
             particle.life -= deltaTime;
             particle.x += particle.vx * deltaTime;
             particle.y += particle.vy * deltaTime;
-            particle.vy += 760 * deltaTime;
-            particle.vx *= Math.pow(0.08, deltaTime);
+            particle.vy += (particle.gravity ?? 760) * deltaTime;
+            particle.vx *= Math.pow(particle.drag ?? 0.08, deltaTime);
         }
 
         this.debrisParticles = this.debrisParticles.filter(particle => particle.life > 0);
@@ -1077,6 +1089,7 @@ class Game {
             p.isDrilling = false;
             p.drillAnimFrame = 0;
             p.drillAnimTimer = 0;
+            p.drillMadeContact = false;
         }
 
         if (input.leftJustPressed) p.facing = 'left';
@@ -1095,6 +1108,7 @@ class Game {
                 p.isDrilling = false;
                 p.drillAnimFrame = 0;
                 p.drillAnimTimer = 0;
+                p.drillMadeContact = false;
             }
         }
 
@@ -1344,6 +1358,7 @@ class Game {
                 this.digBlock(digX, digY);
 
             p.drillLockTimer = targetIsSolid ? DIG_LOCK_DURATION : 0.025;
+            p.drillMadeContact = didDig || targetIsSolid;
 
             if (didDig) {
                 if (p.facing === 'left' || p.facing === 'right') {
@@ -1519,12 +1534,21 @@ class Game {
     
     spawnDigDebris(gridX, gridY, blockValue, countOverride = null) {
         let color = '#9a7a62';
+        let secondaryColor = '#5c4238';
+        let dustColor = '#d1ad8c';
         if (isColoredBlockValue(blockValue)) {
-            color = BLOCK_COLORS[blockValue - BLOCK_TYPES.COLORED].highlight;
+            const palette = BLOCK_COLORS[blockValue - BLOCK_TYPES.COLORED];
+            color = palette.highlight;
+            secondaryColor = palette.shadow;
+            dustColor = palette.light;
         } else if (blockValue === BLOCK_TYPES.XBLOCK) {
             color = '#d85f7f';
+            secondaryColor = '#5d263b';
+            dustColor = '#bbb4b0';
         } else if (blockValue === BLOCK_TYPES.BEDROCK) {
-            color = '#777777';
+            color = '#9b91a5';
+            secondaryColor = '#3f354b';
+            dustColor = '#c0b4c5';
         }
 
         const strength = Math.max(1, this.lastDigStrength || 1);
@@ -1542,6 +1566,7 @@ class Game {
             const angle = Math.random() * Math.PI * 2;
             const speed = 55 + Math.random() * 155;
             const life = 0.18 + Math.random() * 0.2;
+            const isDust = i % 4 === 0;
             this.debrisParticles.push({
                 x: originX + (Math.random() - 0.5) * GRID_SIZE * 0.45,
                 y: originY + (Math.random() - 0.5) * GRID_SIZE * 0.45,
@@ -1549,8 +1574,13 @@ class Game {
                 vy: Math.sin(angle) * speed + biasY,
                 life,
                 maxLife: life,
-                size: [2, 4, 6][Math.floor(Math.random() * 3)],
-                color,
+                size: isDust ? 7 + Math.floor(Math.random() * 4) :
+                    [2, 4, 6][Math.floor(Math.random() * 3)],
+                color: isDust ? dustColor :
+                    (i % 3 === 0 ? secondaryColor : color),
+                kind: isDust ? 'dust' : 'chip',
+                gravity: isDust ? 320 : 820,
+                drag: isDust ? 0.025 : 0.1,
             });
         }
 
@@ -1577,6 +1607,9 @@ class Game {
                 maxLife: life,
                 size: i % 2 === 0 ? 4 : 6,
                 color: i % 2 === 0 ? '#8f6b58' : '#c09a79',
+                kind: 'dust',
+                gravity: 330,
+                drag: 0.035,
             });
         }
     }
@@ -2303,6 +2336,9 @@ class Game {
                 maxLife: life,
                 size: index % 2 === 0 ? 4 : 2,
                 color,
+                kind: 'sparkle',
+                gravity: 260,
+                drag: 0.22,
             });
         }
 
@@ -2407,6 +2443,7 @@ class Game {
             drillAnimTimer: 0,
             drillLockTimer: 0,
             drillSnapTargetX: null,
+            drillMadeContact: false,
             showDrill: false,
         };
         
@@ -2695,6 +2732,56 @@ class Game {
             ctx.fillRect(this.pixelSnap(x), this.pixelSnap(y), index % 2 ? 2 : 3, height);
             ctx.fillRect(this.pixelSnap(x - 4), this.pixelSnap(y + height - 8), 8, 2);
         }
+
+        // Larger, low-contrast silhouettes make each depth band feel like a
+        // distinct place instead of only a palette swap.
+        if (centerDepth < 15) {
+            ctx.fillStyle = 'rgba(88, 48, 55, 0.16)';
+            for (let index = 0; index < 4; index++) {
+                const x = this.pixelSnap(24 + this.hashCell(index, 8, 105) * (CANVAS_WIDTH - 48));
+                const y = this.pixelSnap(
+                    ((this.hashCell(index, 5, 108) * parallaxSpan -
+                        this.cameraY * 0.08) % parallaxSpan + parallaxSpan) %
+                        parallaxSpan - 90
+                );
+                const length = 58 + index * 13;
+                ctx.fillRect(x, y, index % 2 ? 3 : 4, length);
+                ctx.fillRect(x - 12, y + 22 + index * 5, 14, 3);
+                ctx.fillRect(x + 2, y + 43 + index * 4, 10, 3);
+            }
+        } else if (centerDepth < 35) {
+            ctx.fillStyle = 'rgba(48, 112, 133, 0.12)';
+            for (let index = 0; index < 5; index++) {
+                const x = this.pixelSnap(18 + this.hashCell(index, 12, 112) * (CANVAS_WIDTH - 50));
+                const y = this.pixelSnap(
+                    ((this.hashCell(index, 3, 118) * parallaxSpan -
+                        this.cameraY * 0.1) % parallaxSpan + parallaxSpan) %
+                        parallaxSpan - 70
+                );
+                for (let step = 0; step < 5; step++) {
+                    ctx.fillRect(x + step * 5, y + 26 - step * 7, 7, 35 + step * 5);
+                }
+                ctx.fillStyle = 'rgba(95, 175, 189, 0.08)';
+                ctx.fillRect(x + 10, y + 12, 4, 40);
+                ctx.fillStyle = 'rgba(48, 112, 133, 0.12)';
+            }
+        } else {
+            ctx.fillStyle = 'rgba(128, 105, 72, 0.11)';
+            for (let index = 0; index < 4; index++) {
+                const x = this.pixelSnap(28 + this.hashCell(index, 16, 124) * (CANVAS_WIDTH - 56));
+                const y = this.pixelSnap(
+                    ((this.hashCell(index, 6, 131) * parallaxSpan -
+                        this.cameraY * 0.06) % parallaxSpan + parallaxSpan) %
+                        parallaxSpan - 100
+                );
+                ctx.fillRect(x, y, 4, 150);
+                ctx.fillRect(x - 5, y + 32, 14, 5);
+                ctx.fillRect(x - 7, y + 96, 18, 5);
+                ctx.fillStyle = 'rgba(185, 138, 78, 0.08)';
+                ctx.fillRect(x + 1, y + 4, 1, 142);
+                ctx.fillStyle = 'rgba(128, 105, 72, 0.11)';
+            }
+        }
     }
 
     renderAmbientDust() {
@@ -2731,7 +2818,60 @@ class Game {
     renderWorldShadows() {
         const ctx = this.ctx;
         ctx.save();
-        ctx.fillStyle = 'rgba(2, 3, 9, 0.42)';
+
+        const isOpenCell = (x, y) => {
+            const value = this.grid[y]?.[x];
+            return value === undefined ||
+                value === BLOCK_TYPES.EMPTY ||
+                value === BLOCK_TYPES.ITEM;
+        };
+        const drawContactShadow = (screenX, screenY, rightOpen, bottomOpen) => {
+            // A soft cast shadow plus a tight contact line gives the chunky
+            // pixel blocks weight without blurring their silhouettes.
+            ctx.fillStyle = 'rgba(1, 2, 7, 0.26)';
+            if (rightOpen) {
+                ctx.fillRect(
+                    this.pixelSnap(screenX + GRID_SIZE - 1),
+                    this.pixelSnap(screenY + 8),
+                    8,
+                    GRID_SIZE - 4
+                );
+            }
+            if (bottomOpen) {
+                ctx.fillRect(
+                    this.pixelSnap(screenX + 8),
+                    this.pixelSnap(screenY + GRID_SIZE - 1),
+                    GRID_SIZE - 4,
+                    8
+                );
+            }
+            if (rightOpen && bottomOpen) {
+                ctx.fillRect(
+                    this.pixelSnap(screenX + GRID_SIZE - 1),
+                    this.pixelSnap(screenY + GRID_SIZE - 1),
+                    8,
+                    8
+                );
+            }
+
+            ctx.fillStyle = 'rgba(1, 2, 7, 0.6)';
+            if (rightOpen) {
+                ctx.fillRect(
+                    this.pixelSnap(screenX + GRID_SIZE - 1),
+                    this.pixelSnap(screenY + 12),
+                    3,
+                    GRID_SIZE - 16
+                );
+            }
+            if (bottomOpen) {
+                ctx.fillRect(
+                    this.pixelSnap(screenX + 12),
+                    this.pixelSnap(screenY + GRID_SIZE - 1),
+                    GRID_SIZE - 16,
+                    3
+                );
+            }
+        };
 
         for (const block of this.colorBlocks) {
             if (block.destroyed) continue;
@@ -2739,11 +2879,11 @@ class Game {
             const screenY = block.y * GRID_SIZE - this.cameraY + fallOffset;
             if (screenY < -GRID_SIZE || screenY > CANVAS_HEIGHT + GRID_SIZE) continue;
             const screenX = block.x * GRID_SIZE + block.getShakeOffset();
-            ctx.fillRect(
-                this.pixelSnap(screenX + 7),
-                this.pixelSnap(screenY + 9),
-                GRID_SIZE - 4,
-                GRID_SIZE - 3
+            drawContactShadow(
+                screenX,
+                screenY,
+                isOpenCell(block.x + 1, block.y),
+                isOpenCell(block.x, block.y + 1)
             );
         }
 
@@ -2752,12 +2892,26 @@ class Game {
             const fallOffset = block.isFalling ? block.fallProgress * GRID_SIZE : 0;
             const screenY = block.y * GRID_SIZE - this.cameraY + fallOffset;
             if (screenY < -GRID_SIZE || screenY > CANVAS_HEIGHT + GRID_SIZE) continue;
-            ctx.fillRect(
-                this.pixelSnap(block.x * GRID_SIZE + block.getShakeOffset() + 7),
-                this.pixelSnap(screenY + 9),
-                GRID_SIZE - 4,
-                GRID_SIZE - 3
+            drawContactShadow(
+                block.x * GRID_SIZE + block.getShakeOffset(),
+                screenY,
+                isOpenCell(block.x + 1, block.y),
+                isOpenCell(block.x, block.y + 1)
             );
+        }
+
+        for (let y = 0; y < GRID_HEIGHT; y++) {
+            for (let x = 0; x < GRID_WIDTH; x++) {
+                if (this.grid[y]?.[x] !== BLOCK_TYPES.BEDROCK) continue;
+                const screenY = y * GRID_SIZE - this.cameraY;
+                if (screenY < -GRID_SIZE || screenY > CANVAS_HEIGHT + GRID_SIZE) continue;
+                drawContactShadow(
+                    x * GRID_SIZE,
+                    screenY,
+                    isOpenCell(x + 1, y),
+                    isOpenCell(x, y + 1)
+                );
+            }
         }
 
         ctx.restore();
@@ -2826,6 +2980,37 @@ class Game {
             );
         }
 
+        if (isOxygen) {
+            // Industrial cradle: the pickup reads as a separate object mounted
+            // inside the cave, never as another kind of drillable block.
+            ctx.fillStyle = '#101b24';
+            ctx.fillRect(x + 7, y + 13, 6, 37);
+            ctx.fillRect(x + GRID_SIZE - 13, y + 13, 6, 37);
+            ctx.fillStyle = '#3d5661';
+            ctx.fillRect(x + 8, y + 14, 2, 31);
+            ctx.fillRect(x + GRID_SIZE - 12, y + 14, 2, 31);
+            ctx.fillStyle = '#172b35';
+            ctx.fillRect(x + 10, y + 11, GRID_SIZE - 20, 5);
+            ctx.fillStyle = '#63808a';
+            ctx.fillRect(x + 14, y + 12, GRID_SIZE - 28, 2);
+
+            ctx.fillStyle = '#071219';
+            ctx.fillRect(x + GRID_SIZE - 14, y + 19, 5, 14);
+            ctx.fillStyle = `rgba(91, 245, 255, ${
+                0.58 + Math.sin(this.visualTime * 5 + item.gridY) * 0.2
+            })`;
+            ctx.fillRect(x + GRID_SIZE - 12, y + 21, 2, 3);
+            ctx.fillStyle = '#b98534';
+            ctx.fillRect(x + GRID_SIZE - 12, y + 27, 2, 2);
+        } else {
+            ctx.fillStyle = '#4f3c22';
+            ctx.fillRect(x + 8, y + 12, 8, 3);
+            ctx.fillRect(x + GRID_SIZE - 16, y + 12, 8, 3);
+            ctx.fillStyle = '#a97a2b';
+            ctx.fillRect(x + 10, y + 12, 3, 2);
+            ctx.fillRect(x + GRID_SIZE - 13, y + 12, 3, 2);
+        }
+
         ctx.fillStyle = '#171c25';
         ctx.fillRect(x + 9, y + GRID_SIZE - 13, GRID_SIZE - 18, 7);
         ctx.fillStyle = '#454d58';
@@ -2846,56 +3031,71 @@ class Game {
 
     renderOxygenTube(x, y) {
         const ctx = this.ctx;
-        const bob = this.pixelSnap(Math.sin(this.visualTime * 4.2 + x) * 1);
+        const bob = this.pixelSnap(Math.sin(this.visualTime * 4.2 + x) * 1.25);
         const centerX = this.pixelSnap(x);
         const centerY = this.pixelSnap(y + bob);
 
         ctx.save();
-        ctx.fillStyle = 'rgba(1, 4, 9, 0.55)';
-        ctx.fillRect(centerX - 15, centerY + 23, 30, 3);
-        ctx.fillRect(centerX - 10, centerY + 26, 20, 2);
+        ctx.fillStyle = 'rgba(1, 4, 9, 0.68)';
+        ctx.fillRect(centerX - 18, centerY + 24, 36, 4);
+        ctx.fillRect(centerX - 12, centerY + 28, 24, 2);
 
-        this.fillSteppedRect(centerX - 11, centerY - 19, 27, 43, 4, '#01070b');
-        this.fillSteppedRect(centerX - 13, centerY - 21, 26, 42, 4, '#041019');
+        // Dark stepped outline and broad shoulders make the silhouette legible
+        // even when the surrounding cave is heavily shaded.
+        this.fillSteppedRect(centerX - 16, centerY - 22, 32, 47, 5, '#01060b');
+        this.fillSteppedRect(centerX - 14, centerY - 20, 28, 43, 4, '#26323c');
 
-        // Handle and brass valve.
-        ctx.fillStyle = '#202a31';
-        ctx.fillRect(centerX - 8, centerY - 27, 16, 8);
-        ctx.fillStyle = '#8da0a6';
-        ctx.fillRect(centerX - 6, centerY - 26, 12, 3);
+        const glass = ctx.createLinearGradient(centerX - 11, 0, centerX + 11, 0);
+        glass.addColorStop(0, '#063746');
+        glass.addColorStop(0.24, '#0f91a3');
+        glass.addColorStop(0.5, '#19c7d1');
+        glass.addColorStop(0.72, '#08778b');
+        glass.addColorStop(1, '#032b39');
+        this.fillSteppedRect(centerX - 11, centerY - 16, 22, 33, 3, glass);
+
+        // Cool glass bands, hard pixel specular and a darker far rim.
+        ctx.fillStyle = '#74f0f3';
+        ctx.fillRect(centerX - 8, centerY - 13, 3, 25);
+        ctx.fillStyle = '#dcffff';
+        ctx.fillRect(centerX - 7, centerY - 12, 2, 10);
+        ctx.fillRect(centerX - 6, centerY - 12, 2, 5);
+        ctx.fillStyle = '#075064';
+        ctx.fillRect(centerX + 7, centerY - 12, 3, 25);
+        ctx.fillStyle = 'rgba(181, 255, 255, 0.4)';
+        ctx.fillRect(centerX - 3, centerY + 13, 8, 2);
+
+        // Steel collars, feet and a brass pressure valve.
+        ctx.fillStyle = '#1a222b';
+        ctx.fillRect(centerX - 15, centerY - 22, 30, 6);
+        ctx.fillRect(centerX - 15, centerY + 16, 30, 6);
+        ctx.fillStyle = '#71818a';
+        ctx.fillRect(centerX - 12, centerY - 21, 22, 2);
+        ctx.fillRect(centerX - 12, centerY + 17, 22, 2);
+        ctx.fillStyle = '#c4d5d8';
+        ctx.fillRect(centerX - 10, centerY - 21, 7, 1);
+        ctx.fillRect(centerX - 10, centerY + 17, 6, 1);
+        ctx.fillStyle = '#111820';
+        ctx.fillRect(centerX - 11, centerY + 22, 6, 4);
+        ctx.fillRect(centerX + 5, centerY + 22, 6, 4);
+
+        ctx.fillStyle = '#1c252c';
+        ctx.fillRect(centerX - 8, centerY - 28, 16, 7);
+        ctx.fillStyle = '#8fa1a5';
+        ctx.fillRect(centerX - 6, centerY - 27, 12, 2);
         ctx.fillStyle = '#050b0f';
-        ctx.fillRect(centerX - 4, centerY - 24, 8, 4);
-        ctx.fillStyle = '#9a6720';
-        ctx.fillRect(centerX + 10, centerY - 23, 7, 6);
-        ctx.fillStyle = '#ffd369';
-        ctx.fillRect(centerX + 11, centerY - 22, 4, 2);
+        ctx.fillRect(centerX - 4, centerY - 25, 8, 4);
+        ctx.fillStyle = '#80531c';
+        ctx.fillRect(centerX + 9, centerY - 25, 8, 7);
+        ctx.fillStyle = '#ffd66d';
+        ctx.fillRect(centerX + 10, centerY - 24, 5, 2);
+        ctx.fillStyle = '#c8912f';
+        ctx.fillRect(centerX + 15, centerY - 23, 3, 4);
 
-        // Cylindrical glass body.
-        this.fillSteppedRect(centerX - 10, centerY - 17, 20, 34, 3, '#086779');
-        ctx.fillStyle = '#073845';
-        ctx.fillRect(centerX - 10, centerY - 13, 4, 26);
-        ctx.fillStyle = '#12adbf';
-        ctx.fillRect(centerX - 6, centerY - 14, 12, 28);
-        ctx.fillStyle = '#72edf4';
-        ctx.fillRect(centerX - 5, centerY - 12, 3, 23);
-        ctx.fillStyle = '#d9ffff';
-        ctx.fillRect(centerX - 4, centerY - 11, 2, 9);
-        ctx.fillStyle = '#065264';
-        ctx.fillRect(centerX + 6, centerY - 12, 4, 25);
-
-        // Steel collars give the capsule weight and readable silhouette.
-        ctx.fillStyle = '#343d47';
-        ctx.fillRect(centerX - 13, centerY - 20, 26, 5);
-        ctx.fillRect(centerX - 13, centerY + 15, 26, 5);
-        ctx.fillStyle = '#7f9198';
-        ctx.fillRect(centerX - 10, centerY - 19, 18, 2);
-        ctx.fillRect(centerX - 10, centerY + 16, 18, 2);
-        ctx.fillStyle = '#d5e3e3';
-        ctx.fillRect(centerX - 8, centerY - 19, 6, 1);
-
-        // Inset O2 label and tiny status bubbles.
-        ctx.fillStyle = '#032a35';
-        ctx.fillRect(centerX - 7, centerY - 5, 14, 12);
+        // Inset O2 label.
+        ctx.fillStyle = '#022833';
+        ctx.fillRect(centerX - 8, centerY - 5, 16, 12);
+        ctx.fillStyle = '#1d7d8b';
+        ctx.fillRect(centerX - 7, centerY - 4, 14, 2);
         ctx.fillStyle = '#bffbff';
         ctx.fillRect(centerX - 5, centerY - 2, 2, 6);
         ctx.fillRect(centerX - 3, centerY - 3, 3, 2);
@@ -2904,12 +3104,20 @@ class Game {
         ctx.fillRect(centerX + 3, centerY - 2, 3, 2);
         ctx.fillRect(centerX + 4, centerY, 2, 2);
         ctx.fillRect(centerX + 2, centerY + 2, 4, 2);
-        ctx.fillStyle = '#e9ffff';
-        ctx.fillRect(centerX + 3, centerY - 11, 2, 2);
+
+        // Tiny pressure bubbles slowly rise behind the label.
+        const bubblePhase = Math.floor(this.visualTime * 7 + x * 0.03) % 12;
+        ctx.fillStyle = '#dcffff';
+        ctx.fillRect(centerX + 3, centerY + 10 - bubblePhase, 2, 2);
+        if (bubblePhase > 4) {
+            ctx.fillStyle = '#6cebf2';
+            ctx.fillRect(centerX, centerY + 14 - bubblePhase, 1, 1);
+        }
+
         ctx.fillStyle = `rgba(111, 255, 239, ${
             0.62 + Math.sin(this.visualTime * 5.5 + x) * 0.2
         })`;
-        ctx.fillRect(centerX + 9, centerY + 8, 2, 3);
+        ctx.fillRect(centerX + 12, centerY + 9, 2, 4);
         ctx.restore();
     }
 
@@ -3008,7 +3216,7 @@ class Game {
         const lightMap = this.dynamicLightMap;
         const lightCtx = lightMap.getContext('2d');
         lightCtx.clearRect(0, 0, lightMap.width, lightMap.height);
-        lightCtx.fillStyle = 'rgba(2, 5, 13, 0.29)';
+        lightCtx.fillStyle = 'rgba(2, 5, 13, 0.27)';
         lightCtx.fillRect(0, 0, lightMap.width, lightMap.height);
         lightCtx.globalCompositeOperation = 'destination-out';
 
@@ -3042,7 +3250,7 @@ class Game {
         const playerLightX = this.player.visualX + GRID_SIZE / 2 + shakeX;
         const playerLightY =
             this.player.visualY - this.cameraY + GRID_SIZE / 2 + shakeY;
-        carveLight(playerLightX, playerLightY, 174, 1);
+        carveLight(playerLightX, playerLightY, 184, 1);
 
         const visibleItems = [...this.oxygenTubes, ...this.treasures].filter(item => {
             const screenY = item.y - this.cameraY;
@@ -3051,7 +3259,12 @@ class Game {
                 screenY < CANVAS_HEIGHT + GRID_SIZE;
         });
         for (const item of visibleItems) {
-            carveLight(item.x + shakeX, item.y - this.cameraY + shakeY, 74, 0.72);
+            carveLight(
+                item.x + shakeX,
+                item.y - this.cameraY + shakeY,
+                item.type === 'oxygen' ? 86 : 76,
+                item.type === 'oxygen' ? 0.82 : 0.72
+            );
         }
 
         const safeScreenY = this.safe.y - this.cameraY;
@@ -3083,13 +3296,14 @@ class Game {
         for (const item of visibleItems) {
             const color = item.type === 'oxygen' ? '#39e5ff' : '#ffc444';
             const glow = this.getGlowSprite(color);
-            this.ctx.globalAlpha = item.type === 'oxygen' ? 0.19 : 0.16;
+            const glowSize = item.type === 'oxygen' ? 108 : 94;
+            this.ctx.globalAlpha = item.type === 'oxygen' ? 0.23 : 0.17;
             this.ctx.drawImage(
                 glow,
-                item.x + shakeX - 47,
-                item.y - this.cameraY + shakeY - 47,
-                94,
-                94
+                item.x + shakeX - glowSize / 2,
+                item.y - this.cameraY + shakeY - glowSize / 2,
+                glowSize,
+                glowSize
             );
         }
         this.ctx.restore();
@@ -3149,21 +3363,57 @@ class Game {
     }
     
     renderDebris() {
+        const ctx = this.ctx;
+        ctx.save();
+
         for (const particle of this.debrisParticles) {
             const alpha = Math.max(0, particle.life / particle.maxLife);
             const screenY = particle.y - this.cameraY;
             if (screenY < -16 || screenY > CANVAS_HEIGHT + 16) continue;
 
-            this.ctx.globalAlpha = alpha;
-            this.ctx.fillStyle = particle.color;
-            this.ctx.fillRect(
-                this.pixelSnap(particle.x - particle.size / 2),
-                this.pixelSnap(screenY - particle.size / 2),
-                particle.size,
-                particle.size
-            );
+            const screenX = this.pixelSnap(particle.x);
+            const snappedY = this.pixelSnap(screenY);
+            ctx.fillStyle = particle.color;
+
+            if (particle.kind === 'sparkle') {
+                const arm = Math.max(2, particle.size);
+                ctx.globalAlpha = Math.min(1, alpha * 1.2);
+                ctx.fillRect(screenX - arm, snappedY - 1, arm * 2 + 1, 2);
+                ctx.fillRect(screenX - 1, snappedY - arm, 2, arm * 2 + 1);
+                ctx.fillStyle = '#fff9d8';
+                ctx.fillRect(screenX, snappedY, 2, 2);
+            } else if (particle.kind === 'dust') {
+                const size = Math.max(3, particle.size * (0.45 + alpha * 0.55));
+                const width = this.pixelSnap(size);
+                const height = Math.max(2, this.pixelSnap(size * 0.55));
+                ctx.globalAlpha = alpha * 0.42;
+                ctx.fillRect(
+                    screenX - Math.floor(width / 2),
+                    snappedY - Math.floor(height / 2),
+                    width,
+                    height
+                );
+                ctx.globalAlpha = alpha * 0.18;
+                ctx.fillRect(screenX - 2, snappedY - height, width + 2, 2);
+            } else {
+                const size = Math.max(2, particle.size);
+                ctx.globalAlpha = alpha;
+                const isHorizontal = Math.abs(particle.vx) >= Math.abs(particle.vy);
+                const width = isHorizontal ? size + 2 : Math.max(2, size / 2);
+                const height = isHorizontal ? Math.max(2, size / 2) : size + 2;
+                const chipX = screenX - Math.floor(width / 2);
+                const chipY = snappedY - Math.floor(height / 2);
+                ctx.fillRect(chipX, chipY, width, height);
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.28)';
+                if (isHorizontal) {
+                    ctx.fillRect(chipX, chipY, Math.max(2, width / 2), 1);
+                } else {
+                    ctx.fillRect(chipX, chipY, 1, Math.max(2, height / 2));
+                }
+            }
         }
-        this.ctx.globalAlpha = 1;
+
+        ctx.restore();
     }
 
     getBlockTile(colorIndex, edgeMask, variant) {
@@ -3221,23 +3471,50 @@ class Game {
         const innerBottom = hasBottom ? GRID_SIZE : outerBottom - 4;
         const bodyGradient = tileCtx.createLinearGradient(0, 0, GRID_SIZE, GRID_SIZE);
         bodyGradient.addColorStop(0, color.light);
-        bodyGradient.addColorStop(0.27, color.color);
-        bodyGradient.addColorStop(0.72, color.color);
-        bodyGradient.addColorStop(1, color.shadow);
+        bodyGradient.addColorStop(0.16, color.color);
+        bodyGradient.addColorStop(0.58, color.color);
+        bodyGradient.addColorStop(0.82, color.shadow);
+        bodyGradient.addColorStop(1, color.deep);
         drawShape(innerLeft, innerTop, innerRight, innerBottom, 4, bodyGradient);
 
+        // Faceted light bands keep the material chunky and late-32-bit rather
+        // than looking like a single smooth mobile-game gradient.
+        tileCtx.globalAlpha = 0.13;
+        tileCtx.fillStyle = '#ffffff';
+        tileCtx.fillRect(14, 18, 34, 2);
+        tileCtx.fillRect(18, 20, 25, 2);
+        tileCtx.fillRect(14, 22, 17, 2);
+        tileCtx.globalAlpha = 0.14;
+        tileCtx.fillStyle = color.deep;
+        tileCtx.fillRect(25, 48, 27, 2);
+        tileCtx.fillRect(34, 50, 18, 2);
+        tileCtx.globalAlpha = 1;
+
         tileCtx.fillStyle = color.light;
-        if (!hasTop) tileCtx.fillRect(14, 8, 36, 4);
-        if (!hasLeft) tileCtx.fillRect(8, 16, 4, 32);
+        if (!hasTop) {
+            tileCtx.fillRect(14, 8, 36, 4);
+            tileCtx.fillRect(18, 12, 25, 2);
+        }
+        if (!hasLeft) {
+            tileCtx.fillRect(8, 16, 4, 32);
+            tileCtx.fillRect(12, 20, 2, 23);
+        }
         tileCtx.fillStyle = color.highlight;
         if (!hasTop && !hasLeft) {
             tileCtx.fillRect(14, 12, 12, 6);
             tileCtx.fillRect(16, 10, 8, 2);
+            tileCtx.fillRect(12, 17, 4, 14);
         }
 
         tileCtx.fillStyle = color.shadow;
-        if (!hasBottom) tileCtx.fillRect(14, 54, 36, 4);
-        if (!hasRight) tileCtx.fillRect(54, 16, 4, 34);
+        if (!hasBottom) {
+            tileCtx.fillRect(14, 54, 36, 4);
+            tileCtx.fillRect(21, 52, 28, 2);
+        }
+        if (!hasRight) {
+            tileCtx.fillRect(54, 16, 4, 34);
+            tileCtx.fillRect(52, 23, 2, 26);
+        }
         tileCtx.fillStyle = color.deep;
         if (!hasBottom) tileCtx.fillRect(20, 58, 26, 2);
         if (!hasRight) tileCtx.fillRect(58, 22, 2, 24);
@@ -3251,14 +3528,31 @@ class Game {
             [[38, 20, 6, 4], [42, 24, 4, 2], [19, 39, 2, 2]],
             [[22, 40, 8, 4], [20, 44, 4, 2], [43, 29, 3, 2]],
             [[44, 36, 4, 8], [40, 40, 4, 4], [23, 25, 3, 2]],
+            [[28, 28, 7, 3], [32, 31, 4, 5], [45, 42, 3, 2]],
+            [[19, 31, 4, 7], [22, 36, 6, 3], [40, 25, 5, 2]],
         ];
         tileCtx.fillStyle = color.shadow;
         for (const [chipX, chipY, chipWidth, chipHeight] of chipSets[variant]) {
             tileCtx.fillRect(chipX, chipY, chipWidth, chipHeight);
         }
 
+        // Deterministic 2 px inclusions add mineral texture while remaining
+        // perfectly cacheable and stable between frames.
+        for (let index = 0; index < 11; index++) {
+            const speckX = 15 + Math.floor(
+                this.hashCell(colorIndex + variant * 7, index, 201) * 18
+            ) * 2;
+            const speckY = 17 + Math.floor(
+                this.hashCell(variant + index, colorIndex, 219) * 16
+            ) * 2;
+            tileCtx.globalAlpha = index % 3 === 0 ? 0.32 : 0.18;
+            tileCtx.fillStyle = index % 2 === 0 ? color.highlight : color.deep;
+            tileCtx.fillRect(speckX, speckY, index % 4 === 0 ? 3 : 2, 2);
+        }
+        tileCtx.globalAlpha = 1;
+
         tileCtx.fillStyle = color.highlight;
-        const glintX = 17 + variant * 9;
+        const glintX = 16 + variant * 7;
         tileCtx.fillRect(glintX, 17 + variant * 3, 3, 2);
 
         this.blockTileCache.set(cacheKey, tile);
@@ -3286,7 +3580,7 @@ class Game {
             (hasRight ? 2 : 0) |
             (hasBottom ? 4 : 0) |
             (hasLeft ? 8 : 0);
-        const variant = Math.abs(block.id) % 3;
+        const variant = Math.abs(block.id) % 5;
         const tile = this.getBlockTile(block.colorIndex, edgeMask, variant);
 
         this.ctx.drawImage(tile, screenX, screenY, GRID_SIZE, GRID_SIZE);
@@ -3318,9 +3612,15 @@ class Game {
         ctx.fillStyle = isFlashing ? '#807077' : '#555966';
         ctx.fillRect(screenX + 8, screenY + 8, 48, 4);
         ctx.fillRect(screenX + 8, screenY + 8, 4, 48);
+        ctx.fillStyle = isFlashing ? '#b8a8aa' : '#717684';
+        ctx.fillRect(screenX + 14, screenY + 12, 34, 2);
+        ctx.fillRect(screenX + 12, screenY + 16, 2, 27);
         ctx.fillStyle = '#151720';
         ctx.fillRect(screenX + 52, screenY + 12, 4, 42);
         ctx.fillRect(screenX + 12, screenY + 52, 42, 4);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.055)';
+        ctx.fillRect(screenX + 19, screenY + 25, 28, 1);
+        ctx.fillRect(screenX + 23, screenY + 39, 24, 1);
 
         const xColor = isFlashing ? '#fff8eb' : `rgba(237, 73, 104, ${pulse})`;
         const xShadow = isFlashing ? '#ff716f' : 'rgba(101, 27, 55, 0.94)';
@@ -3382,6 +3682,10 @@ class Game {
             ctx.fillRect(screenX + 13, screenY + 25, GRID_SIZE - 26, 9);
             ctx.fillStyle = '#171d25';
             ctx.fillRect(screenX + 17, screenY + 28, GRID_SIZE - 34, 3);
+            ctx.fillStyle = '#89949a';
+            ctx.fillRect(screenX + 17, screenY + 25, GRID_SIZE - 40, 2);
+            ctx.fillStyle = '#0b1016';
+            ctx.fillRect(screenX + 12, screenY + 42, 40, 3);
 
             const rivets = [[9, 11], [50, 11], [9, 47], [50, 47]];
             for (const [rivetX, rivetY] of rivets) {
@@ -3406,6 +3710,11 @@ class Game {
         ctx.fillStyle = '#75647f';
         ctx.fillRect(screenX + 14, screenY + 16, 16, 4);
         ctx.fillRect(screenX + 12, screenY + 20, 4, 14);
+        ctx.fillStyle = '#40364b';
+        ctx.fillRect(screenX + 22, screenY + 29, 27, 3);
+        ctx.fillRect(screenX + 27, screenY + 32, 3, 13);
+        ctx.fillStyle = '#92819b';
+        ctx.fillRect(screenX + 23, screenY + 29, 11, 1);
         ctx.fillStyle = '#110f19';
         ctx.fillRect(screenX + 38, screenY + 24, 4, 22);
         ctx.fillRect(screenX + 32, screenY + 42, 10, 4);
@@ -3428,6 +3737,48 @@ class Game {
         const centerX = this.pixelSnap(x);
         const bob = this.pixelSnap(Math.sin(this.visualTime * 4 + x * 0.02) * 2);
         const centerY = this.pixelSnap(y + bob);
+        const atlasRegion = TREASURE_ATLAS_REGIONS[type];
+
+        if (ASSETS.gold && atlasRegion) {
+            const size = atlasRegion.size;
+            const drawX = this.pixelSnap(centerX - size / 2);
+            const drawY = this.pixelSnap(centerY - size / 2);
+            const shadowY = type === 'coin' ? centerY + 14 : centerY + 22;
+            const shadowWidth = type === 'coin' ? 24 : 36;
+
+            ctx.save();
+            ctx.fillStyle = 'rgba(2, 3, 8, 0.58)';
+            ctx.fillRect(
+                centerX - shadowWidth / 2,
+                shadowY,
+                shadowWidth,
+                type === 'coin' ? 3 : 4
+            );
+            if (type !== 'coin') {
+                ctx.fillRect(centerX - 12, centerY + 26, 24, 2);
+            }
+            ctx.drawImage(
+                ASSETS.gold,
+                atlasRegion.sx,
+                atlasRegion.sy,
+                atlasRegion.sw,
+                atlasRegion.sh,
+                drawX,
+                drawY,
+                size,
+                size
+            );
+            ctx.restore();
+
+            if (type === 'coin') {
+                this.renderTreasureGlint(centerX - 7, centerY - 9, x * 0.01);
+            } else if (type === 'bag') {
+                this.renderTreasureGlint(centerX - 17, centerY - 15, x * 0.015);
+            } else {
+                this.renderTreasureGlint(centerX + 12, centerY - 16, x * 0.02);
+            }
+            return;
+        }
 
         if (type === 'coin') {
             this.fillSteppedRect(centerX - 14, centerY - 18, 28, 36, 6, '#5c3308');
@@ -3470,6 +3821,75 @@ class Game {
         }
     }
     
+    getSpriteSilhouette(sprite, frameIndex, frameWidth = 32) {
+        if (!this.spriteSilhouetteCache) {
+            this.spriteSilhouetteCache = new WeakMap();
+        }
+
+        let frames = this.spriteSilhouetteCache.get(sprite);
+        if (!frames) {
+            frames = new Map();
+            this.spriteSilhouetteCache.set(sprite, frames);
+        }
+        const cacheKey = `${frameWidth}:${frameIndex}`;
+        if (frames.has(cacheKey)) return frames.get(cacheKey);
+
+        const silhouette = document.createElement('canvas');
+        silhouette.width = frameWidth;
+        silhouette.height = 32;
+        const silhouetteCtx = silhouette.getContext('2d');
+        silhouetteCtx.imageSmoothingEnabled = false;
+        silhouetteCtx.drawImage(
+            sprite,
+            frameIndex * frameWidth,
+            0,
+            frameWidth,
+            32,
+            0,
+            0,
+            frameWidth,
+            32
+        );
+        silhouetteCtx.globalCompositeOperation = 'source-in';
+        silhouetteCtx.fillStyle = '#03050b';
+        silhouetteCtx.fillRect(0, 0, frameWidth, 32);
+        frames.set(cacheKey, silhouette);
+        return silhouette;
+    }
+
+    renderDrillSparks(facing) {
+        const directions = {
+            left: { x: 2, y: 48, nx: -1, ny: 0 },
+            right: { x: 62, y: 48, nx: 1, ny: 0 },
+            up: { x: 28, y: 2, nx: 0, ny: -1 },
+            down: { x: 24, y: 62, nx: 0, ny: 1 },
+        };
+        const tip = directions[facing] || directions.down;
+        const phase = Math.floor(this.visualTime * 30) % 3;
+        const tangentX = -tip.ny;
+        const tangentY = tip.nx;
+        const ctx = this.ctx;
+
+        ctx.save();
+        ctx.globalCompositeOperation = 'screen';
+        ctx.fillStyle = '#fff7cb';
+        ctx.fillRect(this.pixelSnap(tip.x - 2), this.pixelSnap(tip.y - 2), 4, 4);
+        ctx.fillStyle = '#ffb83d';
+        ctx.fillRect(
+            this.pixelSnap(tip.x + tip.nx * (4 + phase * 2) + tangentX * 3),
+            this.pixelSnap(tip.y + tip.ny * (4 + phase * 2) + tangentY * 3),
+            phase === 1 ? 4 : 2,
+            2
+        );
+        ctx.fillRect(
+            this.pixelSnap(tip.x + tip.nx * (7 - phase) - tangentX * 5),
+            this.pixelSnap(tip.y + tip.ny * (7 - phase) - tangentY * 5),
+            2,
+            phase === 2 ? 4 : 2
+        );
+        ctx.restore();
+    }
+
     renderManny(x, y, facing, isDrilling) {
         const ctx = this.ctx;
         const p = this.player;
@@ -3480,9 +3900,11 @@ class Game {
         let frameIndex = 0;
 
         if (!p.isFalling && !p.isSteppingUp) {
-            ctx.fillStyle = 'rgba(3, 4, 10, 0.42)';
-            ctx.fillRect(x + 14, y + 55, 36, 6);
-            ctx.fillRect(x + 20, y + 52, 24, 3);
+            ctx.fillStyle = 'rgba(2, 3, 8, 0.2)';
+            ctx.fillRect(x + 9, y + 57, 46, 4);
+            ctx.fillStyle = 'rgba(2, 3, 8, 0.48)';
+            ctx.fillRect(x + 14, y + 55, 36, 5);
+            ctx.fillRect(x + 20, y + 53, 24, 2);
         }
         
         // Bounce effect when drilling down
@@ -3601,12 +4023,39 @@ class Game {
             ctx.translate(centerX, centerY + offsetY);
             ctx.scale(scaleX, scaleY);
             ctx.translate(-GRID_SIZE / 2, -GRID_SIZE / 2);
+
+            const silhouette = this.getSpriteSilhouette(
+                sprite,
+                frameIndex,
+                frameWidth
+            );
+            ctx.globalAlpha = 0.78;
+            for (const [outlineX, outlineY] of [
+                [-2, 0], [2, 0], [0, -2], [0, 2],
+            ]) {
+                ctx.drawImage(
+                    silhouette,
+                    0,
+                    0,
+                    frameWidth,
+                    32,
+                    outlineX,
+                    outlineY,
+                    GRID_SIZE,
+                    GRID_SIZE
+                );
+            }
+            ctx.globalAlpha = 1;
             
             ctx.drawImage(
                 sprite,
                 srcX, 0, frameWidth, 32,
                 0, 0, GRID_SIZE, GRID_SIZE
             );
+
+            if (isDrilling && p.drillMadeContact) {
+                this.renderDrillSparks(facing);
+            }
             
             ctx.restore();
         } else {
