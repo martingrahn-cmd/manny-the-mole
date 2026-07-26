@@ -437,6 +437,7 @@ class GameUI {
         if (!this.enabled) return;
 
         this.hud = document.getElementById('gameHud');
+        this.level = document.getElementById('hudLevel');
         this.depth = document.getElementById('hudDepth');
         this.score = document.getElementById('hudScore');
         this.air = document.getElementById('hudAir');
@@ -451,6 +452,10 @@ class GameUI {
         this.gameoverCopy = document.getElementById('gameoverCopy');
         this.gameoverScore = document.getElementById('gameoverScore');
         this.gameoverDepth = document.getElementById('gameoverDepth');
+        this.wonEyebrow = document.getElementById('wonEyebrow');
+        this.wonTitle = document.getElementById('wonTitle');
+        this.wonCopy = document.getElementById('wonCopy');
+        this.wonPrimaryButton = document.getElementById('wonPrimaryButton');
         this.wonScore = document.getElementById('wonScore');
         this.wonAir = document.getElementById('wonAir');
         this.screens = {
@@ -466,6 +471,10 @@ class GameUI {
                 this.game.clearKeyboardInput();
                 const action = button.dataset.action;
                 if (action === 'start') this.game.startRun();
+                else if (action === 'start-level') {
+                    this.game.startLevel(Number(button.dataset.level));
+                }
+                else if (action === 'next-level') this.game.advanceLevel();
                 else if (action === 'resume') this.game.resumeGame();
                 else if (action === 'restart') this.game.restart();
                 else if (action === 'menu') this.game.showMainMenu();
@@ -499,6 +508,10 @@ class GameUI {
         if (!this.enabled) return;
 
         const airPercent = Math.max(0, Math.min(1, game.oxygen / game.maxOxygen));
+        if (this.level) {
+            this.level.textContent =
+                `${game.currentLevelIndex + 1}/${CAMPAIGN_LEVELS.length}`;
+        }
         this.depth.textContent = Math.max(0, game.depth).toString();
         this.score.textContent = game.score.toString();
         this.air.textContent = `${Math.floor(game.oxygen)}%`;
@@ -529,6 +542,36 @@ class GameUI {
         }
         this.gameoverScore.textContent = game.score.toString();
         this.gameoverDepth.textContent = `${game.depth} m`;
+
+        const isFinalLevel =
+            game.currentLevelIndex === CAMPAIGN_LEVELS.length - 1;
+        if (this.wonEyebrow) {
+            this.wonEyebrow.textContent =
+                `Nivå ${game.currentLevelIndex + 1} av ${CAMPAIGN_LEVELS.length} klar`;
+        }
+        if (this.wonTitle) {
+            this.wonTitle.textContent = game.currentLevel.completeTitle;
+        }
+        if (this.wonCopy) {
+            this.wonCopy.textContent = isFinalLevel ?
+                'Det sista kassaskåpet är öppet. Kuppen är klar.' :
+                game.currentLevelIndex === 0 ?
+                    'Bra grävt. Nu väntar sidogångarna.' :
+                    'Bra jobbat. Nu väntar det första raset.';
+        }
+        if (this.wonPrimaryButton) {
+            this.wonPrimaryButton.dataset.action = isFinalLevel ?
+                'start-level' :
+                'next-level';
+            if (isFinalLevel) {
+                this.wonPrimaryButton.dataset.level = '0';
+            } else {
+                delete this.wonPrimaryButton.dataset.level;
+            }
+            this.wonPrimaryButton.textContent = isFinalLevel ?
+                'Spela från början' :
+                `Fortsätt till nivå ${game.currentLevelIndex + 2}`;
+        }
         this.wonScore.textContent = game.score.toString();
         this.wonAir.textContent = `${Math.floor(game.oxygen)}%`;
 
@@ -581,7 +624,9 @@ class GameUI {
 
         if (this.lastState !== game.gameState) {
             this.lastState = game.gameState;
-            const primaryButton = activeScreen?.querySelector('.menu-button--primary');
+            const primaryButton = activeScreen?.querySelector(
+                '.menu-button--primary, .menu-button'
+            );
             primaryButton?.focus({ preventScroll: true });
         }
     }
@@ -677,6 +722,9 @@ class Game {
         this.keysJustPressed = {};
         this.lastTime = 0;
         this.lastRenderedState = null;
+        this.currentLevelIndex = 0;
+        this.levelStartScore = 0;
+        this.levelHeight = GRID_HEIGHT;
         
         this.gameState = 'menu';
         this.countdownTimer = 0;
@@ -752,26 +800,20 @@ class Game {
     }
     
     init() {
-        for (let y = 0; y < GRID_HEIGHT; y++) {
-            this.grid[y] = [];
-            for (let x = 0; x < GRID_WIDTH; x++) {
-                this.grid[y][x] = BLOCK_TYPES.EMPTY;
-            }
-        }
-        
-        this.generateLevel();
-        
-        this.safe = {
-            x: Math.floor((GRID_WIDTH - 2) / 2) * GRID_SIZE,
-            y: (GRID_HEIGHT - 4) * GRID_SIZE,
-            width: GRID_SIZE * 2,
-            height: GRID_SIZE * 2
-        };
+        this.loadLevel(0, {
+            score: 0,
+            checkpoint: 0,
+            state: 'menu',
+        });
         
         window.addEventListener('keydown', e => {
             this.sound.unlock();
             const isUiControl = Boolean(e.target?.closest?.('button'));
-            if (isUiControl) return;
+            const isPauseShortcut =
+                e.key === 'Escape' ||
+                e.key === 'p' ||
+                e.key === 'P';
+            if (isUiControl && !isPauseShortcut) return;
 
             if (!this.keys[e.key]) {
                 this.keysJustPressed[e.key] = true;
@@ -788,7 +830,11 @@ class Game {
         });
         
         window.addEventListener('keyup', e => {
-            if (e.target?.closest?.('button')) return;
+            const isPauseShortcut =
+                e.key === 'Escape' ||
+                e.key === 'p' ||
+                e.key === 'P';
+            if (e.target?.closest?.('button') && !isPauseShortcut) return;
             this.keys[e.key] = false;
         });
         
@@ -1112,9 +1158,21 @@ class Game {
             return;
         }
         
-        if (this.gameState === 'gameover' || this.gameState === 'won') {
+        if (this.gameState === 'gameover') {
             if (this.keysJustPressed['Enter'] || input.digJustPressed) {
-                this.restart();
+                this.retryCurrentLevel();
+            }
+            this.keysJustPressed = {};
+            return;
+        }
+
+        if (this.gameState === 'won') {
+            if (this.keysJustPressed['Enter'] || input.digJustPressed) {
+                if (this.hasNextLevel()) {
+                    this.advanceLevel();
+                } else {
+                    this.startLevel(0);
+                }
             }
             this.keysJustPressed = {};
             return;
@@ -2664,12 +2722,60 @@ class Game {
         const followTime = 0.12 - longFallBlend * 0.035;
         const follow = 1 - Math.exp(-deltaTime / followTime);
         this.cameraY += (targetCameraY - this.cameraY) * follow;
-        this.cameraY = Math.max(0, Math.min(this.cameraY, GRID_HEIGHT * GRID_SIZE - CANVAS_HEIGHT));
+        const maxCameraY = Math.max(
+            0,
+            this.levelHeight * GRID_SIZE - CANVAS_HEIGHT
+        );
+        this.cameraY = Math.max(0, Math.min(this.cameraY, maxCameraY));
         this.depth = Math.max(0, Math.floor((this.player.visualY / GRID_SIZE) - 2));
     }
 
+    get currentLevel() {
+        return CAMPAIGN_LEVELS[this.currentLevelIndex];
+    }
+
+    hasNextLevel() {
+        return this.currentLevelIndex < CAMPAIGN_LEVELS.length - 1;
+    }
+
     startRun() {
-        this.restart();
+        this.startLevel(0);
+    }
+
+    startLevel(levelIndex) {
+        if (
+            !Number.isInteger(levelIndex) ||
+            levelIndex < 0 ||
+            levelIndex >= CAMPAIGN_LEVELS.length
+        ) return;
+
+        this.loadLevel(levelIndex, {
+            score: 0,
+            checkpoint: 0,
+            state: 'countdown',
+        });
+    }
+
+    advanceLevel() {
+        if (!this.hasNextLevel()) {
+            this.showMainMenu();
+            return;
+        }
+
+        const checkpoint = this.score;
+        this.loadLevel(this.currentLevelIndex + 1, {
+            score: checkpoint,
+            checkpoint,
+            state: 'countdown',
+        });
+    }
+
+    retryCurrentLevel() {
+        this.loadLevel(this.currentLevelIndex, {
+            score: this.levelStartScore,
+            checkpoint: this.levelStartScore,
+            state: 'countdown',
+        });
     }
 
     pauseGame() {
@@ -2687,35 +2793,45 @@ class Game {
     }
 
     showMainMenu() {
-        this.restart();
-        this.gameState = 'menu';
+        this.loadLevel(0, {
+            score: 0,
+            checkpoint: 0,
+            state: 'menu',
+        });
     }
     
     restart() {
-        this.grid = [];
-        this.colorBlocks = [];
-        this.xBlocks = [];
-        this.nextColorBlockId = 1;
-        this.colorComponentStates = new Map();
-        
-        this.player = {
-            gridX: Math.floor(GRID_WIDTH / 2),
-            gridY: 2,
-            visualX: Math.floor(GRID_WIDTH / 2) * GRID_SIZE,
-            visualY: 2 * GRID_SIZE,
+        this.retryCurrentLevel();
+    }
+
+    createPlayer(start) {
+        const startX = start?.x ?? Math.floor(GRID_WIDTH / 2);
+        const startY = start?.y ?? 2;
+
+        return {
+            gridX: startX,
+            gridY: startY,
+            visualX: startX * GRID_SIZE,
+            visualY: startY * GRID_SIZE,
             get x() { return this.visualX; },
-            set x(val) { this.visualX = val; this.gridX = Math.round(val / GRID_SIZE); },
+            set x(val) {
+                this.visualX = val;
+                this.gridX = Math.round(val / GRID_SIZE);
+            },
             get y() { return this.visualY; },
-            set y(val) { this.visualY = val; this.gridY = Math.round(val / GRID_SIZE); },
-            
-            facing: 'down',
+            set y(val) {
+                this.visualY = val;
+                this.gridY = Math.round(val / GRID_SIZE);
+            },
+
+            facing: start?.facing || 'down',
             isGrounded: false,
             isFalling: false,
             fallVelocity: 0,
-            fallStartY: 0,
+            fallStartY: startY * GRID_SIZE,
             fallDistance: 0,
             landingTimer: 0,
-            
+
             moveTimer: 0,
             moveCooldown: 0.12,
             isMoving: false,
@@ -2728,7 +2844,7 @@ class Game {
             stepUpTargetY: 0,
             stepUpHoldTimer: 0,
             stepUpHoldDirection: 0,
-            
+
             digCooldown: 0,
             digBufferTimer: 0,
             isDrilling: false,
@@ -2739,9 +2855,67 @@ class Game {
             drillMadeContact: false,
             showDrill: false,
         };
-        
-        this.oxygen = 100;
-        this.score = 0;
+    }
+
+    loadLevel(levelIndex, {
+        score = 0,
+        checkpoint = score,
+        state = 'countdown',
+    } = {}) {
+        const level = CAMPAIGN_LEVELS[levelIndex];
+        if (!level) {
+            throw new Error(`Unknown campaign level: ${levelIndex}`);
+        }
+        if (!Array.isArray(level.rows) || level.rows.length === 0) {
+            throw new Error(`${level.id} must contain at least one row`);
+        }
+        if (level.rows.length > GRID_HEIGHT) {
+            throw new Error(`${level.id} is taller than the world grid`);
+        }
+        const isIntegerInRange = (value, min, max) =>
+            Number.isInteger(value) && value >= min && value < max;
+        if (
+            !isIntegerInRange(level.start?.x, 0, GRID_WIDTH) ||
+            !isIntegerInRange(level.start?.y, 0, level.rows.length)
+        ) {
+            throw new Error(`${level.id} has an invalid start cell`);
+        }
+        if (
+            !isIntegerInRange(level.safe?.x, 0, GRID_WIDTH) ||
+            !isIntegerInRange(level.safe?.y, 0, level.rows.length) ||
+            !Number.isInteger(level.safe?.width) ||
+            level.safe.width <= 0 ||
+            !Number.isInteger(level.safe?.height) ||
+            level.safe.height <= 0 ||
+            level.safe.x + level.safe.width > GRID_WIDTH ||
+            level.safe.y + level.safe.height > level.rows.length
+        ) {
+            throw new Error(`${level.id} has invalid safe bounds`);
+        }
+        if (
+            level.start.x >= level.safe.x &&
+            level.start.x < level.safe.x + level.safe.width &&
+            level.start.y >= level.safe.y &&
+            level.start.y < level.safe.y + level.safe.height
+        ) {
+            throw new Error(`${level.id} start cell overlaps the safe`);
+        }
+        if (!Array.isArray(level.items)) {
+            throw new Error(`${level.id} items must be an array`);
+        }
+
+        this.grid = [];
+        this.colorBlocks = [];
+        this.xBlocks = [];
+        this.nextColorBlockId = 1;
+        this.colorComponentStates = new Map();
+        this.currentLevelIndex = levelIndex;
+        this.levelStartScore = checkpoint;
+        this.levelHeight = level.rows.length;
+        this.player = this.createPlayer(level.start);
+
+        this.oxygen = level.start.oxygen ?? 100;
+        this.score = score;
         this.depth = 0;
         this.cameraY = 0;
         this.debrisParticles = [];
@@ -2752,7 +2926,7 @@ class Game {
         this.treasures = [];
         this.itemsByCell = new Map();
         this.reinforcedRoofCells = new Set();
-        this.gameState = 'countdown';
+        this.gameState = state;
         this.countdownTimer = 0;
         this.countdownNumber = 3;
         this.hasPlayerDug = false;
@@ -2764,22 +2938,106 @@ class Game {
         this.warningMessage = null;
         this.warningMessageTimer = 0;
         this.hasShownFallWarning = false;
+        this.gamepadMessage = null;
+        this.gamepadMessageTime = 0;
+        this.lastRenderedState = null;
         this.clearKeyboardInput();
         
         for (let y = 0; y < GRID_HEIGHT; y++) {
-            this.grid[y] = [];
-            for (let x = 0; x < GRID_WIDTH; x++) {
-                this.grid[y][x] = BLOCK_TYPES.EMPTY;
+            this.grid[y] = Array(GRID_WIDTH).fill(BLOCK_TYPES.EMPTY);
+        }
+
+        const validSymbols = new Set(['.', '0', '1', '2', '3', 'X', '#', '=']);
+        level.rows.forEach((row, y) => {
+            if (row.length !== GRID_WIDTH) {
+                throw new Error(`${level.id} row ${y} must be ${GRID_WIDTH} cells wide`);
+            }
+
+            [...row].forEach((symbol, x) => {
+                if (!validSymbols.has(symbol)) {
+                    throw new Error(`${level.id} has invalid tile "${symbol}" at ${x},${y}`);
+                }
+
+                if (symbol >= '0' && symbol <= '3') {
+                    const colorIndex = Number(symbol);
+                    this.colorBlocks.push(new ColoredBlock(
+                        this.nextColorBlockId++,
+                        x,
+                        y,
+                        colorIndex
+                    ));
+                    this.grid[y][x] =
+                        colorIndex + BLOCK_TYPES.COLORED;
+                } else if (symbol === 'X') {
+                    this.xBlocks.push(new XBlock(x, y));
+                    this.grid[y][x] = BLOCK_TYPES.XBLOCK;
+                } else if (symbol === '#' || symbol === '=') {
+                    this.grid[y][x] = BLOCK_TYPES.BEDROCK;
+                    if (symbol === '=') {
+                        this.reinforcedRoofCells.add(`${x},${y}`);
+                    }
+                }
+            });
+        });
+
+        for (const spec of level.items) {
+            if (
+                !isIntegerInRange(spec.x, 0, GRID_WIDTH) ||
+                !isIntegerInRange(spec.y, 0, level.rows.length)
+            ) {
+                throw new Error(`${level.id} has an invalid item cell`);
+            }
+            const key = `${spec.x},${spec.y}`;
+            if (this.grid[spec.y]?.[spec.x] !== BLOCK_TYPES.EMPTY) {
+                throw new Error(`${level.id} item cell ${key} is not empty`);
+            }
+            if (spec.x === level.start.x && spec.y === level.start.y) {
+                throw new Error(`${level.id} item cell ${key} overlaps the start`);
+            }
+            if (this.itemsByCell.has(key)) {
+                throw new Error(`${level.id} has duplicate item cell ${key}`);
+            }
+
+            const item = {
+                x: spec.x * GRID_SIZE + GRID_SIZE / 2,
+                y: spec.y * GRID_SIZE + GRID_SIZE / 2,
+                gridX: spec.x,
+                gridY: spec.y,
+                type: spec.kind === 'oxygen' ?
+                    'oxygen' :
+                    (spec.type || 'coin'),
+                value: spec.value || 0,
+                collected: false,
+            };
+            this.grid[spec.y][spec.x] = BLOCK_TYPES.ITEM;
+            this.itemsByCell.set(key, item);
+
+            if (spec.kind === 'oxygen') {
+                this.oxygenTubes.push(item);
+            } else {
+                this.treasures.push(item);
             }
         }
-        
-        this.generateLevel();
-        
+
+        if (
+            this.grid[level.start.y]?.[level.start.x] !== BLOCK_TYPES.EMPTY
+        ) {
+            throw new Error(`${level.id} start cell is blocked`);
+        }
+
+        for (let y = level.safe.y; y < level.safe.y + level.safe.height; y++) {
+            for (let x = level.safe.x; x < level.safe.x + level.safe.width; x++) {
+                if (this.grid[y]?.[x] !== BLOCK_TYPES.EMPTY) {
+                    throw new Error(`${level.id} safe cell ${x},${y} is blocked`);
+                }
+            }
+        }
+
         this.safe = {
-            x: Math.floor((GRID_WIDTH - 2) / 2) * GRID_SIZE,
-            y: (GRID_HEIGHT - 4) * GRID_SIZE,
-            width: GRID_SIZE * 2,
-            height: GRID_SIZE * 2
+            x: level.safe.x * GRID_SIZE,
+            y: level.safe.y * GRID_SIZE,
+            width: level.safe.width * GRID_SIZE,
+            height: level.safe.height * GRID_SIZE,
         };
     }
     
