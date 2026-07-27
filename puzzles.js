@@ -25,6 +25,12 @@ const PIPE_BASE_CONNECTIONS = Object.freeze({
 
 const PIPE_DIRECTION_NAMES = Object.freeze(['upp', 'höger', 'ned', 'vänster']);
 
+const DIAL_BALANCE = Object.freeze({
+    1: Object.freeze({ baseSpeed: 124, speedStep: 30, targetWidth: 32 }),
+    2: Object.freeze({ baseSpeed: 148, speedStep: 36, targetWidth: 26 }),
+    3: Object.freeze({ baseSpeed: 150, speedStep: 24, targetWidth: 24 }),
+});
+
 class SafePuzzleEngine {
     constructor() {
         this.state = null;
@@ -162,8 +168,8 @@ class SafePuzzleEngine {
     createDialState(difficulty, seed) {
         const random = this.createRandom(seed);
         const targetCount = 1 + difficulty;
-        const baseSpeed = 100 + difficulty * 24;
-        const speedStep = 24 + difficulty * 6;
+        const { baseSpeed, speedStep, targetWidth } =
+            DIAL_BALANCE[difficulty];
         const targets = [];
         let attempts = 0;
         while (targets.length < targetCount && attempts < 200) {
@@ -187,7 +193,7 @@ class SafePuzzleEngine {
             baseSpeed,
             speedStep,
             speed: baseSpeed,
-            targetWidth: 38 - difficulty * 6,
+            targetWidth,
             misses: 0,
         };
     }
