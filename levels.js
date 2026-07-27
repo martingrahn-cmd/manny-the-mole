@@ -6,7 +6,14 @@ const CAMPAIGN_LEVELS = Object.freeze([
         completeTitle: 'Första schaktet klart',
         summary: 'Lär dig gräva nedåt och hämta luft i en trygg sidoficka.',
         start: { x: 3, y: 2, facing: 'down', oxygen: 100 },
-        safe: { x: 2, y: 21, width: 2, height: 2 },
+        safe: {
+            type: 'keypad',
+            difficulty: 1,
+            x: 2,
+            y: 21,
+            width: 2,
+            height: 2,
+        },
         rows: [
             '.......',
             '.......',
@@ -45,7 +52,14 @@ const CAMPAIGN_LEVELS = Object.freeze([
         completeTitle: 'Sidogångarna klara',
         summary: 'Följ öppningarna i berget och våga vända tillbaka efter luft.',
         start: { x: 3, y: 2, facing: 'down', oxygen: 100 },
-        safe: { x: 2, y: 31, width: 2, height: 2 },
+        safe: {
+            type: 'dial',
+            difficulty: 1,
+            x: 2,
+            y: 31,
+            width: 2,
+            height: 2,
+        },
         rows: [
             '.......',
             '.......',
@@ -96,7 +110,14 @@ const CAMPAIGN_LEVELS = Object.freeze([
         completeTitle: 'Första raset avklarat',
         summary: 'Läs skakningen, lämna fallzonen och borra igenom ditt första X-block.',
         start: { x: 3, y: 2, facing: 'down', oxygen: 100 },
-        safe: { x: 2, y: 37, width: 2, height: 2 },
+        safe: {
+            type: 'pipes',
+            difficulty: 1,
+            x: 2,
+            y: 37,
+            width: 2,
+            height: 2,
+        },
         rows: [
             '.......',
             '.......',

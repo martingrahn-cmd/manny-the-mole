@@ -52,6 +52,9 @@ const ASSETS = {
     mole_walk_right: null,
     mole_falling: null,
     gold: null,
+    safe_keypad: null,
+    safe_dial: null,
+    safe_pipes: null,
     loaded: false
 };
 
@@ -67,6 +70,9 @@ function loadAssets() {
             ['mole_walk_right', 'assets/mole_walk_right.png'],
             ['mole_falling', 'assets/mole_falling.png'],
             ['gold', 'assets/gold.png'],
+            ['safe_keypad', 'assets/safe-keypad.png'],
+            ['safe_dial', 'assets/safe-dial.png'],
+            ['safe_pipes', 'assets/safe-pipes.png'],
         ];
         
         let loadedCount = 0;
@@ -119,6 +125,13 @@ const BLOCK_TYPES = {
     BEDROCK: 11,
     ITEM: 12, // Treasures and oxygen - blocks can't fall through them
 };
+
+const SAFE_TYPES = new Set(['keypad', 'dial', 'pipes']);
+const SAFE_ASSET_KEYS = Object.freeze({
+    keypad: 'safe_keypad',
+    dial: 'safe_dial',
+    pipes: 'safe_pipes',
+});
 
 function isColoredBlockValue(value) {
     return value >= BLOCK_TYPES.COLORED && value < BLOCK_TYPES.COLORED + BLOCK_COLORS.length;
@@ -731,6 +744,7 @@ class Game {
         this.countdownNumber = 3;
         this.hasPlayerDug = false; // Physics paused until first dig
         this.hasSideDrilled = false;
+        this.lastDestroyedItemType = null;
         this.pendingMatchCheck = false;
         this.deathCause = null;
         this.deathTimer = 0;
@@ -1074,6 +1088,7 @@ class Game {
                 type: spec.type || 'oxygen',
                 value: spec.value || 0,
                 collected: false,
+                destroyed: false,
             };
             const key = `${pocket.x},${pocket.y}`;
             this.itemsByCell.set(key, item);
@@ -1513,15 +1528,25 @@ class Game {
             p.drillSnapTargetX = currentGridX * GRID_SIZE;
 
             const targetBlock = this.grid[digY]?.[digX];
+            const targetItem = targetBlock === BLOCK_TYPES.ITEM ?
+                this.itemsByCell.get(`${digX},${digY}`) :
+                null;
+            const targetIsUpwardItem =
+                p.facing === 'up' &&
+                this.isUpwardDrillableItem(targetItem);
             const targetIsSolid = targetBlock !== undefined &&
                 targetBlock !== BLOCK_TYPES.EMPTY &&
                 targetBlock !== BLOCK_TYPES.ITEM;
             const didDig = digX >= 0 && digX < GRID_WIDTH &&
                 digY >= 0 && digY < GRID_HEIGHT &&
-                this.digBlock(digX, digY);
+                this.digBlock(digX, digY, p.facing);
 
-            p.drillLockTimer = targetIsSolid ? DIG_LOCK_DURATION : 0.025;
-            p.drillMadeContact = didDig || targetIsSolid;
+            p.drillLockTimer =
+                targetIsSolid || targetIsUpwardItem ?
+                    DIG_LOCK_DURATION :
+                    0.025;
+            p.drillMadeContact =
+                didDig || targetIsSolid || targetIsUpwardItem;
 
             if (didDig) {
                 if (p.facing === 'left' || p.facing === 'right') {
@@ -1845,6 +1870,12 @@ class Game {
             color = '#9b91a5';
             secondaryColor = '#3f354b';
             dustColor = '#c0b4c5';
+        } else if (blockValue === BLOCK_TYPES.ITEM) {
+            const destroyedOxygen =
+                this.lastDestroyedItemType === 'oxygen';
+            color = destroyedOxygen ? '#69f3ff' : '#ffd65a';
+            secondaryColor = destroyedOxygen ? '#176b80' : '#9b5b10';
+            dustColor = destroyedOxygen ? '#d8ffff' : '#fff1a0';
         }
 
         const strength = Math.max(1, this.lastDigStrength || 1);
@@ -1910,7 +1941,44 @@ class Game {
         }
     }
 
-    digBlock(x, y) {
+    isUpwardDrillableItem(item) {
+        return Boolean(
+            item &&
+            !item.collected &&
+            !item.destroyed &&
+            (item.type === 'oxygen' || item.type === 'coin')
+        );
+    }
+
+    destroyItemAt(x, y) {
+        const item = this.itemsByCell.get(`${x},${y}`);
+        if (!this.isUpwardDrillableItem(item)) return false;
+
+        this.hasPlayerDug = true;
+        this.lastDigStrength = 1;
+        this.lastDestroyedItemType = item.type;
+        item.destroyed = true;
+        item.collected = true;
+        this.releaseItemCell(item);
+        this.showWarningMessage(
+            item.type === 'oxygen' ?
+                'Syretuben borrades sönder · ingen luft!' :
+                'Guldmyntet borrades sönder · inga poäng!',
+            2.2
+        );
+        return true;
+    }
+
+    digBlock(x, y, direction = this.player.facing) {
+        this.lastDestroyedItemType = null;
+        if (
+            direction === 'up' &&
+            this.grid[y]?.[x] === BLOCK_TYPES.ITEM &&
+            this.destroyItemAt(x, y)
+        ) {
+            return true;
+        }
+
         const blockInfo = this.getBlockAt(x, y);
         if (!blockInfo) return false;
         
@@ -2880,6 +2948,16 @@ class Game {
         ) {
             throw new Error(`${level.id} has an invalid start cell`);
         }
+        if (!SAFE_TYPES.has(level.safe?.type)) {
+            throw new Error(`${level.id} has an invalid safe type`);
+        }
+        if (
+            !Number.isInteger(level.safe?.difficulty) ||
+            level.safe.difficulty < 1 ||
+            level.safe.difficulty > 3
+        ) {
+            throw new Error(`${level.id} has an invalid safe difficulty`);
+        }
         if (
             !isIntegerInRange(level.safe?.x, 0, GRID_WIDTH) ||
             !isIntegerInRange(level.safe?.y, 0, level.rows.length) ||
@@ -2931,6 +3009,7 @@ class Game {
         this.countdownNumber = 3;
         this.hasPlayerDug = false;
         this.hasSideDrilled = false;
+        this.lastDestroyedItemType = null;
         this.pendingMatchCheck = false;
         this.deathCause = null;
         this.deathTimer = 0;
@@ -3008,6 +3087,7 @@ class Game {
                     (spec.type || 'coin'),
                 value: spec.value || 0,
                 collected: false,
+                destroyed: false,
             };
             this.grid[spec.y][spec.x] = BLOCK_TYPES.ITEM;
             this.itemsByCell.set(key, item);
@@ -3034,6 +3114,8 @@ class Game {
         }
 
         this.safe = {
+            type: level.safe.type,
+            difficulty: level.safe.difficulty,
             x: level.safe.x * GRID_SIZE,
             y: level.safe.y * GRID_SIZE,
             width: level.safe.width * GRID_SIZE,
@@ -3775,6 +3857,16 @@ class Game {
         const screenY = this.pixelSnap(y);
         const width = this.safe.width;
         const height = this.safe.height;
+        const assetKey = SAFE_ASSET_KEYS[this.safe.type];
+        const safeSprite = assetKey ? ASSETS[assetKey] : null;
+
+        if (safeSprite) {
+            ctx.save();
+            ctx.imageSmoothingEnabled = false;
+            ctx.drawImage(safeSprite, screenX, screenY, width, height);
+            ctx.restore();
+            return;
+        }
 
         ctx.fillStyle = '#020308';
         ctx.fillRect(screenX + 10, screenY + 12, width, height);
