@@ -133,6 +133,11 @@ const SAFE_ASSET_KEYS = Object.freeze({
     dial: 'safe_dial',
     pipes: 'safe_pipes',
 });
+const SAFE_TYPE_LABELS = Object.freeze({
+    keypad: 'Minneslås',
+    dial: 'Rattlås',
+    pipes: 'Rörlås',
+});
 
 function isColoredBlockValue(value) {
     return value >= BLOCK_TYPES.COLORED && value < BLOCK_TYPES.COLORED + BLOCK_COLORS.length;
@@ -474,9 +479,19 @@ class GameUI {
         this.wonAir = document.getElementById('wonAir');
         this.levelSelect = document.getElementById('levelSelect');
         this.campaignProgress = document.getElementById('campaignProgress');
+        this.puzzleEyebrow = document.getElementById('puzzleEyebrow');
+        this.puzzleTitle = document.getElementById('puzzleTitle');
+        this.puzzleCopy = document.getElementById('puzzleCopy');
+        this.puzzleDifficulty = document.getElementById('puzzleDifficulty');
+        this.puzzleBody = document.getElementById('puzzleBody');
+        this.puzzleStatus = document.getElementById('puzzleStatus');
+        this.puzzleActions = document.getElementById('puzzleActions');
+        this.lastPuzzleRevision = -1;
+        this.lastPuzzlePhase = null;
         this.screens = {
             menu: document.getElementById('screenMenu'),
             paused: document.getElementById('screenPaused'),
+            puzzle: document.getElementById('screenPuzzle'),
             gameover: document.getElementById('screenGameover'),
             won: document.getElementById('screenWon'),
         };
@@ -498,6 +513,27 @@ class GameUI {
             else if (action === 'resume') this.game.resumeGame();
             else if (action === 'restart') this.game.restart();
             else if (action === 'menu') this.game.showMainMenu();
+            else if (action === 'puzzle-close') {
+                this.game.cancelSafePuzzle();
+            }
+            else if (action.startsWith('puzzle-')) {
+                this.game.handleSafePuzzleAction(
+                    action,
+                    button.dataset.value
+                );
+            }
+        });
+
+        document.addEventListener('keydown', event => {
+            if (this.handlePuzzleShortcut(event)) return;
+            this.handleMenuKeydown(event);
+        });
+
+        this.root.addEventListener('focusin', event => {
+            const control = event.target.closest?.('button:not(:disabled)');
+            if (control && this.root.contains(control)) {
+                this.markFocusedControl(control);
+            }
         });
 
         this.pauseButton?.addEventListener('click', () => {
@@ -507,13 +543,18 @@ class GameUI {
         });
 
         window.addEventListener('blur', () => {
+            this.game.isWindowActive = false;
             this.game.clearKeyboardInput();
             if (this.game.gameState === 'playing') {
                 this.game.pauseGame();
             }
         });
+        window.addEventListener('focus', () => {
+            this.game.isWindowActive = !document.hidden;
+        });
 
         document.addEventListener('visibilitychange', () => {
+            this.game.isWindowActive = !document.hidden;
             if (document.hidden) {
                 this.game.clearKeyboardInput();
                 if (this.game.gameState === 'playing') {
@@ -521,6 +562,189 @@ class GameUI {
                 }
             }
         });
+    }
+
+    handlePuzzleShortcut(event) {
+        if (this.game.gameState !== 'puzzle' || event.defaultPrevented) {
+            return false;
+        }
+
+        const puzzle = this.game.safePuzzle?.state;
+        if (
+            puzzle?.type === 'keypad' &&
+            puzzle.phase === 'input' &&
+            /^[0-9]$/.test(event.key)
+        ) {
+            event.preventDefault();
+            event.stopPropagation();
+            this.game.clearKeyboardInput();
+            this.game.handleSafePuzzleAction('puzzle-key', event.key);
+            return true;
+        }
+        return false;
+    }
+
+    getActiveScreen() {
+        return [...this.root.querySelectorAll('.screen')].find(screen =>
+            !screen.hidden && screen.getAttribute('aria-hidden') !== 'true'
+        ) || null;
+    }
+
+    getMenuControls(screen = this.getActiveScreen()) {
+        if (!screen) return [];
+
+        return [...screen.querySelectorAll('button:not(:disabled)')].filter(control =>
+            !control.hidden &&
+            control.getAttribute('aria-hidden') !== 'true' &&
+            control.getClientRects().length > 0
+        );
+    }
+
+    markFocusedControl(control) {
+        this.root.querySelectorAll('.is-menu-focused').forEach(element => {
+            if (element !== control) element.classList.remove('is-menu-focused');
+        });
+        control?.classList.add('is-menu-focused');
+    }
+
+    focusMenuControl(control) {
+        if (!control) return;
+
+        control.focus({ preventScroll: true });
+        this.markFocusedControl(control);
+        control.scrollIntoView({
+            block: 'nearest',
+            inline: 'nearest',
+        });
+    }
+
+    findDirectionalControl(controls, current, direction) {
+        const currentRect = current?.getBoundingClientRect();
+        if (!currentRect) return null;
+
+        const currentCenter = {
+            x: currentRect.left + currentRect.width / 2,
+            y: currentRect.top + currentRect.height / 2,
+        };
+        const vertical = direction === 'up' || direction === 'down';
+        const sign = direction === 'up' || direction === 'left' ? -1 : 1;
+        let nearest = null;
+        let nearestScore = Infinity;
+
+        for (const candidate of controls) {
+            if (candidate === current) continue;
+            const rect = candidate.getBoundingClientRect();
+            const center = {
+                x: rect.left + rect.width / 2,
+                y: rect.top + rect.height / 2,
+            };
+            const primaryDelta = vertical ?
+                (center.y - currentCenter.y) * sign :
+                (center.x - currentCenter.x) * sign;
+            if (primaryDelta <= 1) continue;
+
+            const secondaryDelta = vertical ?
+                Math.abs(center.x - currentCenter.x) :
+                Math.abs(center.y - currentCenter.y);
+            const score = primaryDelta + secondaryDelta * 4;
+            if (score < nearestScore) {
+                nearest = candidate;
+                nearestScore = score;
+            }
+        }
+
+        return nearest;
+    }
+
+    moveMenuFocus(direction) {
+        const controls = this.getMenuControls();
+        if (controls.length === 0) return;
+
+        const current = controls.includes(document.activeElement) ?
+            document.activeElement :
+            null;
+        if (!current) {
+            this.focusMenuControl(controls[0]);
+            return;
+        }
+
+        let next = this.findDirectionalControl(controls, current, direction);
+        if (!next) {
+            const currentIndex = controls.indexOf(current);
+            const step = direction === 'up' || direction === 'left' ? -1 : 1;
+            next = controls[
+                (currentIndex + step + controls.length) % controls.length
+            ];
+        }
+        this.focusMenuControl(next);
+    }
+
+    handleMenuKeydown(event) {
+        const activeScreen = this.getActiveScreen();
+        if (!activeScreen || event.defaultPrevented) return;
+        if (
+            event.target.matches?.(
+                'input, textarea, select, [contenteditable="true"]'
+            )
+        ) return;
+
+        const normalizedKey = event.key.length === 1 ?
+            event.key.toLowerCase() :
+            event.key;
+        const direction = {
+            ArrowUp: 'up',
+            w: 'up',
+            ArrowDown: 'down',
+            s: 'down',
+            ArrowLeft: 'left',
+            a: 'left',
+            ArrowRight: 'right',
+            d: 'right',
+        }[normalizedKey];
+
+        if (direction) {
+            event.preventDefault();
+            event.stopPropagation();
+            this.game.clearKeyboardInput();
+            this.moveMenuFocus(direction);
+            return;
+        }
+
+        if (
+            normalizedKey === 'Escape' ||
+            normalizedKey === 'Backspace' ||
+            normalizedKey === 'BrowserBack'
+        ) {
+            event.preventDefault();
+            event.stopPropagation();
+            this.game.clearKeyboardInput();
+            if (this.game.gameState === 'paused') {
+                this.game.resumeGame();
+            } else if (this.game.gameState === 'puzzle') {
+                this.game.cancelSafePuzzle();
+            } else if (
+                this.game.gameState === 'gameover' ||
+                this.game.gameState === 'won'
+            ) {
+                this.game.showMainMenu();
+            }
+            return;
+        }
+
+        if (normalizedKey === 'Enter' || normalizedKey === ' ') {
+            const controls = this.getMenuControls(activeScreen);
+            const focusedControl = controls.includes(document.activeElement) ?
+                document.activeElement :
+                controls[0];
+            if (!focusedControl) return;
+
+            event.preventDefault();
+            event.stopPropagation();
+            if (event.target !== focusedControl) {
+                this.focusMenuControl(focusedControl);
+            }
+            focusedControl.click();
+        }
     }
 
     refreshLevelSelect() {
@@ -532,6 +756,7 @@ class GameUI {
             const unlocked = this.game.isLevelUnlocked(levelIndex);
             const completed = this.game.isLevelCompleted(levelIndex);
             const bestScore = this.game.getLevelBestScore(levelIndex);
+            const safeLabel = SAFE_TYPE_LABELS[level.safe.type];
             const card = document.createElement('button');
             card.type = 'button';
             card.className = 'level-card';
@@ -550,7 +775,7 @@ class GameUI {
                 unlocked ?
                     `Nivå ${level.number}, ${level.title}. ${
                         completed ? `Klar. Bästa byte ${bestScore}.` : 'Upplåst.'
-                    }` :
+                    } ${safeLabel}.` :
                     `Nivå ${level.number}, ${level.title}. Låst. Klara nivå ${
                         CAMPAIGN_LEVELS[levelIndex - 1]?.number
                     } för att låsa upp.`
@@ -601,10 +826,12 @@ class GameUI {
             const meta = document.createElement('span');
             meta.className = 'level-card__meta';
             meta.textContent = completed ?
-                `Bäst ${bestScore}` :
+                `${safeLabel} · bäst ${bestScore}` :
                 !unlocked ?
                     'Klara föregående nivå' :
-                    `${Math.max(0, level.safe.y - level.start.y)} m djup`;
+                    `${safeLabel} · ${
+                        Math.max(0, level.safe.y - level.start.y)
+                    } m djup`;
 
             const content = document.createElement('span');
             content.className = 'level-card__content';
@@ -734,9 +961,331 @@ class GameUI {
         ctx.fillRect(startCenterX, startCenterY, 1, 1);
     }
 
+    createPuzzleButton(label, action, {
+        value = null,
+        primary = false,
+        className = '',
+        disabled = false,
+    } = {}) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = [
+            'menu-button',
+            primary ? 'menu-button--primary' : '',
+            className,
+        ].filter(Boolean).join(' ');
+        button.dataset.action = action;
+        if (value !== null) button.dataset.value = String(value);
+        button.disabled = disabled;
+        button.textContent = label;
+        return button;
+    }
+
+    appendPuzzleCloseButton(state) {
+        if (!this.puzzleActions || state.solved) return;
+        this.puzzleActions.append(
+            this.createPuzzleButton('Tillbaka till gruvan', 'puzzle-close')
+        );
+    }
+
+    renderKeypadPuzzle(state) {
+        const shell = document.createElement('div');
+        shell.className = 'puzzle-keypad';
+
+        const display = document.createElement('div');
+        display.className = 'puzzle-keypad__display';
+        if (state.phase === 'watch') {
+            display.textContent = state.shownDigit ?? '·';
+            display.classList.toggle(
+                'is-lit',
+                state.shownDigit !== null
+            );
+        } else if (state.phase === 'input') {
+            display.textContent = state.code.map((digit, index) =>
+                index < state.input.length ? state.input[index] : '–'
+            ).join(' ');
+        } else if (state.solved) {
+            display.textContent = 'OPEN';
+            display.classList.add('is-success');
+        } else {
+            display.textContent = state.code.map(() => '•').join(' ');
+        }
+        shell.append(display);
+
+        const keypad = document.createElement('div');
+        keypad.className = 'puzzle-keypad__grid';
+        const digits = [1, 2, 3, 4, 5, 6, 7, 8, 9, 0];
+        digits.forEach((digit, index) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'puzzle-key';
+            button.dataset.action = 'puzzle-key';
+            button.dataset.value = String(digit);
+            button.textContent = String(digit);
+            button.disabled = state.phase !== 'input';
+            button.setAttribute('aria-label', `Siffra ${digit}`);
+            if (digit === 0) button.classList.add('puzzle-key--zero');
+            if (state.shownDigit === digit && state.phase === 'watch') {
+                button.classList.add('is-lit');
+            }
+            if (index === 0 && state.phase === 'input') {
+                button.classList.add('puzzle-control--primary');
+            }
+            keypad.append(button);
+        });
+        shell.append(keypad);
+        this.puzzleBody.append(shell);
+
+        if (state.phase === 'ready') {
+            this.puzzleActions.append(
+                this.createPuzzleButton(
+                    state.misses > 0 ? 'Visa koden igen' : 'Visa koden',
+                    'puzzle-begin',
+                    { primary: true }
+                )
+            );
+        } else if (state.phase === 'input') {
+            this.puzzleActions.append(
+                this.createPuzzleButton(
+                    'Visa igen',
+                    'puzzle-reset'
+                )
+            );
+        }
+        this.appendPuzzleCloseButton(state);
+    }
+
+    renderDialPuzzle(state, game) {
+        const shell = document.createElement('div');
+        shell.className = 'puzzle-dial';
+
+        const locks = document.createElement('div');
+        locks.className = 'puzzle-dial__locks';
+        locks.setAttribute('aria-label',
+            `${state.lockIndex} av ${state.targets.length} stift satta`
+        );
+        state.targets.forEach((target, index) => {
+            const lock = document.createElement('span');
+            lock.className = 'puzzle-dial__lock';
+            lock.classList.toggle('is-set', index < state.lockIndex);
+            lock.classList.toggle('is-current', index === state.lockIndex);
+            lock.textContent = index < state.lockIndex ? '✓' : String(index + 1);
+            locks.append(lock);
+        });
+        shell.append(locks);
+
+        const dial = document.createElement('div');
+        dial.className = 'puzzle-dial__face';
+        const target = document.createElement('div');
+        target.className = 'puzzle-dial__target';
+        const currentTarget = state.targets[
+            Math.min(state.lockIndex, state.targets.length - 1)
+        ];
+        const targetStart = currentTarget - state.targetWidth / 2;
+        target.style.background = `conic-gradient(
+            from ${targetStart}deg,
+            rgba(105, 240, 177, 0.95) 0deg ${state.targetWidth}deg,
+            transparent ${state.targetWidth}deg 360deg
+        )`;
+
+        const ticks = document.createElement('div');
+        ticks.className = 'puzzle-dial__ticks';
+        for (let index = 0; index < 12; index++) {
+            const tick = document.createElement('span');
+            tick.style.transform = `rotate(${index * 30}deg)`;
+            ticks.append(tick);
+        }
+
+        const needle = document.createElement('div');
+        needle.className = 'puzzle-dial__needle';
+        needle.style.transform = `rotate(${state.angle}deg)`;
+        const hub = document.createElement('div');
+        hub.className = 'puzzle-dial__hub';
+        dial.append(target, ticks, needle, hub);
+        shell.append(dial);
+        this.puzzleBody.append(shell);
+        this.dialNeedle = needle;
+
+        if (state.phase === 'ready') {
+            this.puzzleActions.append(
+                this.createPuzzleButton(
+                    'Starta ratt',
+                    'puzzle-begin',
+                    { primary: true }
+                )
+            );
+        } else if (state.phase === 'active') {
+            if (game.reducedMotion) {
+                this.puzzleActions.append(
+                    this.createPuzzleButton(
+                        '← Vrid',
+                        'puzzle-dial-nudge',
+                        { value: -8 }
+                    )
+                );
+            }
+            this.puzzleActions.append(
+                this.createPuzzleButton(
+                    'Lås stift',
+                    'puzzle-dial-hit',
+                    { primary: true }
+                )
+            );
+            if (game.reducedMotion) {
+                this.puzzleActions.append(
+                    this.createPuzzleButton(
+                        'Vrid →',
+                        'puzzle-dial-nudge',
+                        { value: 8 }
+                    )
+                );
+            }
+        }
+        this.appendPuzzleCloseButton(state);
+    }
+
+    renderPipesPuzzle(state) {
+        const shell = document.createElement('div');
+        shell.className = 'puzzle-pipes';
+
+        const labels = document.createElement('div');
+        labels.className = 'puzzle-pipes__labels';
+        labels.innerHTML = '<strong>IN</strong><span>TRYCKLEDNING</span><strong>UT</strong>';
+        shell.append(labels);
+
+        const grid = document.createElement('div');
+        grid.className = 'puzzle-pipes__grid';
+        grid.style.setProperty('--pipe-size', state.size);
+        state.cells.forEach((cell, index) => {
+            const x = index % state.size;
+            const y = Math.floor(index / state.size);
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'puzzle-pipe-cell';
+            button.dataset.action = 'puzzle-pipe';
+            button.dataset.value = String(index);
+            button.setAttribute(
+                'aria-label',
+                this.game.safePuzzle.getPipeLabel(index)
+            );
+            button.classList.toggle(
+                'is-flowing',
+                state.connected.has(index)
+            );
+            button.classList.toggle(
+                'is-source',
+                x === 0 && y === state.sourceY
+            );
+            button.classList.toggle(
+                'is-sink',
+                x === state.size - 1 && y === state.sinkY
+            );
+            if (x === 0 && y === state.sourceY) {
+                button.classList.add('puzzle-control--primary');
+            }
+
+            const pipe = document.createElement('span');
+            pipe.className = `puzzle-pipe puzzle-pipe--${cell.type}`;
+            pipe.style.setProperty(
+                '--pipe-rotation',
+                `${cell.rotation * 90}deg`
+            );
+            button.append(pipe);
+            grid.append(button);
+        });
+        shell.append(grid);
+        this.puzzleBody.append(shell);
+
+        if (!state.solved) {
+            this.puzzleActions.append(
+                this.createPuzzleButton('Återställ rör', 'puzzle-reset')
+            );
+        }
+        this.appendPuzzleCloseButton(state);
+    }
+
+    getPuzzleFocusIdentity() {
+        const active = document.activeElement;
+        if (!this.screens.puzzle?.contains(active)) return null;
+        return {
+            action: active.dataset?.action || '',
+            value: active.dataset?.value || '',
+        };
+    }
+
+    restorePuzzleFocus(identity) {
+        if (!identity || this.game.gameState !== 'puzzle') return;
+        const controls = [
+            ...this.screens.puzzle.querySelectorAll('button:not(:disabled)')
+        ];
+        const match = controls.find(control =>
+            control.dataset.action === identity.action &&
+            (control.dataset.value || '') === identity.value
+        );
+        this.focusMenuControl(
+            match ||
+            this.screens.puzzle.querySelector(
+                '.menu-button--primary, .puzzle-control--primary, button:not(:disabled)'
+            )
+        );
+    }
+
+    syncPuzzle(game) {
+        const state = game.safePuzzle?.state;
+        if (!state) {
+            this.lastPuzzleRevision = -1;
+            this.lastPuzzlePhase = null;
+            return;
+        }
+
+        if (this.lastPuzzleRevision !== game.safePuzzle.revision) {
+            const focusIdentity = this.getPuzzleFocusIdentity();
+            const phaseChanged = this.lastPuzzlePhase !== state.phase;
+            this.lastPuzzleRevision = game.safePuzzle.revision;
+            this.lastPuzzlePhase = state.phase;
+            const meta = SAFE_PUZZLE_META[state.type];
+            this.puzzleEyebrow.textContent = meta.eyebrow;
+            this.puzzleTitle.textContent = meta.title;
+            this.puzzleCopy.textContent = meta.copy;
+            this.puzzleDifficulty.textContent = `Låsgrad ${state.difficulty}`;
+            this.puzzleStatus.textContent = state.status;
+            this.puzzleStatus.classList.toggle('is-success', state.solved);
+            this.puzzleBody.replaceChildren();
+            this.puzzleActions.replaceChildren();
+            this.dialNeedle = null;
+
+            if (state.type === 'keypad') {
+                this.renderKeypadPuzzle(state);
+            } else if (state.type === 'dial') {
+                this.renderDialPuzzle(state, game);
+            } else {
+                this.renderPipesPuzzle(state);
+            }
+            if (
+                game.gameState === 'puzzle' &&
+                state.type === 'keypad' &&
+                state.phase === 'input' &&
+                phaseChanged
+            ) {
+                this.focusMenuControl(
+                    this.screens.puzzle.querySelector(
+                        '.puzzle-control--primary'
+                    )
+                );
+            } else {
+                this.restorePuzzleFocus(focusIdentity);
+            }
+        }
+
+        if (state.type === 'dial' && this.dialNeedle) {
+            this.dialNeedle.style.transform = `rotate(${state.angle}deg)`;
+        }
+    }
+
     sync(game) {
         if (!this.enabled) return;
 
+        this.syncPuzzle(game);
         const airPercent = Math.max(0, Math.min(1, game.oxygen / game.maxOxygen));
         if (this.level) {
             this.level.textContent =
@@ -855,18 +1404,9 @@ class GameUI {
         if (this.lastState !== game.gameState) {
             this.lastState = game.gameState;
             const primaryButton = activeScreen?.querySelector(
-                '.menu-button--primary, .level-card.is-current:not(:disabled), .level-card:not(:disabled), .menu-button'
+                '.menu-button--primary, .puzzle-control--primary, .level-card.is-current:not(:disabled), .level-card:not(:disabled), .menu-button'
             );
-            primaryButton?.focus({ preventScroll: true });
-            if (
-                game.gameState === 'menu' &&
-                primaryButton?.classList.contains('level-card')
-            ) {
-                primaryButton.scrollIntoView({
-                    block: 'nearest',
-                    inline: 'nearest',
-                });
-            }
+            this.focusMenuControl(primaryButton);
         }
     }
 }
@@ -966,6 +1506,7 @@ class Game {
         this.levelHeight = GRID_HEIGHT;
         
         this.gameState = 'menu';
+        this.isWindowActive = !document.hidden;
         this.countdownTimer = 0;
         this.countdownNumber = 3;
         this.hasPlayerDug = false; // Physics paused until first dig
@@ -984,6 +1525,9 @@ class Game {
         this.progress = this.loadProgress();
         this.lastLevelScore = 0;
         this.newlyUnlockedLevelIndex = null;
+        this.safePuzzle = new SafePuzzleEngine();
+        this.safeContactArmed = true;
+        this.puzzleBonus = 0;
         this.boundGameLoop = this.gameLoop.bind(this);
         this.ui = new GameUI(this);
         
@@ -1373,6 +1917,29 @@ class Game {
         if (this.gameState === 'paused') {
             if (pausePressed || input.digJustPressed || this.keysJustPressed['Enter']) {
                 this.resumeGame();
+            }
+            this.keysJustPressed = {};
+            return;
+        }
+
+        if (this.gameState === 'puzzle') {
+            if (!this.isWindowActive) {
+                this.keysJustPressed = {};
+                return;
+            }
+            this.updateEffects(deltaTime * 0.25);
+            const puzzleState = this.safePuzzle.state;
+            if (
+                puzzleState?.type === 'dial' &&
+                puzzleState.manual !== this.reducedMotion
+            ) {
+                puzzleState.manual = this.reducedMotion;
+                this.safePuzzle.touch();
+            }
+            if (pausePressed) {
+                this.cancelSafePuzzle();
+            } else if (this.safePuzzle.update(deltaTime)) {
+                this.completeSafePuzzle();
             }
             this.keysJustPressed = {};
             return;
@@ -1942,12 +2509,77 @@ class Game {
             p.visualY < this.safe.y + this.safe.height &&
             p.visualY + PLAYER_SIZE > this.safe.y;
 
-        if (reachedSafe && this.gameState === 'playing') {
-            this.recordCurrentLevelCompletion();
-            this.gameState = 'won';
+        if (!reachedSafe) {
+            this.safeContactArmed = true;
+        } else if (
+            this.gameState === 'playing' &&
+            this.safeContactArmed
+        ) {
+            this.beginSafePuzzle();
         }
 
         return reachedSafe;
+    }
+
+    beginSafePuzzle() {
+        if (this.gameState !== 'playing' || !this.safe) return false;
+        this.safeContactArmed = false;
+        this.clearKeyboardInput();
+        this.safePuzzle.start(
+            this.safe.type,
+            this.safe.difficulty,
+            this.currentLevel.id
+        );
+        if (this.safePuzzle.state?.type === 'dial') {
+            this.safePuzzle.state.manual = this.reducedMotion;
+        }
+        this.gameState = 'puzzle';
+        this.sound.playTone(260, 430, 0.12, 0.035, 'square');
+        return true;
+    }
+
+    handleSafePuzzleAction(action, value) {
+        if (this.gameState !== 'puzzle') return false;
+        const handled = this.safePuzzle.action(action, value);
+        if (!handled) return false;
+
+        const state = this.safePuzzle.state;
+        if (state?.solved) {
+            this.sound.playTone(520, 880, 0.18, 0.04, 'square');
+        } else if (action === 'puzzle-dial-hit') {
+            this.sound.playTone(310, 460, 0.08, 0.025, 'square');
+        } else {
+            this.sound.playTone(420, 560, 0.055, 0.018, 'square');
+        }
+        return true;
+    }
+
+    cancelSafePuzzle() {
+        if (
+            this.gameState !== 'puzzle' ||
+            this.safePuzzle.state?.solved
+        ) return false;
+        this.clearKeyboardInput();
+        this.safePuzzle.clear();
+        this.gameState = 'playing';
+        this.lastRenderedState = null;
+        return true;
+    }
+
+    completeSafePuzzle() {
+        if (
+            this.gameState !== 'puzzle' ||
+            !this.safePuzzle.state?.solved
+        ) return false;
+
+        this.puzzleBonus =
+            200 + this.safePuzzle.state.difficulty * 100;
+        this.score += this.puzzleBonus;
+        this.sound.playClear(6 + this.safePuzzle.state.difficulty);
+        this.recordCurrentLevelCompletion();
+        this.gameState = 'won';
+        this.clearKeyboardInput();
+        return true;
     }
 
     showWarningMessage(message, duration = 2.4) {
@@ -3390,6 +4022,9 @@ class Game {
         this.gameState = state;
         this.countdownTimer = 0;
         this.countdownNumber = 3;
+        this.safePuzzle.clear();
+        this.safeContactArmed = true;
+        this.puzzleBonus = 0;
         this.lastLevelScore = 0;
         this.newlyUnlockedLevelIndex = null;
         this.hasPlayerDug = false;
