@@ -354,6 +354,76 @@
             margin-top: calc(13px * var(--game-scale));
         }
 
+        .puzzle-mode-entry {
+            margin-top: calc(10px * var(--game-scale));
+        }
+
+        .menu-button--puzzle-mode {
+            display: grid;
+            grid-template-columns: auto minmax(0, 1fr) auto;
+            gap: calc(10px * var(--game-scale));
+            align-items: center;
+            padding: calc(10px * var(--game-scale)) calc(12px * var(--game-scale));
+            border-color: rgba(115, 232, 246, 0.26);
+            background:
+                radial-gradient(circle at 12% 50%, rgba(78, 217, 235, 0.14), transparent 28%),
+                linear-gradient(135deg, rgba(29, 51, 70, 0.94), rgba(17, 25, 43, 0.96));
+            text-align: left;
+        }
+
+        .menu-button--puzzle-mode:hover,
+        .menu-button--puzzle-mode:focus-visible,
+        .menu-button--puzzle-mode.is-menu-focused {
+            border-color: rgba(139, 243, 255, 0.62);
+            background:
+                radial-gradient(circle at 12% 50%, rgba(78, 217, 235, 0.23), transparent 30%),
+                linear-gradient(135deg, rgba(36, 66, 86, 0.98), rgba(20, 33, 53, 0.98));
+        }
+
+        .puzzle-mode-entry__icon {
+            display: grid;
+            width: calc(34px * var(--game-scale));
+            min-width: 30px;
+            aspect-ratio: 1;
+            place-items: center;
+            border: max(1px, calc(1px * var(--game-scale))) solid rgba(115, 232, 246, 0.34);
+            border-radius: calc(9px * var(--game-scale));
+            background: rgba(4, 14, 23, 0.66);
+            color: #89f2fb;
+            font: 900 max(12px, calc(14px * var(--game-scale))) / 1 ui-monospace, monospace;
+            box-shadow:
+                inset 0 1px rgba(255, 255, 255, 0.07),
+                0 0 calc(14px * var(--game-scale)) rgba(69, 207, 229, 0.12);
+        }
+
+        .puzzle-mode-entry__copy {
+            min-width: 0;
+        }
+
+        .puzzle-mode-entry__copy strong,
+        .puzzle-mode-entry__copy small {
+            display: block;
+        }
+
+        .puzzle-mode-entry__copy strong {
+            color: #f5fbff;
+            font-size: max(11px, calc(12px * var(--game-scale)));
+        }
+
+        .puzzle-mode-entry__copy small {
+            margin-top: calc(2px * var(--game-scale));
+            overflow: hidden;
+            color: rgba(211, 227, 239, 0.55);
+            font-size: max(8px, calc(8px * var(--game-scale)));
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .puzzle-mode-entry__arrow {
+            color: #76e8f4;
+            font-size: max(15px, calc(17px * var(--game-scale)));
+        }
+
         .eyebrow {
             color: #73e8f6;
             font-size: max(8px, calc(9px * var(--game-scale)));
@@ -628,6 +698,144 @@
         .menu-button--primary:hover {
             border-color: rgba(207, 252, 255, 0.62);
             background: linear-gradient(135deg, #67e5ed, #4b94ed);
+        }
+
+        .screen--puzzle-select {
+            background:
+                radial-gradient(circle at 50% 24%, rgba(57, 129, 152, 0.2), transparent 39%),
+                linear-gradient(180deg, rgba(3, 5, 13, 0.7), rgba(3, 4, 10, 0.95));
+            backdrop-filter: blur(calc(8px * var(--game-scale))) saturate(0.78);
+        }
+
+        .screen-panel--puzzle-select {
+            width: min(94cqw, calc(410px * var(--game-scale)));
+            max-height: calc(650px * var(--game-scale));
+            margin: auto;
+            padding: calc(18px * var(--game-scale));
+            overflow-y: auto;
+            border-color: rgba(115, 232, 246, 0.18);
+            scrollbar-color: rgba(115, 232, 246, 0.32) transparent;
+            scrollbar-width: thin;
+        }
+
+        .screen-panel--puzzle-select h2 {
+            font-size: max(25px, calc(31px * var(--game-scale)));
+        }
+
+        .screen-panel--puzzle-select .screen-copy {
+            margin-top: calc(7px * var(--game-scale));
+        }
+
+        .puzzle-mode-list {
+            display: grid;
+            gap: calc(8px * var(--game-scale));
+            margin-top: calc(14px * var(--game-scale));
+        }
+
+        .puzzle-mode-card {
+            --puzzle-accent: #73e8f6;
+            --puzzle-accent-rgb: 115, 232, 246;
+            display: grid;
+            grid-template-columns: auto minmax(0, 1fr);
+            gap: calc(7px * var(--game-scale)) calc(10px * var(--game-scale));
+            padding: calc(9px * var(--game-scale));
+            border: max(1px, calc(1px * var(--game-scale))) solid rgba(var(--puzzle-accent-rgb), 0.2);
+            border-radius: calc(13px * var(--game-scale));
+            background:
+                radial-gradient(circle at 8% 18%, rgba(var(--puzzle-accent-rgb), 0.11), transparent 35%),
+                linear-gradient(145deg, rgba(28, 37, 52, 0.96), rgba(10, 14, 25, 0.98));
+            box-shadow:
+                inset 0 1px rgba(255, 255, 255, 0.055),
+                0 calc(7px * var(--game-scale)) calc(18px * var(--game-scale)) rgba(0, 0, 0, 0.19);
+            text-align: left;
+        }
+
+        .puzzle-mode-card[data-puzzle="dial"] {
+            --puzzle-accent: #ffd36d;
+            --puzzle-accent-rgb: 255, 211, 109;
+        }
+
+        .puzzle-mode-card[data-puzzle="pipes"] {
+            --puzzle-accent: #6af0b5;
+            --puzzle-accent-rgb: 106, 240, 181;
+        }
+
+        .puzzle-mode-card__icon {
+            display: grid;
+            grid-row: 1;
+            width: calc(42px * var(--game-scale));
+            min-width: 37px;
+            aspect-ratio: 1;
+            place-items: center;
+            border: max(1px, calc(1px * var(--game-scale))) solid rgba(var(--puzzle-accent-rgb), 0.3);
+            border-radius: calc(10px * var(--game-scale));
+            background: rgba(3, 9, 16, 0.58);
+            color: var(--puzzle-accent);
+            font: 900 max(12px, calc(14px * var(--game-scale))) / 1 ui-monospace, monospace;
+            letter-spacing: -0.08em;
+            text-shadow: 0 0 calc(9px * var(--game-scale)) rgba(var(--puzzle-accent-rgb), 0.34);
+        }
+
+        .puzzle-mode-card__copy {
+            min-width: 0;
+            align-self: center;
+        }
+
+        .puzzle-mode-card__copy h3 {
+            margin: 0;
+            color: #f4f8ff;
+            font-size: max(11px, calc(12px * var(--game-scale)));
+            line-height: 1.1;
+        }
+
+        .puzzle-mode-card__copy p {
+            margin: calc(3px * var(--game-scale)) 0 0;
+            color: rgba(215, 225, 239, 0.56);
+            font-size: max(8px, calc(8px * var(--game-scale)));
+            line-height: 1.25;
+        }
+
+        .puzzle-grade-picker {
+            display: grid;
+            grid-column: 1 / -1;
+            grid-template-columns: auto repeat(3, minmax(0, 1fr));
+            gap: calc(5px * var(--game-scale));
+            align-items: center;
+        }
+
+        .puzzle-grade-picker > span {
+            padding-right: calc(3px * var(--game-scale));
+            color: rgba(218, 228, 240, 0.42);
+            font-size: max(7px, calc(7px * var(--game-scale)));
+            font-weight: 800;
+            letter-spacing: 0.09em;
+            text-transform: uppercase;
+        }
+
+        .puzzle-grade-button {
+            min-height: calc(30px * var(--game-scale));
+            padding: calc(6px * var(--game-scale));
+            border: max(1px, calc(1px * var(--game-scale))) solid rgba(var(--puzzle-accent-rgb), 0.18);
+            border-radius: calc(8px * var(--game-scale));
+            background: rgba(var(--puzzle-accent-rgb), 0.055);
+            color: rgba(239, 247, 255, 0.82);
+            font: 800 max(9px, calc(10px * var(--game-scale))) / 1 ui-monospace, monospace;
+            cursor: pointer;
+            transition: border-color 130ms ease, background 130ms ease, color 130ms ease, transform 130ms ease;
+        }
+
+        .puzzle-grade-button:hover,
+        .puzzle-grade-button:focus-visible,
+        .puzzle-grade-button.is-menu-focused {
+            transform: translateY(calc(-1px * var(--game-scale)));
+            border-color: rgba(var(--puzzle-accent-rgb), 0.7);
+            background: rgba(var(--puzzle-accent-rgb), 0.16);
+            color: #ffffff;
+            box-shadow: 0 0 calc(12px * var(--game-scale)) rgba(var(--puzzle-accent-rgb), 0.15);
+        }
+
+        .puzzle-select-back {
+            margin-top: calc(11px * var(--game-scale));
         }
 
         .screen--puzzle {
@@ -1502,6 +1710,21 @@
                         <p id="campaignProgress" class="campaign-progress" aria-live="polite">0 av 6 klara</p>
                     </div>
                     <div id="levelSelect" class="level-select" role="group" aria-labelledby="levelSelectTitle"></div>
+                    <div class="puzzle-mode-entry">
+                        <button
+                            class="menu-button menu-button--puzzle-mode"
+                            type="button"
+                            data-action="puzzle-menu"
+                            aria-label="Öppna fristående pusselläge"
+                        >
+                            <span class="puzzle-mode-entry__icon" aria-hidden="true">◇</span>
+                            <span class="puzzle-mode-entry__copy">
+                                <strong>Pusselläge</strong>
+                                <small>Spela kassaskåpens tre låstyper direkt</small>
+                            </span>
+                            <span class="puzzle-mode-entry__arrow" aria-hidden="true">→</span>
+                        </button>
+                    </div>
                     <div class="controls" aria-label="Kontroller">
                         <span class="control"><kbd>←/→</kbd> Gå · håll mot block för att kliva</span>
                         <span class="control"><kbd>↓</kbd> Fall ned</span>
@@ -1510,6 +1733,73 @@
                         <span class="control"><kbd>Pilar + Enter</kbd> Styr menyer</span>
                         <span class="control"><kbd>P</kbd> Paus</span>
                     </div>
+                </div>
+            </section>
+
+            <section
+                id="screenPuzzleSelect"
+                class="screen screen--puzzle-select"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="puzzleSelectTitle"
+                aria-describedby="puzzleSelectCopy"
+                hidden
+            >
+                <div class="screen-panel screen-panel--puzzle-select">
+                    <p class="eyebrow">Vault Puzzles</p>
+                    <h2 id="puzzleSelectTitle">Pusselläge</h2>
+                    <p id="puzzleSelectCopy" class="screen-copy">
+                        Välj låstyp och låsgrad. Spela direkt utan att gräva genom en hel nivå.
+                    </p>
+
+                    <div class="puzzle-mode-list" aria-label="Välj kassaskåpspussel">
+                        <article class="puzzle-mode-card" data-puzzle="keypad">
+                            <span class="puzzle-mode-card__icon" aria-hidden="true">1·8</span>
+                            <div class="puzzle-mode-card__copy">
+                                <h3>Kodlås</h3>
+                                <p>Minns och återskapa sifferföljden.</p>
+                            </div>
+                            <div class="puzzle-grade-picker" role="group" aria-label="Kodlås, välj låsgrad">
+                                <span>Låsgrad</span>
+                                <button class="puzzle-grade-button puzzle-control--primary" type="button" data-action="start-puzzle" data-puzzle="keypad" data-difficulty="1" aria-label="Starta kodlås, låsgrad 1">1</button>
+                                <button class="puzzle-grade-button" type="button" data-action="start-puzzle" data-puzzle="keypad" data-difficulty="2" aria-label="Starta kodlås, låsgrad 2">2</button>
+                                <button class="puzzle-grade-button" type="button" data-action="start-puzzle" data-puzzle="keypad" data-difficulty="3" aria-label="Starta kodlås, låsgrad 3">3</button>
+                            </div>
+                        </article>
+
+                        <article class="puzzle-mode-card" data-puzzle="dial">
+                            <span class="puzzle-mode-card__icon" aria-hidden="true">◉</span>
+                            <div class="puzzle-mode-card__copy">
+                                <h3>Rattlås</h3>
+                                <p>Fånga de mekaniska stiften i rätt zon.</p>
+                            </div>
+                            <div class="puzzle-grade-picker" role="group" aria-label="Rattlås, välj låsgrad">
+                                <span>Låsgrad</span>
+                                <button class="puzzle-grade-button" type="button" data-action="start-puzzle" data-puzzle="dial" data-difficulty="1" aria-label="Starta rattlås, låsgrad 1">1</button>
+                                <button class="puzzle-grade-button" type="button" data-action="start-puzzle" data-puzzle="dial" data-difficulty="2" aria-label="Starta rattlås, låsgrad 2">2</button>
+                                <button class="puzzle-grade-button" type="button" data-action="start-puzzle" data-puzzle="dial" data-difficulty="3" aria-label="Starta rattlås, låsgrad 3">3</button>
+                            </div>
+                        </article>
+
+                        <article class="puzzle-mode-card" data-puzzle="pipes">
+                            <span class="puzzle-mode-card__icon" aria-hidden="true">└─</span>
+                            <div class="puzzle-mode-card__copy">
+                                <h3>Kretslås</h3>
+                                <p>Led strömmen från IN till UT innan tiden går ut.</p>
+                            </div>
+                            <div class="puzzle-grade-picker" role="group" aria-label="Kretslås, välj låsgrad">
+                                <span>Låsgrad</span>
+                                <button class="puzzle-grade-button" type="button" data-action="start-puzzle" data-puzzle="pipes" data-difficulty="1" aria-label="Starta kretslås, låsgrad 1">1</button>
+                                <button class="puzzle-grade-button" type="button" data-action="start-puzzle" data-puzzle="pipes" data-difficulty="2" aria-label="Starta kretslås, låsgrad 2">2</button>
+                                <button class="puzzle-grade-button" type="button" data-action="start-puzzle" data-puzzle="pipes" data-difficulty="3" aria-label="Starta kretslås, låsgrad 3">3</button>
+                            </div>
+                        </article>
+                    </div>
+
+                    <button class="menu-button puzzle-select-back" type="button" data-action="menu">
+                        Tillbaka till nivåerna
+                    </button>
+                    <p class="puzzle-help"><kbd>Pilar</kbd> välj · <kbd>Enter</kbd> starta · <kbd>Esc</kbd> tillbaka</p>
                 </div>
             </section>
 
@@ -1600,8 +1890,8 @@
         </div>
     </main>
 
-    <script src="levels.js?v=9"></script>
-    <script src="puzzles.js?v=9"></script>
-    <script src="game.js?v=9"></script>
+    <script src="levels.js?v=10"></script>
+    <script src="puzzles.js?v=10"></script>
+    <script src="game.js?v=10"></script>
 </body>
 </html>

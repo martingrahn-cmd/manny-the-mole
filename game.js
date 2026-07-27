@@ -495,6 +495,7 @@ class GameUI {
         this.pipeTimerSeconds = null;
         this.screens = {
             menu: document.getElementById('screenMenu'),
+            'puzzle-select': document.getElementById('screenPuzzleSelect'),
             paused: document.getElementById('screenPaused'),
             puzzle: document.getElementById('screenPuzzle'),
             gameover: document.getElementById('screenGameover'),
@@ -518,6 +519,15 @@ class GameUI {
             else if (action === 'resume') this.game.resumeGame();
             else if (action === 'restart') this.game.restart();
             else if (action === 'menu') this.game.showMainMenu();
+            else if (action === 'puzzles' || action === 'puzzle-menu') {
+                this.game.showPuzzleSelect();
+            }
+            else if (action === 'start-puzzle') {
+                this.game.startStandalonePuzzle(
+                    button.dataset.puzzle,
+                    Number(button.dataset.difficulty)
+                );
+            }
             else if (action === 'puzzle-close') {
                 this.game.cancelSafePuzzle();
             }
@@ -725,6 +735,8 @@ class GameUI {
             this.game.clearKeyboardInput();
             if (this.game.gameState === 'paused') {
                 this.game.resumeGame();
+            } else if (this.game.gameState === 'puzzle-select') {
+                this.game.showMainMenu();
             } else if (this.game.gameState === 'puzzle') {
                 this.game.cancelSafePuzzle();
             } else if (
@@ -988,8 +1000,11 @@ class GameUI {
 
     appendPuzzleCloseButton(state) {
         if (!this.puzzleActions || state.solved) return;
+        const label = this.game.puzzleContext === 'standalone' ?
+            'Tillbaka till pusselvalet' :
+            'Tillbaka till gruvan';
         this.puzzleActions.append(
-            this.createPuzzleButton('Tillbaka till gruvan', 'puzzle-close')
+            this.createPuzzleButton(label, 'puzzle-close')
         );
     }
 
@@ -1508,7 +1523,14 @@ class GameUI {
         this.wonScore.textContent = game.lastLevelScore.toString();
         this.wonAir.textContent = `${Math.floor(game.oxygen)}%`;
 
-        this.hud.hidden = game.gameState === 'menu';
+        const hideHud =
+            game.gameState === 'menu' ||
+            game.gameState === 'puzzle-select' ||
+            (
+                game.gameState === 'puzzle' &&
+                game.puzzleContext === 'standalone'
+            );
+        this.hud.hidden = hideHud;
         this.pauseButton.hidden = game.gameState !== 'playing';
         const showSideDrillHint =
             game.gameState === 'playing' &&
@@ -1558,7 +1580,7 @@ class GameUI {
         if (this.lastState !== game.gameState) {
             this.lastState = game.gameState;
             const primaryButton = activeScreen?.querySelector(
-                '.menu-button--primary, .puzzle-control--primary, .level-card.is-current:not(:disabled), .level-card:not(:disabled), .menu-button'
+                '.menu-button--primary, .puzzle-control--primary, .level-card.is-current:not(:disabled), .level-card:not(:disabled), .menu-button, button:not(:disabled)'
             );
             this.focusMenuControl(primaryButton);
         }
@@ -1680,6 +1702,8 @@ class Game {
         this.lastLevelScore = 0;
         this.newlyUnlockedLevelIndex = null;
         this.safePuzzle = new SafePuzzleEngine();
+        this.puzzleContext = null;
+        this.standalonePuzzleRun = 0;
         this.safeContactArmed = true;
         this.puzzleBonus = 0;
         this.boundGameLoop = this.gameLoop.bind(this);
@@ -2064,6 +2088,12 @@ class Game {
             if (input.digJustPressed || this.keysJustPressed['Enter']) {
                 this.startRun();
             }
+            this.keysJustPressed = {};
+            return;
+        }
+
+        if (this.gameState === 'puzzle-select') {
+            this.updateEffects(deltaTime * 0.35);
             this.keysJustPressed = {};
             return;
         }
@@ -2679,6 +2709,7 @@ class Game {
         if (this.gameState !== 'playing' || !this.safe) return false;
         this.safeContactArmed = false;
         this.clearKeyboardInput();
+        this.puzzleContext = 'campaign';
         this.safePuzzle.start(
             this.safe.type,
             this.safe.difficulty,
@@ -2688,6 +2719,48 @@ class Game {
             this.safePuzzle.state.manual = this.reducedMotion;
         }
         this.gameState = 'puzzle';
+        this.sound.playTone(260, 430, 0.12, 0.035, 'square');
+        return true;
+    }
+
+    showPuzzleSelect() {
+        this.clearKeyboardInput();
+        this.safePuzzle.clear();
+        this.puzzleContext = null;
+        this.gameState = 'puzzle-select';
+        this.lastRenderedState = null;
+        return true;
+    }
+
+    startStandalonePuzzle(type, difficulty) {
+        const puzzleType = String(type || '');
+        const puzzleDifficulty = Number(difficulty);
+        if (
+            this.gameState !== 'puzzle-select' ||
+            !Object.prototype.hasOwnProperty.call(
+                SAFE_PUZZLE_META,
+                puzzleType
+            ) ||
+            !Number.isInteger(puzzleDifficulty) ||
+            puzzleDifficulty < 1 ||
+            puzzleDifficulty > 3
+        ) return false;
+
+        this.clearKeyboardInput();
+        this.puzzleContext = 'standalone';
+        this.standalonePuzzleRun++;
+        this.safePuzzle.start(
+            puzzleType,
+            puzzleDifficulty,
+            `standalone:${puzzleType}:${puzzleDifficulty}:${
+                this.standalonePuzzleRun
+            }`
+        );
+        if (this.safePuzzle.state?.type === 'dial') {
+            this.safePuzzle.state.manual = this.reducedMotion;
+        }
+        this.gameState = 'puzzle';
+        this.lastRenderedState = null;
         this.sound.playTone(260, 430, 0.12, 0.035, 'square');
         return true;
     }
@@ -2715,6 +2788,13 @@ class Game {
         ) return false;
         this.clearKeyboardInput();
         this.safePuzzle.clear();
+        if (this.puzzleContext === 'standalone') {
+            this.puzzleContext = null;
+            this.gameState = 'puzzle-select';
+            this.lastRenderedState = null;
+            return true;
+        }
+        this.puzzleContext = null;
         this.gameState = 'playing';
         this.lastRenderedState = null;
         return true;
@@ -2726,11 +2806,23 @@ class Game {
             !this.safePuzzle.state?.solved
         ) return false;
 
+        if (this.puzzleContext === 'standalone') {
+            const difficulty = this.safePuzzle.state.difficulty;
+            this.sound.playClear(6 + difficulty);
+            this.safePuzzle.clear();
+            this.puzzleContext = null;
+            this.gameState = 'puzzle-select';
+            this.clearKeyboardInput();
+            this.lastRenderedState = null;
+            return true;
+        }
+
         this.puzzleBonus =
             200 + this.safePuzzle.state.difficulty * 100;
         this.score += this.puzzleBonus;
         this.sound.playClear(6 + this.safePuzzle.state.difficulty);
         this.recordCurrentLevelCompletion();
+        this.puzzleContext = null;
         this.gameState = 'won';
         this.clearKeyboardInput();
         return true;
@@ -4177,6 +4269,7 @@ class Game {
         this.countdownTimer = 0;
         this.countdownNumber = 3;
         this.safePuzzle.clear();
+        this.puzzleContext = null;
         this.safeContactArmed = true;
         this.puzzleBonus = 0;
         this.lastLevelScore = 0;
