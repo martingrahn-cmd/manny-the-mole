@@ -345,6 +345,147 @@ class SafePuzzleEngine {
         return path;
     }
 
+    getPipePathDirections(path, pathIndex, size) {
+        const current = path[pathIndex];
+        const previous = pathIndex === 0 ?
+            { x: -1, y: current.y } :
+            path[pathIndex - 1];
+        const next = pathIndex === path.length - 1 ?
+            { x: size, y: current.y } :
+            path[pathIndex + 1];
+        return new Set([
+            this.directionBetween(current, previous),
+            this.directionBetween(current, next),
+        ]);
+    }
+
+    buildAdvancedPipeJunctions(path, size, difficulty, random, pathByCell) {
+        const directionSteps = [
+            { x: 0, y: -1 },
+            { x: 1, y: 0 },
+            { x: 0, y: 1 },
+            { x: -1, y: 0 },
+        ];
+        const routeDirections = path.map((_, pathIndex) =>
+            this.getPipePathDirections(path, pathIndex, size)
+        );
+        const candidates = [];
+
+        for (let pathIndex = 1; pathIndex < path.length - 1; pathIndex++) {
+            const position = path[pathIndex];
+            const required = routeDirections[pathIndex];
+            const safeExtras = [];
+
+            for (let direction = 0; direction < 4; direction++) {
+                if (required.has(direction)) continue;
+                const step = directionSteps[direction];
+                const nextX = position.x + step.x;
+                const nextY = position.y + step.y;
+                if (
+                    nextX < 0 ||
+                    nextX >= size ||
+                    nextY < 0 ||
+                    nextY >= size
+                ) continue;
+
+                const neighborPathIndex =
+                    pathByCell.get(`${nextX},${nextY}`);
+                if (
+                    neighborPathIndex !== undefined &&
+                    routeDirections[neighborPathIndex].has(
+                        (direction + 2) % 4
+                    )
+                ) continue;
+                safeExtras.push(direction);
+            }
+
+            if (safeExtras.length > 0) {
+                candidates.push({ pathIndex, required, safeExtras });
+            }
+        }
+
+        const shuffle = values => {
+            const shuffled = [...values];
+            for (let index = shuffled.length - 1; index > 0; index--) {
+                const swapIndex = Math.floor(random() * (index + 1));
+                [shuffled[index], shuffled[swapIndex]] =
+                    [shuffled[swapIndex], shuffled[index]];
+            }
+            return shuffled;
+        };
+        const targetCrosses = difficulty === 4 ? 2 : 4;
+        const targetTees = difficulty === 4 ? 4 : 8;
+        const tryBuildJunctions = () => {
+            const selection = new Map();
+            const blockedJunctions = new Set();
+            const reserveNeighboringJunctions = candidate => {
+                const position = path[candidate.pathIndex];
+                candidate.safeExtras.forEach(direction => {
+                    const step = directionSteps[direction];
+                    const neighborPathIndex = pathByCell.get(
+                        `${position.x + step.x},${position.y + step.y}`
+                    );
+                    if (neighborPathIndex !== undefined) {
+                        blockedJunctions.add(neighborPathIndex);
+                    }
+                });
+            };
+
+            const crossCandidates = shuffle(
+                candidates.filter(
+                    candidate => candidate.safeExtras.length === 2
+                )
+            );
+            let crossCount = 0;
+            for (const candidate of crossCandidates) {
+                if (crossCount >= targetCrosses) break;
+                if (blockedJunctions.has(candidate.pathIndex)) continue;
+                selection.set(
+                    candidate.pathIndex,
+                    new Set([
+                        ...candidate.required,
+                        ...candidate.safeExtras,
+                    ])
+                );
+                reserveNeighboringJunctions(candidate);
+                crossCount++;
+            }
+
+            const teeCandidates = shuffle(
+                candidates.filter(candidate =>
+                    !selection.has(candidate.pathIndex)
+                )
+            );
+            let teeCount = 0;
+            for (const candidate of teeCandidates) {
+                if (teeCount >= targetTees) break;
+                if (blockedJunctions.has(candidate.pathIndex)) continue;
+                const extra = candidate.safeExtras[
+                    Math.floor(random() * candidate.safeExtras.length)
+                ];
+                selection.set(
+                    candidate.pathIndex,
+                    new Set([...candidate.required, extra])
+                );
+                reserveNeighboringJunctions(candidate);
+                teeCount++;
+            }
+            return {
+                selection,
+                complete:
+                    crossCount === targetCrosses &&
+                    teeCount === targetTees,
+            };
+        };
+
+        let result = { selection: new Map(), complete: false };
+        for (let attempt = 0; attempt < 24; attempt++) {
+            result = tryBuildJunctions();
+            if (result.complete) break;
+        }
+        return result.selection;
+    }
+
     createPipesState(difficulty, seed) {
         const random = this.createRandom(seed);
         const isAdvanced = difficulty >= 4;
@@ -365,6 +506,15 @@ class SafePuzzleEngine {
                 pathIndex,
             ])
         );
+        const advancedJunctions = isAdvanced ?
+            this.buildAdvancedPipeJunctions(
+                path,
+                size,
+                difficulty,
+                random,
+                pathByCell
+            ) :
+            new Map();
         const cells = [];
 
         for (let y = 0; y < size; y++) {
@@ -378,14 +528,17 @@ class SafePuzzleEngine {
                     const next = pathIndex === path.length - 1 ?
                         { x: size, y: current.y } :
                         path[pathIndex + 1];
-                    const required = new Set([
-                        this.directionBetween(current, previous),
-                        this.directionBetween(current, next),
-                    ]);
+                    const required = advancedJunctions.get(pathIndex) ||
+                        new Set([
+                            this.directionBetween(current, previous),
+                            this.directionBetween(current, next),
+                        ]);
                     const pipe = this.findPipeForDirections(required);
-                    const offset = pipe.type === 'straight' ?
-                        (random() < 0.5 ? 1 : 3) :
-                        1 + Math.floor(random() * 3);
+                    const offset = pipe.type === 'cross' ?
+                        0 :
+                        pipe.type === 'straight' ?
+                            (random() < 0.5 ? 1 : 3) :
+                            1 + Math.floor(random() * 3);
                     const rotation = (pipe.rotation + offset) % 4;
                     cells.push({
                         type: pipe.type,
@@ -395,9 +548,13 @@ class SafePuzzleEngine {
                     });
                 } else {
                     const roll = random();
-                    const type = difficulty >= 2 && roll > 0.84 ?
-                        'tee' :
-                        roll > 0.48 ? 'corner' : 'straight';
+                    const type = isAdvanced && roll > 0.9 ?
+                        'cross' :
+                        difficulty >= 2 && roll > (isAdvanced ? 0.66 : 0.84) ?
+                            'tee' :
+                            roll > (isAdvanced ? 0.32 : 0.48) ?
+                                'corner' :
+                                'straight';
                     const rotation = Math.floor(random() * 4);
                     cells.push({
                         type,
@@ -412,7 +569,9 @@ class SafePuzzleEngine {
         const state = {
             ...this.createBaseState('pipes', difficulty),
             phase: 'active',
-            status: 'Koppla strömmen från IN → UT innan tiden går ut.',
+            status: isAdvanced ?
+                'Förgreningar leder åt flera håll. Fyrvägskors är fasta — hitta vägen från IN → UT.' :
+                'Koppla strömmen från IN → UT innan tiden går ut.',
             size,
             cells,
             path,
@@ -510,6 +669,12 @@ class SafePuzzleEngine {
             index < 0 ||
             index >= state.cells.length
         ) return false;
+        if (state.cells[index].type === 'cross') {
+            state.status =
+                'Fyrvägskorset sitter fast och leder ström åt alla fyra håll.';
+            this.touch();
+            return true;
+        }
 
         state.cells[index].rotation = (state.cells[index].rotation + 1) % 4;
         state.moves++;
@@ -556,7 +721,13 @@ class SafePuzzleEngine {
             .join(' och ');
         const row = Math.floor(index / state.size) + 1;
         const column = index % state.size + 1;
-        return `Rör rad ${row}, kolumn ${column}. Öppet ${connections}. Rotera.`;
+        if (cell.type === 'cross') {
+            return `Fast fyrvägskors rad ${row}, kolumn ${column}. ` +
+                'Öppet åt alla håll.';
+        }
+        const typeLabel = cell.type === 'tee' ? 'T-kors' : 'Rör';
+        return `${typeLabel} rad ${row}, kolumn ${column}. ` +
+            `Öppet ${connections}. Rotera.`;
     }
 
     action(action, value) {

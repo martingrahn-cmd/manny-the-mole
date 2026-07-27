@@ -1136,6 +1136,10 @@
             color: #dbe8f7;
         }
 
+        .puzzle-pipes.is-six {
+            width: min(100%, calc(324px * var(--game-scale)));
+        }
+
         .puzzle-pipes__labels {
             display: flex;
             align-items: center;
@@ -1317,10 +1321,37 @@
             transition: border-color 120ms ease, background 120ms ease, box-shadow 120ms ease;
         }
 
+        .puzzle-pipe-cell:focus-visible,
+        .puzzle-pipe-cell.is-menu-focused {
+            z-index: 2;
+            outline-offset: calc(1px * var(--game-scale));
+        }
+
         .puzzle-pipe-cell:hover:not(:disabled) {
             border-color: rgba(115, 232, 246, 0.62);
             background:
                 linear-gradient(145deg, rgba(53, 78, 91, 0.98), rgba(10, 26, 38, 0.98));
+        }
+
+        .puzzle-pipe-cell.is-fixed {
+            border-color: rgba(223, 178, 96, 0.3);
+            background:
+                radial-gradient(circle at 12% 12%, #d7ab62 0 1px, transparent 2px),
+                radial-gradient(circle at 88% 12%, #d7ab62 0 1px, transparent 2px),
+                radial-gradient(circle at 12% 88%, #81572d 0 1px, transparent 2px),
+                radial-gradient(circle at 88% 88%, #81572d 0 1px, transparent 2px),
+                linear-gradient(145deg, rgba(49, 56, 62, 0.98), rgba(12, 17, 23, 0.99));
+            cursor: default;
+        }
+
+        .puzzle-pipe-cell.is-fixed:hover:not(:disabled) {
+            border-color: rgba(223, 178, 96, 0.3);
+            background:
+                radial-gradient(circle at 12% 12%, #d7ab62 0 1px, transparent 2px),
+                radial-gradient(circle at 88% 12%, #d7ab62 0 1px, transparent 2px),
+                radial-gradient(circle at 12% 88%, #81572d 0 1px, transparent 2px),
+                radial-gradient(circle at 88% 88%, #81572d 0 1px, transparent 2px),
+                linear-gradient(145deg, rgba(49, 56, 62, 0.98), rgba(12, 17, 23, 0.99));
         }
 
         .puzzle-pipe-cell:disabled {
@@ -1366,6 +1397,12 @@
             right: calc(2px * var(--game-scale));
             color: #7bf6b8;
             box-shadow: 0 0 calc(8px * var(--game-scale)) rgba(95, 255, 181, 0.36);
+        }
+
+        .puzzle-pipes.is-six .puzzle-pipe-port {
+            min-width: calc(16px * var(--game-scale));
+            padding: calc(1px * var(--game-scale)) calc(2px * var(--game-scale));
+            font-size: max(5px, calc(6px * var(--game-scale)));
         }
 
         .puzzle-pipe {
@@ -1424,6 +1461,22 @@
             height: 100%;
         }
 
+        .puzzle-pipe__junction {
+            position: absolute;
+            z-index: 2;
+            top: 36%;
+            left: 36%;
+            width: 28%;
+            aspect-ratio: 1;
+            border-radius: 50%;
+            background:
+                radial-gradient(circle at 36% 32%, #dce6e8, #83959c 42%, #344751 76%);
+            box-shadow:
+                inset 0 0 0 max(1px, calc(1px * var(--game-scale))) rgba(237, 252, 252, 0.2),
+                0 calc(1px * var(--game-scale)) calc(3px * var(--game-scale)) rgba(0, 0, 0, 0.5);
+            pointer-events: none;
+        }
+
         .puzzle-pipe-cell.is-flowing .puzzle-pipe {
             --pipe-color: #21d5e8;
             filter:
@@ -1455,6 +1508,29 @@
                 inset 0 0 0 max(1px, calc(1px * var(--game-scale))) rgba(236, 255, 255, 0.42),
                 0 0 calc(7px * var(--game-scale)) rgba(71, 255, 222, 0.72);
             animation: pipe-current 560ms linear infinite;
+        }
+
+        .puzzle-pipe-cell.is-flowing .puzzle-pipe__junction {
+            background:
+                radial-gradient(circle at 36% 32%, #ffffff, #74ffed 40%, #1da6c2 78%);
+            box-shadow:
+                inset 0 0 0 max(1px, calc(1px * var(--game-scale))) rgba(239, 255, 255, 0.58),
+                0 0 calc(7px * var(--game-scale)) rgba(76, 255, 219, 0.86);
+        }
+
+        .puzzle-pipe-cell.is-fixed.is-flowing,
+        .puzzle-pipe-cell.is-fixed.is-flowing:hover:not(:disabled) {
+            border-color: rgba(226, 190, 108, 0.62);
+            background:
+                radial-gradient(circle at 12% 12%, #f2ce7d 0 1px, transparent 2px),
+                radial-gradient(circle at 88% 12%, #f2ce7d 0 1px, transparent 2px),
+                radial-gradient(circle at 12% 88%, #9b6a35 0 1px, transparent 2px),
+                radial-gradient(circle at 88% 88%, #9b6a35 0 1px, transparent 2px),
+                radial-gradient(circle, rgba(52, 226, 208, 0.22), transparent 68%),
+                linear-gradient(145deg, #213d48, #091921);
+            box-shadow:
+                inset 0 0 0 max(1px, calc(1px * var(--game-scale))) rgba(103, 251, 226, 0.28),
+                inset 0 1px rgba(255, 255, 255, 0.07);
         }
 
         .puzzle-pipes__failure {
@@ -1903,8 +1979,8 @@
         </div>
     </main>
 
-    <script src="levels.js?v=12"></script>
-    <script src="puzzles.js?v=12"></script>
-    <script src="game.js?v=12"></script>
+    <script src="levels.js?v=13"></script>
+    <script src="puzzles.js?v=13"></script>
+    <script src="game.js?v=13"></script>
 </body>
 </html>

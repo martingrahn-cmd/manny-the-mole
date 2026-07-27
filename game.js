@@ -1168,6 +1168,7 @@ class GameUI {
         const failed = state.phase === 'failed' || state.timedOut === true;
         const shell = document.createElement('div');
         shell.className = 'puzzle-pipes';
+        shell.classList.toggle('is-six', state.size === 6);
         shell.classList.toggle('is-failed', failed);
         shell.classList.toggle('is-solved', state.solved);
         this.pipePuzzleShell = shell;
@@ -1221,6 +1222,10 @@ class GameUI {
             button.dataset.action = 'puzzle-pipe';
             button.dataset.value = String(index);
             button.disabled = failed || state.solved;
+            button.classList.toggle('is-fixed', cell.type === 'cross');
+            if (cell.type === 'cross') {
+                button.setAttribute('aria-disabled', 'true');
+            }
             button.setAttribute(
                 'aria-label',
                 this.game.safePuzzle.getPipeLabel(index)
@@ -1265,6 +1270,12 @@ class GameUI {
                 '--pipe-rotation',
                 `${cell.rotation * 90}deg`
             );
+            if (cell.type === 'tee' || cell.type === 'cross') {
+                const junction = document.createElement('span');
+                junction.className = 'puzzle-pipe__junction';
+                junction.setAttribute('aria-hidden', 'true');
+                pipe.append(junction);
+            }
             button.append(pipe);
             grid.append(button);
         });
