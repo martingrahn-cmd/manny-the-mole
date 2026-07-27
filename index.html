@@ -319,6 +319,7 @@
             display: grid;
             place-items: center;
             padding: calc(24px * var(--game-scale));
+            overflow-y: auto;
             pointer-events: auto;
             background:
                 radial-gradient(circle at 50% 24%, rgba(61, 79, 119, 0.2), transparent 38%),
@@ -337,6 +338,20 @@
                 0 calc(24px * var(--game-scale)) calc(70px * var(--game-scale)) rgba(0, 0, 0, 0.55),
                 inset 0 1px rgba(255, 255, 255, 0.09);
             text-align: center;
+        }
+
+        .screen-panel--menu {
+            width: min(94cqw, calc(410px * var(--game-scale)));
+            margin: auto;
+            padding: calc(18px * var(--game-scale));
+        }
+
+        .screen-panel--menu .screen-copy {
+            margin-top: calc(9px * var(--game-scale));
+        }
+
+        .screen-panel--menu .controls {
+            margin-top: calc(13px * var(--game-scale));
         }
 
         .eyebrow {
@@ -376,8 +391,16 @@
             margin-top: calc(21px * var(--game-scale));
         }
 
+        .level-select-heading {
+            display: flex;
+            gap: calc(10px * var(--game-scale));
+            align-items: center;
+            justify-content: space-between;
+            margin-top: calc(15px * var(--game-scale));
+        }
+
         .level-select-title {
-            margin-top: calc(18px * var(--game-scale));
+            margin: 0;
             color: rgba(222, 230, 244, 0.52);
             font-size: max(8px, calc(9px * var(--game-scale)));
             font-weight: 780;
@@ -385,10 +408,193 @@
             text-transform: uppercase;
         }
 
+        .campaign-progress {
+            margin: 0;
+            padding: calc(4px * var(--game-scale)) calc(7px * var(--game-scale));
+            border: max(1px, calc(1px * var(--game-scale))) solid rgba(105, 240, 177, 0.17);
+            border-radius: 999px;
+            background: rgba(105, 240, 177, 0.055);
+            color: rgba(151, 241, 194, 0.72);
+            font-size: max(8px, calc(8px * var(--game-scale)));
+            font-weight: 720;
+            white-space: nowrap;
+        }
+
         .level-select {
             display: grid;
+            grid-template-columns: minmax(0, 1fr);
             gap: calc(7px * var(--game-scale));
+            max-height: calc(350px * var(--game-scale));
             margin-top: calc(9px * var(--game-scale));
+            padding-right: calc(3px * var(--game-scale));
+            overflow-y: auto;
+            overscroll-behavior: contain;
+            scrollbar-color: rgba(115, 232, 246, 0.32) transparent;
+            scrollbar-width: thin;
+        }
+
+        .level-card {
+            position: relative;
+            display: grid;
+            grid-template-columns:
+                max(62px, calc(72px * var(--game-scale)))
+                minmax(0, 1fr);
+            min-width: 0;
+            min-height: calc(102px * var(--game-scale));
+            gap: calc(10px * var(--game-scale));
+            align-items: center;
+            padding: calc(7px * var(--game-scale));
+            overflow: hidden;
+            border: max(1px, calc(1px * var(--game-scale))) solid rgba(255, 255, 255, 0.1);
+            border-radius: calc(13px * var(--game-scale));
+            background:
+                linear-gradient(180deg, rgba(31, 37, 55, 0.92), rgba(12, 14, 27, 0.96));
+            box-shadow:
+                inset 0 1px rgba(255, 255, 255, 0.06),
+                0 calc(8px * var(--game-scale)) calc(20px * var(--game-scale)) rgba(0, 0, 0, 0.2);
+            color: rgba(245, 248, 255, 0.9);
+            cursor: pointer;
+            text-align: left;
+            transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
+        }
+
+        .level-card:hover:not(:disabled) {
+            transform: translateY(calc(-2px * var(--game-scale)));
+            border-color: rgba(116, 232, 246, 0.38);
+            background:
+                linear-gradient(180deg, rgba(38, 51, 70, 0.96), rgba(13, 17, 31, 0.98));
+        }
+
+        .level-card.is-complete {
+            border-color: rgba(105, 240, 177, 0.3);
+        }
+
+        .level-card.is-current:not(.is-complete) {
+            border-color: rgba(255, 211, 99, 0.38);
+            box-shadow:
+                inset 0 1px rgba(255, 255, 255, 0.08),
+                0 calc(8px * var(--game-scale)) calc(24px * var(--game-scale)) rgba(205, 146, 35, 0.12);
+        }
+
+        .level-card:disabled {
+            cursor: not-allowed;
+        }
+
+        .level-card__top {
+            display: flex;
+            gap: calc(5px * var(--game-scale));
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .level-card__number {
+            color: #82edf5;
+            font: 800 max(9px, calc(10px * var(--game-scale))) / 1 ui-monospace, monospace;
+            letter-spacing: 0.08em;
+        }
+
+        .level-card__state {
+            color: rgba(225, 231, 243, 0.52);
+            font-size: max(7px, calc(7px * var(--game-scale)));
+            font-weight: 780;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .level-card.is-complete .level-card__state {
+            color: #76e9ae;
+        }
+
+        .level-card__preview {
+            position: relative;
+            display: grid;
+            width: calc(72px * var(--game-scale));
+            min-width: 62px;
+            height: calc(88px * var(--game-scale));
+            min-height: 78px;
+            place-items: center;
+            overflow: hidden;
+            border: max(1px, calc(1px * var(--game-scale))) solid rgba(143, 176, 223, 0.12);
+            border-radius: calc(9px * var(--game-scale));
+            background:
+                radial-gradient(circle at 50% 18%, rgba(68, 108, 149, 0.16), transparent 48%),
+                #060816;
+            box-shadow: inset 0 0 calc(20px * var(--game-scale)) rgba(0, 0, 0, 0.55);
+        }
+
+        .level-card__preview canvas {
+            display: block;
+            width: auto;
+            max-width: 100%;
+            height: 100%;
+            image-rendering: pixelated;
+        }
+
+        .level-card__content {
+            display: flex;
+            min-width: 0;
+            align-self: stretch;
+            flex-direction: column;
+            gap: calc(5px * var(--game-scale));
+            padding: calc(2px * var(--game-scale)) 0;
+        }
+
+        .level-card.is-locked .level-card__preview canvas {
+            opacity: 0.25;
+            filter: grayscale(1) contrast(0.8);
+        }
+
+        .level-card__lock {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            display: grid;
+            width: calc(30px * var(--game-scale));
+            min-width: 26px;
+            height: calc(30px * var(--game-scale));
+            min-height: 26px;
+            transform: translate(-50%, -50%);
+            place-items: center;
+            border: max(1px, calc(1px * var(--game-scale))) solid rgba(255, 214, 90, 0.38);
+            border-radius: calc(7px * var(--game-scale));
+            background: rgba(13, 14, 24, 0.88);
+            color: #ffd65a;
+            font-size: max(9px, calc(10px * var(--game-scale)));
+            box-shadow: 0 0 calc(18px * var(--game-scale)) rgba(255, 190, 45, 0.14);
+        }
+
+        .level-card__title {
+            overflow: hidden;
+            color: rgba(248, 250, 255, 0.95);
+            font-size: max(9px, calc(10px * var(--game-scale)));
+            line-height: 1.12;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .level-card__summary {
+            display: -webkit-box;
+            min-height: 2.6em;
+            overflow: hidden;
+            color: rgba(220, 228, 241, 0.68);
+            font-size: max(8px, calc(8px * var(--game-scale)));
+            font-weight: 600;
+            line-height: 1.25;
+            -webkit-box-orient: vertical;
+            -webkit-line-clamp: 2;
+        }
+
+        .level-card__meta {
+            margin-top: auto;
+            color: rgba(119, 225, 238, 0.67);
+            font-size: max(7px, calc(7px * var(--game-scale)));
+            font-weight: 720;
+        }
+
+        .level-card.is-locked .level-card__title,
+        .level-card.is-locked .level-card__summary,
+        .level-card.is-locked .level-card__meta {
+            opacity: 0.46;
         }
 
         .menu-button {
@@ -404,48 +610,6 @@
             letter-spacing: 0.01em;
             cursor: pointer;
             transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
-        }
-
-        .level-button {
-            display: grid;
-            grid-template-columns: auto minmax(0, 1fr);
-            gap: 0 calc(10px * var(--game-scale));
-            align-items: center;
-            padding: calc(9px * var(--game-scale)) calc(12px * var(--game-scale));
-            text-align: left;
-        }
-
-        .level-button__number {
-            grid-row: 1 / 3;
-            display: grid;
-            width: calc(31px * var(--game-scale));
-            min-width: 28px;
-            height: calc(31px * var(--game-scale));
-            min-height: 28px;
-            place-items: center;
-            border: max(1px, calc(1px * var(--game-scale))) solid rgba(116, 232, 246, 0.24);
-            border-radius: calc(9px * var(--game-scale));
-            background: rgba(88, 209, 231, 0.08);
-            color: #82edf5;
-            font: 800 max(10px, calc(11px * var(--game-scale))) / 1 ui-monospace, monospace;
-        }
-
-        .level-button strong {
-            overflow: hidden;
-            color: rgba(248, 250, 255, 0.94);
-            font-size: max(10px, calc(11px * var(--game-scale)));
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-
-        .level-button small {
-            overflow: hidden;
-            margin-top: calc(2px * var(--game-scale));
-            color: rgba(218, 226, 240, 0.48);
-            font-size: max(8px, calc(8px * var(--game-scale)));
-            font-weight: 620;
-            text-overflow: ellipsis;
-            white-space: nowrap;
         }
 
         .menu-button:hover {
@@ -610,28 +774,15 @@
             <div id="gameToast" class="toast" role="status" hidden></div>
 
             <section id="screenMenu" class="screen" aria-label="Startmeny">
-                <div class="screen-panel">
+                <div class="screen-panel screen-panel--menu">
                     <p class="eyebrow">Vault Run</p>
                     <h1>Manny <span>the Mole</span></h1>
                     <p class="screen-copy">Välj en nivå och gräv dig ned till kassaskåpet.</p>
-                    <p id="levelSelectTitle" class="level-select-title">Välj nivå</p>
-                    <div class="level-select" role="group" aria-labelledby="levelSelectTitle">
-                        <button class="menu-button level-button" type="button" data-action="start-level" data-level="0">
-                            <span class="level-button__number">01</span>
-                            <strong>Första schaktet</strong>
-                            <small>Grävning och första syretuben</small>
-                        </button>
-                        <button class="menu-button level-button" type="button" data-action="start-level" data-level="1">
-                            <span class="level-button__number">02</span>
-                            <strong>Sidogångarna</strong>
-                            <small>Hämta luft och hitta tillbaka</small>
-                        </button>
-                        <button class="menu-button level-button" type="button" data-action="start-level" data-level="2">
-                            <span class="level-button__number">03</span>
-                            <strong>Första raset</strong>
-                            <small>Rasvarning och första X-blocket</small>
-                        </button>
+                    <div class="level-select-heading">
+                        <p id="levelSelectTitle" class="level-select-title">Välj nivå</p>
+                        <p id="campaignProgress" class="campaign-progress" aria-live="polite">0 av 3 klara</p>
                     </div>
+                    <div id="levelSelect" class="level-select" role="group" aria-labelledby="levelSelectTitle"></div>
                     <div class="controls" aria-label="Kontroller">
                         <span class="control"><kbd>←/→</kbd> Gå · håll mot block för att kliva</span>
                         <span class="control"><kbd>↓</kbd> Fall ned</span>

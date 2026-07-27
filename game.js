@@ -36,6 +36,7 @@ const DIG_LOCK_DURATION = 0.055;
 const DIG_ANIM_DURATION = 0.18;
 const DRILL_ANIM_SPEED = 24;
 const MAX_DEBRIS_PARTICLES = 44;
+const PROGRESS_STORAGE_KEY = 'manny-the-mole:campaign-progress';
 
 let CANVAS_WIDTH = GRID_WIDTH * GRID_SIZE;
 let CANVAS_HEIGHT = VIEWPORT_HEIGHT * GRID_SIZE;
@@ -471,6 +472,8 @@ class GameUI {
         this.wonPrimaryButton = document.getElementById('wonPrimaryButton');
         this.wonScore = document.getElementById('wonScore');
         this.wonAir = document.getElementById('wonAir');
+        this.levelSelect = document.getElementById('levelSelect');
+        this.campaignProgress = document.getElementById('campaignProgress');
         this.screens = {
             menu: document.getElementById('screenMenu'),
             paused: document.getElementById('screenPaused'),
@@ -478,21 +481,24 @@ class GameUI {
             won: document.getElementById('screenWon'),
         };
 
-        for (const button of this.root.querySelectorAll('[data-action]')) {
-            button.addEventListener('click', () => {
-                this.game.sound.unlock();
-                this.game.clearKeyboardInput();
-                const action = button.dataset.action;
-                if (action === 'start') this.game.startRun();
-                else if (action === 'start-level') {
-                    this.game.startLevel(Number(button.dataset.level));
-                }
-                else if (action === 'next-level') this.game.advanceLevel();
-                else if (action === 'resume') this.game.resumeGame();
-                else if (action === 'restart') this.game.restart();
-                else if (action === 'menu') this.game.showMainMenu();
-            });
-        }
+        this.refreshLevelSelect();
+
+        this.root.addEventListener('click', event => {
+            const button = event.target.closest?.('[data-action]');
+            if (!button || !this.root.contains(button) || button.disabled) return;
+
+            this.game.sound.unlock();
+            this.game.clearKeyboardInput();
+            const action = button.dataset.action;
+            if (action === 'start') this.game.startRun();
+            else if (action === 'start-level') {
+                this.game.startLevel(Number(button.dataset.level));
+            }
+            else if (action === 'next-level') this.game.advanceLevel();
+            else if (action === 'resume') this.game.resumeGame();
+            else if (action === 'restart') this.game.restart();
+            else if (action === 'menu') this.game.showMainMenu();
+        });
 
         this.pauseButton?.addEventListener('click', () => {
             this.game.sound.unlock();
@@ -515,6 +521,217 @@ class GameUI {
                 }
             }
         });
+    }
+
+    refreshLevelSelect() {
+        if (!this.levelSelect) return;
+
+        this.levelSelect.replaceChildren();
+        const continueLevelIndex = this.game.getContinueLevelIndex();
+        CAMPAIGN_LEVELS.forEach((level, levelIndex) => {
+            const unlocked = this.game.isLevelUnlocked(levelIndex);
+            const completed = this.game.isLevelCompleted(levelIndex);
+            const bestScore = this.game.getLevelBestScore(levelIndex);
+            const card = document.createElement('button');
+            card.type = 'button';
+            card.className = 'level-card';
+            card.dataset.action = 'start-level';
+            card.dataset.level = levelIndex.toString();
+            card.disabled = !unlocked;
+            card.classList.toggle('is-locked', !unlocked);
+            card.classList.toggle('is-complete', completed);
+            card.classList.toggle(
+                'is-current',
+                unlocked && levelIndex === continueLevelIndex
+            );
+            card.setAttribute('aria-disabled', unlocked ? 'false' : 'true');
+            card.setAttribute(
+                'aria-label',
+                unlocked ?
+                    `Nivå ${level.number}, ${level.title}. ${
+                        completed ? `Klar. Bästa byte ${bestScore}.` : 'Upplåst.'
+                    }` :
+                    `Nivå ${level.number}, ${level.title}. Låst. Klara nivå ${
+                        CAMPAIGN_LEVELS[levelIndex - 1]?.number
+                    } för att låsa upp.`
+            );
+
+            const top = document.createElement('span');
+            top.className = 'level-card__top';
+
+            const number = document.createElement('span');
+            number.className = 'level-card__number';
+            number.textContent = String(level.number).padStart(2, '0');
+            number.setAttribute('aria-hidden', 'true');
+
+            const state = document.createElement('span');
+            state.className = 'level-card__state';
+            state.textContent = !unlocked ?
+                'Låst' :
+                completed ?
+                    'Klar ✓' :
+                    levelIndex === continueLevelIndex ? 'Nästa' : 'Öppen';
+            state.setAttribute('aria-hidden', 'true');
+            top.append(number, state);
+
+            const previewFrame = document.createElement('span');
+            previewFrame.className = 'level-card__preview';
+            const preview = document.createElement('canvas');
+            preview.width = 84;
+            preview.height = 116;
+            preview.setAttribute('aria-hidden', 'true');
+            previewFrame.append(preview);
+
+            if (!unlocked) {
+                const lock = document.createElement('span');
+                lock.className = 'level-card__lock';
+                lock.textContent = '◆';
+                lock.setAttribute('aria-hidden', 'true');
+                previewFrame.append(lock);
+            }
+
+            const title = document.createElement('strong');
+            title.className = 'level-card__title';
+            title.textContent = level.title;
+
+            const summary = document.createElement('small');
+            summary.className = 'level-card__summary';
+            summary.textContent = level.summary;
+
+            const meta = document.createElement('span');
+            meta.className = 'level-card__meta';
+            meta.textContent = completed ?
+                `Bäst ${bestScore}` :
+                !unlocked ?
+                    'Klara föregående nivå' :
+                    `${Math.max(0, level.safe.y - level.start.y)} m djup`;
+
+            const content = document.createElement('span');
+            content.className = 'level-card__content';
+            content.append(top, title, summary, meta);
+
+            card.append(previewFrame, content);
+            this.levelSelect.append(card);
+            this.renderLevelPreview(preview, level);
+        });
+
+        if (this.campaignProgress) {
+            const completedCount = this.game.getCompletedLevelCount();
+            this.campaignProgress.textContent =
+                `${completedCount} av ${CAMPAIGN_LEVELS.length} klara`;
+        }
+    }
+
+    renderLevelPreview(canvas, level) {
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        const width = canvas.width;
+        const height = canvas.height;
+        const padX = 7;
+        const padY = 6;
+        const mapWidth = width - padX * 2;
+        const mapHeight = height - padY * 2;
+        const xAt = column =>
+            padX + Math.floor(column * mapWidth / GRID_WIDTH);
+        const yAt = row =>
+            padY + Math.floor(row * mapHeight / level.rows.length);
+
+        ctx.imageSmoothingEnabled = false;
+        ctx.fillStyle = '#050713';
+        ctx.fillRect(0, 0, width, height);
+        ctx.fillStyle = '#0c1021';
+        ctx.fillRect(padX - 2, padY - 2, mapWidth + 4, mapHeight + 4);
+        ctx.fillStyle = '#080b18';
+        ctx.fillRect(padX, padY, mapWidth, mapHeight);
+
+        level.rows.forEach((row, rowIndex) => {
+            [...row].forEach((symbol, columnIndex) => {
+                if (symbol === '.') return;
+
+                const left = xAt(columnIndex);
+                const right = xAt(columnIndex + 1);
+                const top = yAt(rowIndex);
+                const bottom = yAt(rowIndex + 1);
+                const tileWidth = Math.max(1, right - left);
+                const tileHeight = Math.max(1, bottom - top);
+
+                if (symbol >= '0' && symbol <= '3') {
+                    const palette = BLOCK_COLORS[Number(symbol)];
+                    ctx.fillStyle = palette.shadow;
+                    ctx.fillRect(left, top, tileWidth, tileHeight);
+                    ctx.fillStyle = palette.color;
+                    ctx.fillRect(
+                        left + 1,
+                        top,
+                        Math.max(1, tileWidth - 2),
+                        Math.max(1, tileHeight - 1)
+                    );
+                } else if (symbol === 'X') {
+                    ctx.fillStyle = '#432536';
+                    ctx.fillRect(left, top, tileWidth, tileHeight);
+                    ctx.fillStyle = '#d85f7f';
+                    ctx.fillRect(
+                        left + Math.floor(tileWidth / 3),
+                        top,
+                        Math.max(1, Math.floor(tileWidth / 3)),
+                        tileHeight
+                    );
+                } else {
+                    ctx.fillStyle = symbol === '=' ? '#827985' : '#413c4b';
+                    ctx.fillRect(left, top, tileWidth, tileHeight);
+                    if (tileHeight > 1) {
+                        ctx.fillStyle = '#a39ba6';
+                        ctx.fillRect(left, top, tileWidth, 1);
+                    }
+                }
+            });
+        });
+
+        for (const item of level.items) {
+            const centerX = Math.floor((xAt(item.x) + xAt(item.x + 1)) / 2);
+            const centerY = Math.floor((yAt(item.y) + yAt(item.y + 1)) / 2);
+            ctx.fillStyle = item.kind === 'oxygen' ? '#69f3ff' : '#ffd65a';
+            ctx.fillRect(centerX - 1, centerY - 1, 3, 3);
+        }
+
+        const safeAssetKey = SAFE_ASSET_KEYS[level.safe.type];
+        const safeSprite = safeAssetKey ? ASSETS[safeAssetKey] : null;
+        const safeCenterX = Math.floor(
+            (xAt(level.safe.x) + xAt(level.safe.x + level.safe.width)) / 2
+        );
+        const safeCenterY = Math.min(
+            height - 12,
+            Math.floor(
+                (
+                    yAt(level.safe.y) +
+                    yAt(level.safe.y + level.safe.height)
+                ) / 2
+            )
+        );
+        if (safeSprite) {
+            ctx.drawImage(
+                safeSprite,
+                safeCenterX - 9,
+                safeCenterY - 9,
+                18,
+                18
+            );
+        } else {
+            ctx.fillStyle = '#d6a535';
+            ctx.fillRect(safeCenterX - 6, safeCenterY - 5, 12, 10);
+        }
+
+        const startCenterX = Math.floor(
+            (xAt(level.start.x) + xAt(level.start.x + 1)) / 2
+        );
+        const startCenterY = Math.floor(
+            (yAt(level.start.y) + yAt(level.start.y + 1)) / 2
+        );
+        ctx.fillStyle = '#f4fbff';
+        ctx.fillRect(startCenterX - 1, startCenterY - 1, 3, 3);
+        ctx.fillStyle = '#73e8f6';
+        ctx.fillRect(startCenterX, startCenterY, 1, 1);
     }
 
     sync(game) {
@@ -568,9 +785,9 @@ class GameUI {
         if (this.wonCopy) {
             this.wonCopy.textContent = isFinalLevel ?
                 'Det sista kassaskåpet är öppet. Kuppen är klar.' :
-                game.currentLevelIndex === 0 ?
-                    'Bra grävt. Nu väntar sidogångarna.' :
-                    'Bra jobbat. Nu väntar det första raset.';
+                game.newlyUnlockedLevelIndex === game.currentLevelIndex + 1 ?
+                    `${CAMPAIGN_LEVELS[game.currentLevelIndex + 1].title} är nu upplåst.` :
+                    `${CAMPAIGN_LEVELS[game.currentLevelIndex + 1].title} väntar.`;
         }
         if (this.wonPrimaryButton) {
             this.wonPrimaryButton.dataset.action = isFinalLevel ?
@@ -585,7 +802,7 @@ class GameUI {
                 'Spela från början' :
                 `Fortsätt till nivå ${game.currentLevelIndex + 2}`;
         }
-        this.wonScore.textContent = game.score.toString();
+        this.wonScore.textContent = game.lastLevelScore.toString();
         this.wonAir.textContent = `${Math.floor(game.oxygen)}%`;
 
         this.hud.hidden = game.gameState === 'menu';
@@ -638,9 +855,18 @@ class GameUI {
         if (this.lastState !== game.gameState) {
             this.lastState = game.gameState;
             const primaryButton = activeScreen?.querySelector(
-                '.menu-button--primary, .menu-button'
+                '.menu-button--primary, .level-card.is-current:not(:disabled), .level-card:not(:disabled), .menu-button'
             );
             primaryButton?.focus({ preventScroll: true });
+            if (
+                game.gameState === 'menu' &&
+                primaryButton?.classList.contains('level-card')
+            ) {
+                primaryButton.scrollIntoView({
+                    block: 'nearest',
+                    inline: 'nearest',
+                });
+            }
         }
     }
 }
@@ -755,6 +981,9 @@ class Game {
         
         this.gamepadMessage = null;
         this.gamepadMessageTime = 0;
+        this.progress = this.loadProgress();
+        this.lastLevelScore = 0;
+        this.newlyUnlockedLevelIndex = null;
         this.boundGameLoop = this.gameLoop.bind(this);
         this.ui = new GameUI(this);
         
@@ -1713,7 +1942,8 @@ class Game {
             p.visualY < this.safe.y + this.safe.height &&
             p.visualY + PLAYER_SIZE > this.safe.y;
 
-        if (reachedSafe) {
+        if (reachedSafe && this.gameState === 'playing') {
+            this.recordCurrentLevelCompletion();
             this.gameState = 'won';
         }
 
@@ -2802,40 +3032,193 @@ class Game {
         return CAMPAIGN_LEVELS[this.currentLevelIndex];
     }
 
+    createDefaultProgress() {
+        const levels = {};
+        CAMPAIGN_LEVELS.forEach((level, levelIndex) => {
+            levels[level.id] = {
+                unlocked: levelIndex === 0,
+                completed: false,
+                bestScore: 0,
+            };
+        });
+        return { version: 1, levels };
+    }
+
+    normalizeProgress(rawProgress) {
+        const normalized = this.createDefaultProgress();
+        if (
+            !rawProgress ||
+            rawProgress.version !== 1 ||
+            !rawProgress.levels ||
+            typeof rawProgress.levels !== 'object'
+        ) {
+            return normalized;
+        }
+
+        CAMPAIGN_LEVELS.forEach((level, levelIndex) => {
+            const saved = rawProgress.levels[level.id];
+            if (!saved || typeof saved !== 'object') return;
+
+            const completed = saved.completed === true;
+            const bestScore = Number.isFinite(saved.bestScore) ?
+                Math.max(0, Math.floor(saved.bestScore)) :
+                0;
+            normalized.levels[level.id] = {
+                unlocked:
+                    levelIndex === 0 ||
+                    completed ||
+                    saved.unlocked === true,
+                completed,
+                bestScore,
+            };
+        });
+
+        CAMPAIGN_LEVELS.forEach((level, levelIndex) => {
+            if (!normalized.levels[level.id].completed) return;
+            const nextLevel = CAMPAIGN_LEVELS[levelIndex + 1];
+            if (nextLevel) normalized.levels[nextLevel.id].unlocked = true;
+        });
+
+        return normalized;
+    }
+
+    loadProgress() {
+        const fallback = this.createDefaultProgress();
+        try {
+            const stored = window.localStorage?.getItem(PROGRESS_STORAGE_KEY);
+            if (!stored) return fallback;
+            return this.normalizeProgress(JSON.parse(stored));
+        } catch {
+            return fallback;
+        }
+    }
+
+    saveProgress() {
+        try {
+            window.localStorage?.setItem(
+                PROGRESS_STORAGE_KEY,
+                JSON.stringify(this.progress)
+            );
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
+    getLevelProgress(levelIndex) {
+        const level = CAMPAIGN_LEVELS[levelIndex];
+        return level ? this.progress?.levels?.[level.id] || null : null;
+    }
+
+    isLevelUnlocked(levelIndex) {
+        return this.getLevelProgress(levelIndex)?.unlocked === true;
+    }
+
+    isLevelCompleted(levelIndex) {
+        return this.getLevelProgress(levelIndex)?.completed === true;
+    }
+
+    getLevelBestScore(levelIndex) {
+        return this.getLevelProgress(levelIndex)?.bestScore || 0;
+    }
+
+    getCompletedLevelCount() {
+        return CAMPAIGN_LEVELS.reduce(
+            (count, level, levelIndex) =>
+                count + (this.isLevelCompleted(levelIndex) ? 1 : 0),
+            0
+        );
+    }
+
+    getContinueLevelIndex() {
+        const firstOpenLevel = CAMPAIGN_LEVELS.findIndex(
+            (level, levelIndex) =>
+                this.isLevelUnlocked(levelIndex) &&
+                !this.isLevelCompleted(levelIndex)
+        );
+        return firstOpenLevel >= 0 ? firstOpenLevel : 0;
+    }
+
+    recordCurrentLevelCompletion() {
+        const level = this.currentLevel;
+        const entry = this.getLevelProgress(this.currentLevelIndex);
+        if (!level || !entry) return;
+
+        this.lastLevelScore = Math.max(
+            0,
+            Math.floor(this.score - this.levelStartScore)
+        );
+        this.newlyUnlockedLevelIndex = null;
+        let changed = false;
+
+        if (!entry.completed) {
+            entry.completed = true;
+            changed = true;
+        }
+        if (!entry.unlocked) {
+            entry.unlocked = true;
+            changed = true;
+        }
+        if (this.lastLevelScore > entry.bestScore) {
+            entry.bestScore = this.lastLevelScore;
+            changed = true;
+        }
+
+        const nextLevel = CAMPAIGN_LEVELS[this.currentLevelIndex + 1];
+        if (nextLevel) {
+            const nextEntry = this.progress.levels[nextLevel.id];
+            if (nextEntry && !nextEntry.unlocked) {
+                nextEntry.unlocked = true;
+                this.newlyUnlockedLevelIndex = this.currentLevelIndex + 1;
+                changed = true;
+            }
+        }
+
+        if (changed) this.saveProgress();
+        this.ui?.refreshLevelSelect();
+    }
+
     hasNextLevel() {
         return this.currentLevelIndex < CAMPAIGN_LEVELS.length - 1;
     }
 
     startRun() {
-        this.startLevel(0);
+        this.startLevel(this.getContinueLevelIndex());
     }
 
     startLevel(levelIndex) {
         if (
             !Number.isInteger(levelIndex) ||
             levelIndex < 0 ||
-            levelIndex >= CAMPAIGN_LEVELS.length
-        ) return;
+            levelIndex >= CAMPAIGN_LEVELS.length ||
+            !this.isLevelUnlocked(levelIndex)
+        ) return false;
 
         this.loadLevel(levelIndex, {
             score: 0,
             checkpoint: 0,
             state: 'countdown',
         });
+        return true;
     }
 
     advanceLevel() {
+        if (this.gameState !== 'won') return false;
         if (!this.hasNextLevel()) {
             this.showMainMenu();
-            return;
+            return false;
         }
 
+        const nextLevelIndex = this.currentLevelIndex + 1;
+        if (!this.isLevelUnlocked(nextLevelIndex)) return false;
+
         const checkpoint = this.score;
-        this.loadLevel(this.currentLevelIndex + 1, {
+        this.loadLevel(nextLevelIndex, {
             score: checkpoint,
             checkpoint,
             state: 'countdown',
         });
+        return true;
     }
 
     retryCurrentLevel() {
@@ -3007,6 +3390,8 @@ class Game {
         this.gameState = state;
         this.countdownTimer = 0;
         this.countdownNumber = 3;
+        this.lastLevelScore = 0;
+        this.newlyUnlockedLevelIndex = null;
         this.hasPlayerDug = false;
         this.hasSideDrilled = false;
         this.lastDestroyedItemType = null;
