@@ -812,6 +812,17 @@
             text-transform: uppercase;
         }
 
+        .puzzle-grade-picker--five {
+            grid-template-columns: auto repeat(5, minmax(0, 1fr));
+            gap: calc(4px * var(--game-scale));
+        }
+
+        .puzzle-grade-picker--five .puzzle-grade-button {
+            min-width: 0;
+            padding-right: calc(3px * var(--game-scale));
+            padding-left: calc(3px * var(--game-scale));
+        }
+
         .puzzle-grade-button {
             min-height: calc(30px * var(--game-scale));
             padding: calc(6px * var(--game-scale));
@@ -1787,11 +1798,13 @@
                                 <h3>Kretslås</h3>
                                 <p>Led strömmen från IN till UT innan tiden går ut.</p>
                             </div>
-                            <div class="puzzle-grade-picker" role="group" aria-label="Kretslås, välj låsgrad">
+                            <div class="puzzle-grade-picker puzzle-grade-picker--five" role="group" aria-label="Kretslås, välj låsgrad">
                                 <span>Låsgrad</span>
                                 <button class="puzzle-grade-button" type="button" data-action="start-puzzle" data-puzzle="pipes" data-difficulty="1" aria-label="Starta kretslås, låsgrad 1">1</button>
                                 <button class="puzzle-grade-button" type="button" data-action="start-puzzle" data-puzzle="pipes" data-difficulty="2" aria-label="Starta kretslås, låsgrad 2">2</button>
                                 <button class="puzzle-grade-button" type="button" data-action="start-puzzle" data-puzzle="pipes" data-difficulty="3" aria-label="Starta kretslås, låsgrad 3">3</button>
+                                <button class="puzzle-grade-button" type="button" data-action="start-puzzle" data-puzzle="pipes" data-difficulty="4" aria-label="Starta kretslås, låsgrad 4">4</button>
+                                <button class="puzzle-grade-button" type="button" data-action="start-puzzle" data-puzzle="pipes" data-difficulty="5" aria-label="Starta kretslås, låsgrad 5">5</button>
                             </div>
                         </article>
                     </div>
@@ -1890,8 +1903,8 @@
         </div>
     </main>
 
-    <script src="levels.js?v=11"></script>
-    <script src="puzzles.js?v=11"></script>
-    <script src="game.js?v=11"></script>
+    <script src="levels.js?v=12"></script>
+    <script src="puzzles.js?v=12"></script>
+    <script src="game.js?v=12"></script>
 </body>
 </html>

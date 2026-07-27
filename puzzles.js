@@ -42,7 +42,11 @@ class SafePuzzleEngine {
             throw new Error(`Unknown safe puzzle type: ${type}`);
         }
 
-        const safeDifficulty = Math.max(1, Math.min(3, Math.floor(difficulty)));
+        const maximumDifficulty = type === 'pipes' ? 5 : 3;
+        const safeDifficulty = Math.max(
+            1,
+            Math.min(maximumDifficulty, Math.floor(difficulty))
+        );
         const seed = this.hashSeed(`${seedText}:${type}:${safeDifficulty}`);
         if (type === 'keypad') {
             this.state = this.createKeypadState(safeDifficulty, seed);
@@ -319,11 +323,42 @@ class SafePuzzleEngine {
         return path;
     }
 
+    buildSerpentinePipePath(difficulty, random) {
+        const size = 6;
+        const rowCount = difficulty === 4 ? 3 : 5;
+        const topRow = Math.floor(random() * (size - rowCount + 1));
+        const travelsDown = random() < 0.5;
+        const rows = Array.from({ length: rowCount }, (_, index) =>
+            travelsDown ?
+                topRow + index :
+                topRow + rowCount - 1 - index
+        );
+        const path = [];
+
+        rows.forEach((y, rowIndex) => {
+            if (rowIndex % 2 === 0) {
+                for (let x = 0; x < size; x++) path.push({ x, y });
+            } else {
+                for (let x = size - 1; x >= 0; x--) path.push({ x, y });
+            }
+        });
+        return path;
+    }
+
     createPipesState(difficulty, seed) {
         const random = this.createRandom(seed);
-        const size = difficulty === 1 ? 4 : 5;
-        const timeLimit = difficulty === 1 ? 55 : difficulty === 2 ? 42 : 32;
-        const path = this.buildPipePath(size, difficulty, random);
+        const isAdvanced = difficulty >= 4;
+        const size = isAdvanced ? 6 : difficulty === 1 ? 4 : 5;
+        const timeLimit = difficulty === 1 ?
+            55 :
+            difficulty === 2 ?
+                42 :
+                difficulty === 3 ?
+                    32 :
+                    difficulty === 4 ? 55 : 75;
+        const path = isAdvanced ?
+            this.buildSerpentinePipePath(difficulty, random) :
+            this.buildPipePath(size, difficulty, random);
         const pathByCell = new Map(
             path.map((position, pathIndex) => [
                 `${position.x},${position.y}`,

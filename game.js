@@ -1579,9 +1579,16 @@ class GameUI {
 
         if (this.lastState !== game.gameState) {
             this.lastState = game.gameState;
-            const primaryButton = activeScreen?.querySelector(
-                '.menu-button--primary, .puzzle-control--primary, .level-card.is-current:not(:disabled), .level-card:not(:disabled), .menu-button, button:not(:disabled)'
-            );
+            const primaryButton =
+                activeScreen?.querySelector(
+                    '.menu-button--primary, .puzzle-control--primary'
+                ) ||
+                activeScreen?.querySelector(
+                    '.level-card.is-current:not(:disabled), .level-card:not(:disabled)'
+                ) ||
+                activeScreen?.querySelector(
+                    '.menu-button, button:not(:disabled)'
+                );
             this.focusMenuControl(primaryButton);
         }
     }
@@ -2735,6 +2742,7 @@ class Game {
     startStandalonePuzzle(type, difficulty) {
         const puzzleType = String(type || '');
         const puzzleDifficulty = Number(difficulty);
+        const maximumDifficulty = puzzleType === 'pipes' ? 5 : 3;
         if (
             this.gameState !== 'puzzle-select' ||
             !Object.prototype.hasOwnProperty.call(
@@ -2743,7 +2751,7 @@ class Game {
             ) ||
             !Number.isInteger(puzzleDifficulty) ||
             puzzleDifficulty < 1 ||
-            puzzleDifficulty > 3
+            puzzleDifficulty > maximumDifficulty
         ) return false;
 
         this.clearKeyboardInput();
