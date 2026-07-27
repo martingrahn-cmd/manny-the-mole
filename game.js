@@ -488,6 +488,11 @@ class GameUI {
         this.puzzleActions = document.getElementById('puzzleActions');
         this.lastPuzzleRevision = -1;
         this.lastPuzzlePhase = null;
+        this.pipePuzzleShell = null;
+        this.pipePuzzleGrid = null;
+        this.pipeTimer = null;
+        this.pipeTimerFill = null;
+        this.pipeTimerSeconds = null;
         this.screens = {
             menu: document.getElementById('screenMenu'),
             paused: document.getElementById('screenPaused'),
@@ -1145,17 +1150,53 @@ class GameUI {
     }
 
     renderPipesPuzzle(state) {
+        const failed = state.phase === 'failed' || state.timedOut === true;
         const shell = document.createElement('div');
         shell.className = 'puzzle-pipes';
+        shell.classList.toggle('is-failed', failed);
+        shell.classList.toggle('is-solved', state.solved);
+        this.pipePuzzleShell = shell;
 
         const labels = document.createElement('div');
         labels.className = 'puzzle-pipes__labels';
-        labels.innerHTML = '<strong>IN</strong><span>TRYCKLEDNING</span><strong>UT</strong>';
+        labels.innerHTML =
+            '<strong><i aria-hidden="true"></i> INMATNING</strong>' +
+            '<span>AKTIV KRETS</span>' +
+            '<strong>UTGÅNG <i aria-hidden="true"></i></strong>';
         shell.append(labels);
 
+        const timer = document.createElement('div');
+        timer.className = 'puzzle-pipes__timer';
+        timer.setAttribute('role', 'timer');
+        const timerHeader = document.createElement('div');
+        timerHeader.className = 'puzzle-pipes__timer-header';
+        const timerLabel = document.createElement('span');
+        timerLabel.innerHTML =
+            '<i class="puzzle-pipes__live-dot" aria-hidden="true"></i>' +
+            '<span>TID TILL LÅSNING</span>';
+        const timerSeconds = document.createElement('strong');
+        timerSeconds.className = 'puzzle-pipes__timer-seconds';
+        timerSeconds.textContent = '–';
+        timerHeader.append(timerLabel, timerSeconds);
+        const timerTrack = document.createElement('div');
+        timerTrack.className = 'puzzle-pipes__timer-track';
+        timerTrack.setAttribute('aria-hidden', 'true');
+        const timerFill = document.createElement('span');
+        timerFill.className = 'puzzle-pipes__timer-fill';
+        timerTrack.append(timerFill);
+        timer.append(timerHeader, timerTrack);
+        shell.append(timer);
+        this.pipeTimer = timer;
+        this.pipeTimerFill = timerFill;
+        this.pipeTimerSeconds = timerSeconds;
+
+        const board = document.createElement('div');
+        board.className = 'puzzle-pipes__board';
         const grid = document.createElement('div');
         grid.className = 'puzzle-pipes__grid';
         grid.style.setProperty('--pipe-size', state.size);
+        grid.classList.toggle('is-disabled', failed);
+        this.pipePuzzleGrid = grid;
         state.cells.forEach((cell, index) => {
             const x = index % state.size;
             const y = Math.floor(index / state.size);
@@ -1164,6 +1205,7 @@ class GameUI {
             button.className = 'puzzle-pipe-cell';
             button.dataset.action = 'puzzle-pipe';
             button.dataset.value = String(index);
+            button.disabled = failed || state.solved;
             button.setAttribute(
                 'aria-label',
                 this.game.safePuzzle.getPipeLabel(index)
@@ -1180,8 +1222,26 @@ class GameUI {
                 'is-sink',
                 x === state.size - 1 && y === state.sinkY
             );
-            if (x === 0 && y === state.sourceY) {
+            if (
+                x === 0 &&
+                y === state.sourceY &&
+                !failed &&
+                !state.solved
+            ) {
                 button.classList.add('puzzle-control--primary');
+            }
+            if (x === 0 && y === state.sourceY) {
+                const port = document.createElement('span');
+                port.className = 'puzzle-pipe-port puzzle-pipe-port--in';
+                port.textContent = 'IN';
+                port.setAttribute('aria-hidden', 'true');
+                button.append(port);
+            } else if (x === state.size - 1 && y === state.sinkY) {
+                const port = document.createElement('span');
+                port.className = 'puzzle-pipe-port puzzle-pipe-port--out';
+                port.textContent = 'UT';
+                port.setAttribute('aria-hidden', 'true');
+                button.append(port);
             }
 
             const pipe = document.createElement('span');
@@ -1193,15 +1253,89 @@ class GameUI {
             button.append(pipe);
             grid.append(button);
         });
-        shell.append(grid);
+        board.append(grid);
+
+        if (failed) {
+            const failure = document.createElement('div');
+            failure.className = 'puzzle-pipes__failure';
+            failure.setAttribute('role', 'alert');
+            const failureIcon = document.createElement('span');
+            failureIcon.className = 'puzzle-pipes__failure-icon';
+            failureIcon.textContent = '!';
+            failureIcon.setAttribute('aria-hidden', 'true');
+            const failureCopy = document.createElement('span');
+            const failureTitle = document.createElement('strong');
+            failureTitle.textContent = 'TIDEN ÄR UTE';
+            const failureHint = document.createElement('small');
+            failureHint.textContent =
+                'Kretsen stängdes av. Starta om och hitta vägen snabbare.';
+            failureCopy.append(failureTitle, failureHint);
+            failure.append(failureIcon, failureCopy);
+            board.append(failure);
+        }
+
+        shell.append(board);
         this.puzzleBody.append(shell);
 
-        if (!state.solved) {
+        if (failed) {
+            this.puzzleActions.append(
+                this.createPuzzleButton(
+                    'Försök igen',
+                    'puzzle-reset',
+                    { primary: true }
+                )
+            );
+        } else if (!state.solved) {
             this.puzzleActions.append(
                 this.createPuzzleButton('Återställ rör', 'puzzle-reset')
             );
         }
         this.appendPuzzleCloseButton(state);
+        this.syncPipesTimer(state);
+    }
+
+    syncPipesTimer(state) {
+        if (
+            state.type !== 'pipes' ||
+            !this.pipePuzzleShell ||
+            !this.pipeTimer ||
+            !this.pipeTimerFill ||
+            !this.pipeTimerSeconds
+        ) return;
+
+        const timeLimit = Number(state.timeLimit);
+        const timeLeft = Number(state.timeLeft);
+        const hasTimer =
+            Number.isFinite(timeLimit) &&
+            timeLimit > 0 &&
+            Number.isFinite(timeLeft);
+        const failed = state.phase === 'failed' || state.timedOut === true;
+        const ratio = hasTimer ?
+            Math.max(0, Math.min(1, timeLeft / timeLimit)) :
+            1;
+        const critical =
+            hasTimer &&
+            !failed &&
+            !state.solved &&
+            ratio <= 0.25;
+
+        this.pipeTimer.hidden = !hasTimer;
+        this.pipeTimerFill.style.transform = `scaleX(${ratio})`;
+        this.pipeTimerSeconds.textContent = hasTimer ?
+            `${Math.max(0, Math.ceil(timeLeft))} s` :
+            '–';
+        this.pipeTimer.setAttribute(
+            'aria-label',
+            hasTimer ?
+                `${Math.max(0, Math.ceil(timeLeft))} sekunder kvar` :
+                'Ingen tidsgräns'
+        );
+        this.pipeTimer.classList.toggle('is-critical', critical);
+        this.pipeTimer.classList.toggle('is-failed', failed);
+        this.pipePuzzleShell.classList.toggle('is-critical', critical);
+        this.pipePuzzleShell.classList.toggle('is-failed', failed);
+        this.puzzleStatus.classList.toggle('is-critical', critical);
+        this.puzzleStatus.classList.toggle('is-failure', failed);
     }
 
     getPuzzleFocusIdentity() {
@@ -1250,9 +1384,16 @@ class GameUI {
             this.puzzleDifficulty.textContent = `Låsgrad ${state.difficulty}`;
             this.puzzleStatus.textContent = state.status;
             this.puzzleStatus.classList.toggle('is-success', state.solved);
+            this.puzzleStatus.classList.toggle('is-critical', false);
+            this.puzzleStatus.classList.toggle('is-failure', false);
             this.puzzleBody.replaceChildren();
             this.puzzleActions.replaceChildren();
             this.dialNeedle = null;
+            this.pipePuzzleShell = null;
+            this.pipePuzzleGrid = null;
+            this.pipeTimer = null;
+            this.pipeTimerFill = null;
+            this.pipeTimerSeconds = null;
 
             if (state.type === 'keypad') {
                 this.renderKeypadPuzzle(state);
@@ -1272,6 +1413,17 @@ class GameUI {
                         '.puzzle-control--primary'
                     )
                 );
+            } else if (
+                game.gameState === 'puzzle' &&
+                state.type === 'pipes' &&
+                state.phase === 'active' &&
+                phaseChanged
+            ) {
+                this.focusMenuControl(
+                    this.screens.puzzle.querySelector(
+                        '.puzzle-control--primary'
+                    )
+                );
             } else {
                 this.restorePuzzleFocus(focusIdentity);
             }
@@ -1279,6 +1431,8 @@ class GameUI {
 
         if (state.type === 'dial' && this.dialNeedle) {
             this.dialNeedle.style.transform = `rotate(${state.angle}deg)`;
+        } else if (state.type === 'pipes') {
+            this.syncPipesTimer(state);
         }
     }
 

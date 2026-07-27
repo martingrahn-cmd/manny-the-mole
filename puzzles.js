@@ -10,9 +10,9 @@ const SAFE_PUZZLE_META = Object.freeze({
         copy: 'Stoppa visaren i den gröna zonen för varje låsstift.',
     },
     pipes: {
-        eyebrow: 'Tryckkammare',
-        title: 'Koppla tryckledningen',
-        copy: 'Vrid rören så att den lysande ledningen når från IN till UT.',
+        eyebrow: 'Säkringscentral',
+        title: 'Återställ kretsen',
+        copy: 'Vrid kretsdelarna så att strömmen går från IN → UT innan tiden går ut.',
     },
 });
 
@@ -162,6 +162,8 @@ class SafePuzzleEngine {
     createDialState(difficulty, seed) {
         const random = this.createRandom(seed);
         const targetCount = 1 + difficulty;
+        const baseSpeed = 100 + difficulty * 24;
+        const speedStep = 24 + difficulty * 6;
         const targets = [];
         let attempts = 0;
         while (targets.length < targetCount && attempts < 200) {
@@ -182,7 +184,9 @@ class SafePuzzleEngine {
             lockIndex: 0,
             angle: 8,
             direction: 1,
-            speed: 62 + difficulty * 16,
+            baseSpeed,
+            speedStep,
+            speed: baseSpeed,
             targetWidth: 38 - difficulty * 6,
             misses: 0,
         };
@@ -192,7 +196,9 @@ class SafePuzzleEngine {
         const state = this.state;
         if (!state || state.type !== 'dial' || state.solved) return false;
         state.phase = 'active';
-        state.status = `Stift ${state.lockIndex + 1} av ${state.targets.length} · tryck i grönt.`;
+        state.status =
+            `Stift ${state.lockIndex + 1} av ${state.targets.length} · ` +
+            `ratten går i ${Math.round(state.speed)}°/s. Tryck i grönt.`;
         this.touch();
         return true;
     }
@@ -212,9 +218,11 @@ class SafePuzzleEngine {
                 this.markSolved('Alla stift sitter. Ratten låser upp!');
             } else {
                 state.direction *= -1;
-                state.speed += 7;
+                state.speed =
+                    state.baseSpeed + state.lockIndex * state.speedStep;
                 state.status =
-                    `Stift ${state.lockIndex} satt · nästa är ${
+                    `Stift ${state.lockIndex} satt · ratten accelererar till ` +
+                    `${Math.round(state.speed)}°/s. Nästa är ${
                         state.lockIndex + 1
                     } av ${state.targets.length}.`;
                 this.touch();
@@ -223,7 +231,10 @@ class SafePuzzleEngine {
             state.misses++;
             state.lockIndex = 0;
             state.direction *= -1;
-            state.status = 'Miss! Stiften återställdes — försök igen.';
+            state.speed = state.baseSpeed;
+            state.status =
+                `Miss! Stiften återställdes och ratten går åter i ` +
+                `${Math.round(state.speed)}°/s.`;
             this.touch();
         }
         return true;
@@ -305,6 +316,7 @@ class SafePuzzleEngine {
     createPipesState(difficulty, seed) {
         const random = this.createRandom(seed);
         const size = difficulty === 1 ? 4 : 5;
+        const timeLimit = difficulty === 1 ? 55 : difficulty === 2 ? 42 : 32;
         const path = this.buildPipePath(size, difficulty, random);
         const pathByCell = new Map(
             path.map((position, pathIndex) => [
@@ -359,7 +371,7 @@ class SafePuzzleEngine {
         const state = {
             ...this.createBaseState('pipes', difficulty),
             phase: 'active',
-            status: 'Välj ett rör och vrid det ett kvarts varv.',
+            status: 'Koppla strömmen från IN → UT innan tiden går ut.',
             size,
             cells,
             path,
@@ -367,6 +379,9 @@ class SafePuzzleEngine {
             sinkY: path[path.length - 1].y,
             connected: new Set(),
             moves: 0,
+            timeLimit,
+            timeLeft: timeLimit,
+            timedOut: false,
         };
         const startsSolved = this.calculatePipeFlow(state);
         if (startsSolved) {
@@ -449,6 +464,7 @@ class SafePuzzleEngine {
             !state ||
             state.type !== 'pipes' ||
             state.solved ||
+            state.phase !== 'active' ||
             !Number.isInteger(index) ||
             index < 0 ||
             index >= state.cells.length
@@ -457,10 +473,10 @@ class SafePuzzleEngine {
         state.cells[index].rotation = (state.cells[index].rotation + 1) % 4;
         state.moves++;
         if (this.calculatePipeFlow(state)) {
-            this.markSolved(`Trycket är framme efter ${state.moves} drag!`);
+            this.markSolved(`Kretsen är sluten efter ${state.moves} drag!`);
         } else {
             state.status =
-                `${state.moves} drag · följ den lysande ledningen från IN.`;
+                `${state.moves} drag · följ den lysande strömmen från IN till UT.`;
             this.touch();
         }
         return true;
@@ -469,11 +485,19 @@ class SafePuzzleEngine {
     resetPipes() {
         const state = this.state;
         if (!state || state.type !== 'pipes' || state.solved) return false;
+        const timedOut = state.phase === 'failed';
         state.cells.forEach(cell => {
             cell.rotation = cell.initialRotation;
         });
         state.moves = 0;
-        state.status = 'Rören återställdes.';
+        if (timedOut) {
+            state.phase = 'active';
+            state.timeLeft = state.timeLimit;
+            state.timedOut = false;
+        }
+        state.status = timedOut ?
+            'Nytt försök — koppla strömmen från IN → UT.' :
+            'Kretsen återställdes. Tiden fortsätter att gå.';
         this.calculatePipeFlow(state);
         this.touch();
         return true;
@@ -527,9 +551,12 @@ class SafePuzzleEngine {
     update(deltaTime) {
         const state = this.state;
         if (!state) return false;
+        const elapsed = Number.isFinite(deltaTime) ?
+            Math.max(0, deltaTime) :
+            0;
 
         if (state.type === 'keypad' && state.phase === 'watch') {
-            state.playbackTimer -= deltaTime;
+            state.playbackTimer -= elapsed;
             if (state.playbackTimer <= 0) {
                 if (state.playbackLit) {
                     state.playbackLit = false;
@@ -554,7 +581,7 @@ class SafePuzzleEngine {
             !state.manual
         ) {
             let nextAngle = state.angle +
-                state.direction * state.speed * Math.max(0, deltaTime);
+                state.direction * state.speed * elapsed;
             let reflections = 0;
             while (
                 (nextAngle > 356 || nextAngle < 4) &&
@@ -570,12 +597,25 @@ class SafePuzzleEngine {
                 reflections++;
             }
             state.angle = Math.max(4, Math.min(356, nextAngle));
+        } else if (
+            state.type === 'pipes' &&
+            state.phase === 'active' &&
+            !state.solved
+        ) {
+            state.timeLeft = Math.max(0, state.timeLeft - elapsed);
+            if (state.timeLeft <= 0) {
+                state.phase = 'failed';
+                state.timedOut = true;
+                state.status =
+                    'Tiden är ute! Återställ kretsen för ett nytt försök.';
+                this.touch();
+            }
         }
 
         if (!state.solved || state.completionReported) return false;
         state.completionTimer = Math.max(
             0,
-            state.completionTimer - Math.max(0, deltaTime)
+            state.completionTimer - elapsed
         );
         if (state.completionTimer > 0) return false;
         state.completionReported = true;
