@@ -28,33 +28,23 @@ const PIPE_DIRECTION_NAMES = Object.freeze(['upp', 'höger', 'ned', 'vänster'])
 const PIPE_FLOW_BALANCE = Object.freeze({
     1: Object.freeze({
         size: 4,
-        grace: 8,
-        step: 1.85,
-        preRevealed: 5,
+        step: 3.2,
     }),
     2: Object.freeze({
         size: 5,
-        grace: 7,
-        step: 1.5,
-        preRevealed: 4,
+        step: 2.8,
     }),
     3: Object.freeze({
         size: 5,
-        grace: 6,
-        step: 1.25,
-        preRevealed: 3,
+        step: 2.55,
     }),
     4: Object.freeze({
         size: 6,
-        grace: 8,
-        step: 1.4,
-        preRevealed: 4,
+        step: 2.35,
     }),
     5: Object.freeze({
         size: 6,
-        grace: 6.5,
-        step: 1.08,
-        preRevealed: 2,
+        step: 2.1,
     }),
 });
 
@@ -437,33 +427,24 @@ class SafePuzzleEngine {
             [cells[index], cells[swapIndex]] =
                 [cells[swapIndex], cells[index]];
         }
-        cells.forEach((cell, index) => {
-            cell.initialIndex = index;
-        });
 
         const sourceIndex = path[0].y * size;
-        const revealOrder = [
-            sourceIndex,
-            size - 1 + path[path.length - 1].y * size,
-        ];
-        while (revealOrder.length < balance.preRevealed) {
-            const candidate = Math.floor(random() * cells.length);
-            if (!revealOrder.includes(candidate)) revealOrder.push(candidate);
-        }
-        revealOrder.slice(0, balance.preRevealed).forEach(index => {
-            cells[index].revealed = true;
-            cells[index].initialRevealed = true;
-        });
-        cells.forEach(cell => {
-            cell.initialRevealed = cell.initialRevealed === true;
+        const sourcePipeIndex = cells.findIndex(
+            cell => cell.solutionIndex === sourceIndex
+        );
+        [cells[sourceIndex], cells[sourcePipeIndex]] =
+            [cells[sourcePipeIndex], cells[sourceIndex]];
+        cells.forEach((cell, index) => {
+            cell.initialIndex = index;
+            cell.revealed = index === sourceIndex;
+            cell.initialRevealed = index === sourceIndex;
         });
 
         const state = {
             ...this.createBaseState('pipes', difficulty),
             phase: 'active',
             status:
-                `Flödet startar om ${balance.grace.toFixed(1)} s. ` +
-                'Avtäck rör; markera två avtäckta rutor för att byta plats.',
+                'Trycket är i rörelse. Avtäck och byt rör framför flödet.',
             size,
             cells,
             path,
@@ -472,21 +453,21 @@ class SafePuzzleEngine {
             connected: new Set(),
             filled: new Set(),
             moves: 0,
-            reveals: balance.preRevealed,
+            reveals: 1,
             selectedIndex: null,
-            flowPhase: 'grace',
-            flowDelay: balance.grace,
+            flowPhase: 'flowing',
             flowStep: balance.step,
-            flowTimer: balance.grace,
+            flowTimer: balance.step,
             flowIndex: sourceIndex,
             flowIncoming: 3,
             flowHead: null,
+            flowHeadIncoming: null,
+            flowHeadOutgoing: null,
             flowBlockedIndex: null,
             flowVersion: 0,
-            timeLimit: balance.grace,
-            timeLeft: balance.grace,
             timedOut: false,
         };
+        this.advancePipeFlow(state);
         return state;
     }
 
@@ -554,6 +535,8 @@ class SafePuzzleEngine {
         state.filled.add(index);
         state.connected = new Set(state.filled);
         state.flowHead = index;
+        state.flowHeadIncoming = state.flowIncoming;
+        state.flowHeadOutgoing = outgoing;
         state.flowBlockedIndex = null;
         state.flowVersion++;
         if (state.selectedIndex === index) state.selectedIndex = null;
@@ -611,8 +594,27 @@ class SafePuzzleEngine {
             pulsed: false,
         };
         if (!state || state.type !== 'pipes') return empty;
+        const progress = state.solved || state.flowPhase === 'failed' ?
+            1 :
+            state.flowPhase === 'flowing' ?
+            Math.max(
+                0,
+                Math.min(
+                    1,
+                    1 - state.flowTimer / state.flowStep
+                )
+            ) :
+            1;
+        const visible = new Set(state.filled);
+        if (
+            state.flowPhase === 'flowing' &&
+            state.flowHead !== null &&
+            !state.solved
+        ) {
+            visible.delete(state.flowHead);
+        }
         return {
-            visible: new Set(state.filled),
+            visible,
             leading: state.flowHead === null ?
                 new Set() :
                 new Set([state.flowHead]),
@@ -621,6 +623,11 @@ class SafePuzzleEngine {
                 new Set([state.flowBlockedIndex]),
             frame: `${state.flowPhase}:${state.flowVersion}`,
             pulsed: false,
+            progress: reducedMotion ?
+                Math.round(progress * 4) / 4 :
+                progress,
+            incoming: state.flowHeadIncoming,
+            outgoing: state.flowHeadOutgoing,
         };
     }
 
@@ -704,11 +711,13 @@ class SafePuzzleEngine {
             cell.revealed = cell.initialRevealed;
         });
         state.phase = 'active';
-        state.flowPhase = 'grace';
-        state.flowTimer = state.flowDelay;
+        state.flowPhase = 'flowing';
+        state.flowTimer = state.flowStep;
         state.flowIndex = state.sourceY * state.size;
         state.flowIncoming = 3;
         state.flowHead = null;
+        state.flowHeadIncoming = null;
+        state.flowHeadOutgoing = null;
         state.flowBlockedIndex = null;
         state.flowVersion++;
         state.filled = new Set();
@@ -716,12 +725,10 @@ class SafePuzzleEngine {
         state.moves = 0;
         state.reveals = state.cells.filter(cell => cell.revealed).length;
         state.selectedIndex = null;
-        state.timeLeft = state.flowDelay;
         state.timedOut = false;
         state.status =
-            `Nytt försök. Flödet startar om ` +
-            `${state.flowDelay.toFixed(1)} s.`;
-        this.touch();
+            'Nytt försök. Trycket rör sig redan genom startbiten.';
+        this.advancePipeFlow(state);
         return true;
     }
 
@@ -834,18 +841,6 @@ class SafePuzzleEngine {
             !state.solved
         ) {
             state.flowTimer -= elapsed;
-            state.timeLeft = Math.max(0, state.flowTimer);
-            if (state.flowPhase === 'grace' && state.flowTimer <= 0) {
-                state.flowPhase = 'flowing';
-                state.flowTimer += state.flowStep;
-                state.timeLimit = state.flowStep;
-                state.timeLeft = Math.max(0, state.flowTimer);
-                state.status =
-                    'Trycket är i rörelse! Bygg vidare framför flödet.';
-                state.flowVersion++;
-                this.touch();
-                this.advancePipeFlow(state);
-            }
             let advances = 0;
             while (
                 state.flowPhase === 'flowing' &&
@@ -854,7 +849,6 @@ class SafePuzzleEngine {
                 advances < 8
             ) {
                 state.flowTimer += state.flowStep;
-                state.timeLeft = Math.max(0, state.flowTimer);
                 this.advancePipeFlow(state);
                 advances++;
             }

@@ -490,10 +490,6 @@ class GameUI {
         this.lastPuzzlePhase = null;
         this.pipePuzzleShell = null;
         this.pipePuzzleGrid = null;
-        this.pipeTimer = null;
-        this.pipeTimerLabel = null;
-        this.pipeTimerFill = null;
-        this.pipeTimerSeconds = null;
         this.pipeCells = [];
         this.lastPipeFlowFrame = null;
         this.screens = {
@@ -1185,32 +1181,6 @@ class GameUI {
             '<strong>UTGÅNG <i aria-hidden="true"></i></strong>';
         shell.append(labels);
 
-        const timer = document.createElement('div');
-        timer.className = 'puzzle-pipes__timer';
-        timer.setAttribute('role', 'timer');
-        const timerHeader = document.createElement('div');
-        timerHeader.className = 'puzzle-pipes__timer-header';
-        const timerLabel = document.createElement('span');
-        timerLabel.innerHTML =
-            '<i class="puzzle-pipes__live-dot" aria-hidden="true"></i>' +
-            '<span>FLÖDET STARTAR</span>';
-        const timerSeconds = document.createElement('strong');
-        timerSeconds.className = 'puzzle-pipes__timer-seconds';
-        timerSeconds.textContent = '–';
-        timerHeader.append(timerLabel, timerSeconds);
-        const timerTrack = document.createElement('div');
-        timerTrack.className = 'puzzle-pipes__timer-track';
-        timerTrack.setAttribute('aria-hidden', 'true');
-        const timerFill = document.createElement('span');
-        timerFill.className = 'puzzle-pipes__timer-fill';
-        timerTrack.append(timerFill);
-        timer.append(timerHeader, timerTrack);
-        shell.append(timer);
-        this.pipeTimer = timer;
-        this.pipeTimerLabel = timerLabel.querySelector('span');
-        this.pipeTimerFill = timerFill;
-        this.pipeTimerSeconds = timerSeconds;
-
         const board = document.createElement('div');
         board.className = 'puzzle-pipes__board';
         const grid = document.createElement('div');
@@ -1288,6 +1258,42 @@ class GameUI {
                 pipe.append(junction);
             }
             button.append(pipe);
+            if (
+                index === state.flowHead &&
+                Number.isInteger(state.flowHeadIncoming) &&
+                Number.isInteger(state.flowHeadOutgoing)
+            ) {
+                const edgePoints = [
+                    [50, 0],
+                    [100, 50],
+                    [50, 100],
+                    [0, 50],
+                ];
+                const incoming = edgePoints[state.flowHeadIncoming];
+                const outgoing = edgePoints[state.flowHeadOutgoing];
+                const trace = document.createElementNS(
+                    'http://www.w3.org/2000/svg',
+                    'svg'
+                );
+                trace.classList.add('puzzle-pipe-flow-trace');
+                trace.setAttribute('viewBox', '0 0 100 100');
+                trace.setAttribute('aria-hidden', 'true');
+                const tracePath = document.createElementNS(
+                    'http://www.w3.org/2000/svg',
+                    'path'
+                );
+                tracePath.setAttribute(
+                    'd',
+                    `M ${incoming[0]} ${incoming[1]} ` +
+                    `L 50 50 L ${outgoing[0]} ${outgoing[1]}`
+                );
+                tracePath.setAttribute('pathLength', '1');
+                trace.append(tracePath);
+                const flowHead = document.createElement('span');
+                flowHead.className = 'puzzle-pipe-flow-head';
+                flowHead.setAttribute('aria-hidden', 'true');
+                button.append(trace, flowHead);
+            }
             if (!cell.revealed && !state.filled.has(index)) {
                 const cover = document.createElement('span');
                 cover.className = 'puzzle-pipe-cover';
@@ -1343,7 +1349,6 @@ class GameUI {
         }
         this.appendPuzzleCloseButton(state);
         this.syncPipesFlow(state);
-        this.syncPipesTimer(state);
     }
 
     syncPipesFlow(state) {
@@ -1357,7 +1362,6 @@ class GameUI {
                 state,
                 this.game.reducedMotion
             );
-        if (presentation.frame === this.lastPipeFlowFrame) return;
         this.lastPipeFlowFrame = presentation.frame;
 
         this.pipeCells.forEach((cell, index) => {
@@ -1366,71 +1370,44 @@ class GameUI {
                 presentation.visible.has(index)
             );
             cell.classList.toggle(
-                'is-pulse-head',
+                'is-flow-head',
                 presentation.leading.has(index)
             );
             cell.classList.toggle(
                 'is-pulse-blocked',
                 presentation.blocked.has(index)
             );
+            if (!presentation.leading.has(index)) return;
+
+            const edgePoints = [
+                [50, 11],
+                [89, 50],
+                [50, 89],
+                [11, 50],
+            ];
+            const incoming = edgePoints[presentation.incoming];
+            const outgoing = edgePoints[presentation.outgoing];
+            if (!incoming || !outgoing) return;
+            const progress = Math.max(
+                0,
+                Math.min(1, Number(presentation.progress) || 0)
+            );
+            const legProgress = progress < 0.5 ?
+                progress * 2 :
+                (progress - 0.5) * 2;
+            const from = progress < 0.5 ? incoming : [50, 50];
+            const to = progress < 0.5 ? [50, 50] : outgoing;
+            const x = from[0] + (to[0] - from[0]) * legProgress;
+            const y = from[1] + (to[1] - from[1]) * legProgress;
+            cell.style.setProperty('--flow-head-x', `${x}%`);
+            cell.style.setProperty('--flow-head-y', `${y}%`);
+            const trace = cell.querySelector(
+                '.puzzle-pipe-flow-trace path'
+            );
+            if (trace) {
+                trace.style.strokeDashoffset = String(1 - progress);
+            }
         });
-    }
-
-    syncPipesTimer(state) {
-        if (
-            state.type !== 'pipes' ||
-            !this.pipePuzzleShell ||
-            !this.pipeTimer ||
-            !this.pipeTimerLabel ||
-            !this.pipeTimerFill ||
-            !this.pipeTimerSeconds
-        ) return;
-
-        const grace = state.flowPhase === 'grace';
-        const flowing = state.flowPhase === 'flowing';
-        const timeLimit = grace ?
-            Number(state.flowDelay) :
-            Number(state.flowStep);
-        const timeLeft = Number(state.flowTimer);
-        const hasTimer =
-            Number.isFinite(timeLimit) &&
-            timeLimit > 0 &&
-            Number.isFinite(timeLeft);
-        const failed = state.phase === 'failed' || state.timedOut === true;
-        const ratio = hasTimer ?
-            Math.max(0, Math.min(1, timeLeft / timeLimit)) :
-            1;
-        const critical =
-            hasTimer &&
-            !failed &&
-            !state.solved &&
-            flowing &&
-            ratio <= 0.28;
-
-        this.pipeTimer.hidden = !hasTimer;
-        this.pipeTimerFill.style.transform = `scaleX(${ratio})`;
-        this.pipeTimerLabel.textContent = failed ?
-            'KRETSEN BRUTEN' :
-            state.solved ?
-                'KRETS STABIL' :
-                grace ?
-                    'FLÖDET STARTAR' :
-                    'NÄSTA TRYCKVÅG';
-        this.pipeTimerSeconds.textContent = hasTimer ?
-            `${Math.max(0, timeLeft).toFixed(grace ? 1 : 2)} s` :
-            '–';
-        this.pipeTimer.setAttribute(
-            'aria-label',
-            hasTimer ?
-                `${Math.max(0, Math.ceil(timeLeft))} sekunder kvar` :
-                'Ingen tidsgräns'
-        );
-        this.pipeTimer.classList.toggle('is-critical', critical);
-        this.pipeTimer.classList.toggle('is-failed', failed);
-        this.pipePuzzleShell.classList.toggle('is-critical', critical);
-        this.pipePuzzleShell.classList.toggle('is-failed', failed);
-        this.puzzleStatus.classList.toggle('is-critical', critical);
-        this.puzzleStatus.classList.toggle('is-failure', failed);
     }
 
     getPuzzleFocusIdentity() {
@@ -1480,16 +1457,15 @@ class GameUI {
             this.puzzleStatus.textContent = state.status;
             this.puzzleStatus.classList.toggle('is-success', state.solved);
             this.puzzleStatus.classList.toggle('is-critical', false);
-            this.puzzleStatus.classList.toggle('is-failure', false);
+            this.puzzleStatus.classList.toggle(
+                'is-failure',
+                state.type === 'pipes' && state.phase === 'failed'
+            );
             this.puzzleBody.replaceChildren();
             this.puzzleActions.replaceChildren();
             this.dialNeedle = null;
             this.pipePuzzleShell = null;
             this.pipePuzzleGrid = null;
-            this.pipeTimer = null;
-            this.pipeTimerLabel = null;
-            this.pipeTimerFill = null;
-            this.pipeTimerSeconds = null;
             this.pipeCells = [];
             this.lastPipeFlowFrame = null;
 
@@ -1531,7 +1507,6 @@ class GameUI {
             this.dialNeedle.style.transform = `rotate(${state.angle}deg)`;
         } else if (state.type === 'pipes') {
             this.syncPipesFlow(state);
-            this.syncPipesTimer(state);
         }
     }
 
