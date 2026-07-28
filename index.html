@@ -1181,6 +1181,42 @@
                 0 0 calc(8px * var(--game-scale)) rgba(83, 232, 255, 0.38);
         }
 
+        .puzzle-pipes.is-pressure-flow .puzzle-pipes__labels > span {
+            color: #8ceffc;
+            text-shadow:
+                0 0 calc(8px * var(--game-scale)) rgba(83, 232, 255, 0.38);
+        }
+
+        .puzzle-pipes__legend {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: calc(4px * var(--game-scale));
+            margin-bottom: calc(7px * var(--game-scale));
+            color: rgba(213, 229, 238, 0.62);
+            font: 750 max(6px, calc(7px * var(--game-scale))) / 1.2 ui-monospace, monospace;
+            letter-spacing: 0.02em;
+            text-align: center;
+        }
+
+        .puzzle-pipes__legend span {
+            padding: calc(5px * var(--game-scale)) calc(3px * var(--game-scale));
+            border: max(1px, calc(1px * var(--game-scale))) solid rgba(111, 206, 224, 0.14);
+            border-radius: calc(6px * var(--game-scale));
+            background: rgba(7, 18, 27, 0.72);
+        }
+
+        .puzzle-pipes__legend b {
+            display: inline-grid;
+            width: calc(14px * var(--game-scale));
+            min-width: 12px;
+            aspect-ratio: 1;
+            margin-right: calc(2px * var(--game-scale));
+            place-items: center;
+            border-radius: 50%;
+            background: rgba(84, 221, 239, 0.14);
+            color: #82eafa;
+        }
+
         .puzzle-pipes__timer {
             margin-bottom: calc(8px * var(--game-scale));
             padding: calc(7px * var(--game-scale)) calc(9px * var(--game-scale));
@@ -1337,6 +1373,115 @@
             border-color: rgba(115, 232, 246, 0.62);
             background:
                 linear-gradient(145deg, rgba(53, 78, 91, 0.98), rgba(10, 26, 38, 0.98));
+        }
+
+        .puzzle-pipe-cell.is-covered {
+            border-color: rgba(175, 142, 83, 0.25);
+            background:
+                radial-gradient(circle at 14% 16%, rgba(255, 213, 133, 0.12) 0 1px, transparent 2px),
+                linear-gradient(145deg, #34434b, #151f27 58%, #080e15);
+        }
+
+        .puzzle-pipe-cell.is-covered:hover:not(:disabled) {
+            border-color: rgba(255, 195, 94, 0.58);
+            background:
+                radial-gradient(circle at 14% 16%, rgba(255, 219, 147, 0.2) 0 1px, transparent 2px),
+                linear-gradient(145deg, #465660, #1c2b35 58%, #0a121a);
+        }
+
+        .puzzle-pipe-cell.is-covered .puzzle-pipe {
+            opacity: 0;
+        }
+
+        .puzzle-pipe-cover {
+            position: absolute;
+            z-index: 3;
+            inset: 7%;
+            display: grid;
+            overflow: hidden;
+            place-items: center;
+            border: max(1px, calc(1px * var(--game-scale))) solid rgba(213, 177, 108, 0.28);
+            border-radius: calc(4px * var(--game-scale));
+            background:
+                radial-gradient(circle at 16% 18%, #b79255 0 1px, transparent 2px),
+                radial-gradient(circle at 84% 18%, #b79255 0 1px, transparent 2px),
+                radial-gradient(circle at 16% 82%, #72502c 0 1px, transparent 2px),
+                radial-gradient(circle at 84% 82%, #72502c 0 1px, transparent 2px),
+                linear-gradient(145deg, rgba(95, 106, 108, 0.98), rgba(31, 41, 47, 0.99));
+            box-shadow:
+                inset 0 1px rgba(255, 226, 164, 0.12),
+                inset 0 calc(-5px * var(--game-scale)) calc(8px * var(--game-scale)) rgba(0, 0, 0, 0.28),
+                0 calc(2px * var(--game-scale)) calc(4px * var(--game-scale)) rgba(0, 0, 0, 0.35);
+            color: rgba(255, 209, 119, 0.72);
+            pointer-events: none;
+        }
+
+        .puzzle-pipe-cover::before,
+        .puzzle-pipe-cover::after {
+            position: absolute;
+            width: 135%;
+            height: max(1px, calc(1px * var(--game-scale)));
+            transform: rotate(45deg);
+            background: rgba(231, 191, 119, 0.1);
+            content: "";
+        }
+
+        .puzzle-pipe-cover::after {
+            transform: rotate(-45deg);
+        }
+
+        .puzzle-pipe-cover b {
+            position: relative;
+            z-index: 1;
+            display: grid;
+            width: 34%;
+            aspect-ratio: 1;
+            place-items: center;
+            border: max(1px, calc(1px * var(--game-scale))) solid rgba(245, 201, 116, 0.4);
+            border-radius: 50%;
+            background: rgba(15, 21, 25, 0.88);
+            font: 900 max(8px, calc(10px * var(--game-scale))) / 1 ui-monospace, monospace;
+            box-shadow: 0 0 calc(8px * var(--game-scale)) rgba(0, 0, 0, 0.5);
+        }
+
+        .puzzle-pipe-cell.is-selected {
+            z-index: 2;
+            border-color: #ffca68;
+            background:
+                radial-gradient(circle, rgba(255, 193, 75, 0.16), transparent 70%),
+                linear-gradient(145deg, #403a2f, #131a20);
+            box-shadow:
+                inset 0 0 0 max(1px, calc(2px * var(--game-scale))) rgba(255, 202, 104, 0.32),
+                0 0 calc(13px * var(--game-scale)) rgba(255, 178, 56, 0.36);
+        }
+
+        .puzzle-pipe-cell.is-selected::after {
+            position: absolute;
+            z-index: 5;
+            right: calc(3px * var(--game-scale));
+            bottom: calc(3px * var(--game-scale));
+            width: calc(8px * var(--game-scale));
+            min-width: 7px;
+            aspect-ratio: 1;
+            border-radius: 50%;
+            background: #ffd478;
+            box-shadow: 0 0 calc(7px * var(--game-scale)) #ffb13f;
+            content: "";
+        }
+
+        .puzzle-pipe-cell.is-locked {
+            cursor: not-allowed;
+        }
+
+        .puzzle-pipe-cell.is-locked::before {
+            position: absolute;
+            z-index: 4;
+            top: calc(3px * var(--game-scale));
+            right: calc(3px * var(--game-scale));
+            color: rgba(194, 255, 243, 0.68);
+            font: 900 max(5px, calc(6px * var(--game-scale))) / 1 ui-monospace, monospace;
+            content: "●";
+            text-shadow: 0 0 calc(5px * var(--game-scale)) #5fffd0;
         }
 
         .puzzle-pipe-cell.is-fixed {

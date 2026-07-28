@@ -491,6 +491,7 @@ class GameUI {
         this.pipePuzzleShell = null;
         this.pipePuzzleGrid = null;
         this.pipeTimer = null;
+        this.pipeTimerLabel = null;
         this.pipeTimerFill = null;
         this.pipeTimerSeconds = null;
         this.pipeCells = [];
@@ -1171,7 +1172,7 @@ class GameUI {
         const shell = document.createElement('div');
         shell.className = 'puzzle-pipes';
         shell.classList.toggle('is-six', state.size === 6);
-        shell.classList.toggle('has-test-pulse', state.difficulty >= 4);
+        shell.classList.add('is-pressure-flow');
         shell.classList.toggle('is-failed', failed);
         shell.classList.toggle('is-solved', state.solved);
         this.pipePuzzleShell = shell;
@@ -1180,7 +1181,7 @@ class GameUI {
         labels.className = 'puzzle-pipes__labels';
         labels.innerHTML =
             '<strong><i aria-hidden="true"></i> INMATNING</strong>' +
-            `<span>${state.difficulty >= 4 ? 'TESTPULS' : 'AKTIV KRETS'}</span>` +
+            '<span>TRYCKFLÖDE</span>' +
             '<strong>UTGÅNG <i aria-hidden="true"></i></strong>';
         shell.append(labels);
 
@@ -1192,7 +1193,7 @@ class GameUI {
         const timerLabel = document.createElement('span');
         timerLabel.innerHTML =
             '<i class="puzzle-pipes__live-dot" aria-hidden="true"></i>' +
-            '<span>TID TILL LÅSNING</span>';
+            '<span>FLÖDET STARTAR</span>';
         const timerSeconds = document.createElement('strong');
         timerSeconds.className = 'puzzle-pipes__timer-seconds';
         timerSeconds.textContent = '–';
@@ -1206,6 +1207,7 @@ class GameUI {
         timer.append(timerHeader, timerTrack);
         shell.append(timer);
         this.pipeTimer = timer;
+        this.pipeTimerLabel = timerLabel.querySelector('span');
         this.pipeTimerFill = timerFill;
         this.pipeTimerSeconds = timerSeconds;
 
@@ -1226,17 +1228,21 @@ class GameUI {
             button.dataset.action = 'puzzle-pipe';
             button.dataset.value = String(index);
             button.disabled = failed || state.solved;
-            button.classList.toggle('is-fixed', cell.type === 'cross');
-            if (cell.type === 'cross') {
-                button.setAttribute('aria-disabled', 'true');
-            }
+            button.classList.toggle(
+                'is-covered',
+                !cell.revealed && !state.filled.has(index)
+            );
+            button.classList.toggle(
+                'is-selected',
+                state.selectedIndex === index
+            );
+            button.classList.toggle('is-locked', state.filled.has(index));
             button.setAttribute(
                 'aria-label',
                 this.game.safePuzzle.getPipeLabel(index)
             );
             button.classList.toggle(
                 'is-flowing',
-                state.difficulty < 4 &&
                 state.connected.has(index)
             );
             button.classList.toggle(
@@ -1282,6 +1288,13 @@ class GameUI {
                 pipe.append(junction);
             }
             button.append(pipe);
+            if (!cell.revealed && !state.filled.has(index)) {
+                const cover = document.createElement('span');
+                cover.className = 'puzzle-pipe-cover';
+                cover.innerHTML =
+                    '<i aria-hidden="true"></i><b aria-hidden="true">?</b>';
+                button.append(cover);
+            }
             grid.append(button);
             this.pipeCells[index] = button;
         });
@@ -1297,16 +1310,22 @@ class GameUI {
             failureIcon.setAttribute('aria-hidden', 'true');
             const failureCopy = document.createElement('span');
             const failureTitle = document.createElement('strong');
-            failureTitle.textContent = 'TIDEN ÄR UTE';
+            failureTitle.textContent = 'FLÖDET BRÖTS';
             const failureHint = document.createElement('small');
             failureHint.textContent =
-                'Kretsen stängdes av. Starta om och hitta vägen snabbare.';
+                'Trycket nådde ett felkopplat rör. Starta om och bygg framför flödet.';
             failureCopy.append(failureTitle, failureHint);
             failure.append(failureIcon, failureCopy);
             board.append(failure);
         }
 
-        shell.append(board);
+        const legend = document.createElement('div');
+        legend.className = 'puzzle-pipes__legend';
+        legend.innerHTML =
+            '<span><b>1</b> Avtäck</span>' +
+            '<span><b>2</b> Markera</span>' +
+            '<span><b>3</b> Byt plats</span>';
+        shell.append(legend, board);
         this.puzzleBody.append(shell);
 
         if (failed) {
@@ -1319,7 +1338,7 @@ class GameUI {
             );
         } else if (!state.solved) {
             this.puzzleActions.append(
-                this.createPuzzleButton('Återställ rör', 'puzzle-reset')
+                this.createPuzzleButton('Starta om krets', 'puzzle-reset')
             );
         }
         this.appendPuzzleCloseButton(state);
@@ -1362,12 +1381,17 @@ class GameUI {
             state.type !== 'pipes' ||
             !this.pipePuzzleShell ||
             !this.pipeTimer ||
+            !this.pipeTimerLabel ||
             !this.pipeTimerFill ||
             !this.pipeTimerSeconds
         ) return;
 
-        const timeLimit = Number(state.timeLimit);
-        const timeLeft = Number(state.timeLeft);
+        const grace = state.flowPhase === 'grace';
+        const flowing = state.flowPhase === 'flowing';
+        const timeLimit = grace ?
+            Number(state.flowDelay) :
+            Number(state.flowStep);
+        const timeLeft = Number(state.flowTimer);
         const hasTimer =
             Number.isFinite(timeLimit) &&
             timeLimit > 0 &&
@@ -1380,12 +1404,20 @@ class GameUI {
             hasTimer &&
             !failed &&
             !state.solved &&
-            ratio <= 0.25;
+            flowing &&
+            ratio <= 0.28;
 
         this.pipeTimer.hidden = !hasTimer;
         this.pipeTimerFill.style.transform = `scaleX(${ratio})`;
+        this.pipeTimerLabel.textContent = failed ?
+            'KRETSEN BRUTEN' :
+            state.solved ?
+                'KRETS STABIL' :
+                grace ?
+                    'FLÖDET STARTAR' :
+                    'NÄSTA TRYCKVÅG';
         this.pipeTimerSeconds.textContent = hasTimer ?
-            `${Math.max(0, Math.ceil(timeLeft))} s` :
+            `${Math.max(0, timeLeft).toFixed(grace ? 1 : 2)} s` :
             '–';
         this.pipeTimer.setAttribute(
             'aria-label',
@@ -1443,10 +1475,7 @@ class GameUI {
             const meta = SAFE_PUZZLE_META[state.type];
             this.puzzleEyebrow.textContent = meta.eyebrow;
             this.puzzleTitle.textContent = meta.title;
-            this.puzzleCopy.textContent =
-                state.type === 'pipes' && state.difficulty >= 4 ?
-                    'Vrid kretsdelarna och följ den korta testpulsen från IN till UT.' :
-                    meta.copy;
+            this.puzzleCopy.textContent = meta.copy;
             this.puzzleDifficulty.textContent = `Låsgrad ${state.difficulty}`;
             this.puzzleStatus.textContent = state.status;
             this.puzzleStatus.classList.toggle('is-success', state.solved);
@@ -1458,6 +1487,7 @@ class GameUI {
             this.pipePuzzleShell = null;
             this.pipePuzzleGrid = null;
             this.pipeTimer = null;
+            this.pipeTimerLabel = null;
             this.pipeTimerFill = null;
             this.pipeTimerSeconds = null;
             this.pipeCells = [];
@@ -2181,10 +2211,42 @@ class Game {
                 puzzleState.manual = this.reducedMotion;
                 this.safePuzzle.touch();
             }
+            const previousPipeFill =
+                puzzleState?.type === 'pipes' ?
+                    puzzleState.filled.size :
+                    0;
+            const previousPipePhase =
+                puzzleState?.type === 'pipes' ?
+                    puzzleState.flowPhase :
+                    null;
             if (pausePressed) {
                 this.cancelSafePuzzle();
             } else if (this.safePuzzle.update(deltaTime)) {
                 this.completeSafePuzzle();
+            } else if (puzzleState?.type === 'pipes') {
+                if (puzzleState.filled.size > previousPipeFill) {
+                    const pressure =
+                        Math.min(5, puzzleState.filled.size) * 18;
+                    this.sound.playTone(
+                        150 + pressure,
+                        92 + pressure,
+                        0.1,
+                        0.022,
+                        'triangle'
+                    );
+                }
+                if (
+                    previousPipePhase !== 'failed' &&
+                    puzzleState.flowPhase === 'failed'
+                ) {
+                    this.sound.playTone(
+                        180,
+                        48,
+                        0.28,
+                        0.05,
+                        'sawtooth'
+                    );
+                }
             }
             this.keysJustPressed = {};
             return;
