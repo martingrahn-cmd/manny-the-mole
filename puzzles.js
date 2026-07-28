@@ -43,13 +43,13 @@ const PIPE_FLOW_BALANCE = Object.freeze({
     }),
     4: Object.freeze({
         size: 6,
-        step: 3.2,
-        safeLead: 5,
+        step: 5,
+        safeLead: 6,
     }),
     5: Object.freeze({
         size: 6,
-        step: 2.7,
-        safeLead: 4,
+        step: 4,
+        safeLead: 5,
     }),
 });
 
