@@ -46,15 +46,15 @@ const PIPE_FLOW_BALANCE = Object.freeze({
     }),
     4: Object.freeze({
         size: 6,
-        grace: 5.5,
-        step: 1.05,
-        preRevealed: 2,
+        grace: 8,
+        step: 1.4,
+        preRevealed: 4,
     }),
     5: Object.freeze({
         size: 6,
-        grace: 5,
-        step: 0.9,
-        preRevealed: 1,
+        grace: 6.5,
+        step: 1.08,
+        preRevealed: 2,
     }),
 });
 
