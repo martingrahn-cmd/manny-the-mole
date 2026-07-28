@@ -496,7 +496,7 @@ class SafePuzzleEngine {
                 42 :
                 difficulty === 3 ?
                     32 :
-                    difficulty === 4 ? 55 : 75;
+                    difficulty === 4 ? 65 : 90;
         const path = isAdvanced ?
             this.buildSerpentinePipePath(difficulty, random) :
             this.buildPipePath(size, difficulty, random);
@@ -570,7 +570,7 @@ class SafePuzzleEngine {
             ...this.createBaseState('pipes', difficulty),
             phase: 'active',
             status: isAdvanced ?
-                'Förgreningar leder åt flera håll. Fyrvägskors är fasta — hitta vägen från IN → UT.' :
+                'En testpuls försöker lämna IN med jämna mellanrum. Följ hur långt den når.' :
                 'Koppla strömmen från IN → UT innan tiden går ut.',
             size,
             cells,
@@ -582,6 +582,14 @@ class SafePuzzleEngine {
             timeLimit,
             timeLeft: timeLimit,
             timedOut: false,
+            ...(isAdvanced ? {
+                flowDistances: Array(size * size).fill(-1),
+                flowPulseTime: 0,
+                flowPulseStep: difficulty === 4 ? 0.16 : 0.14,
+                flowPulseTrail: difficulty === 4 ? 3 : 2,
+                flowPulsePause: 0.65,
+                flowVersion: 0,
+            } : {}),
         };
         const startsSolved = this.calculatePipeFlow(state);
         if (startsSolved) {
@@ -603,12 +611,16 @@ class SafePuzzleEngine {
         const sourceIndex = state.sourceY * state.size;
         const queue = [];
         const connected = new Set();
+        const flowDistances = state.difficulty >= 4 ?
+            Array(state.cells.length).fill(-1) :
+            null;
         const sourceConnections = this.getPipeConnections(
             state.cells[sourceIndex]
         );
         if (sourceConnections[3]) {
             queue.push(sourceIndex);
             connected.add(sourceIndex);
+            if (flowDistances) flowDistances[sourceIndex] = 0;
         }
 
         let reachesSink = false;
@@ -649,12 +661,121 @@ class SafePuzzleEngine {
                 const oppositeDirection = (direction + 2) % 4;
                 if (!nextConnections[oppositeDirection]) return;
                 connected.add(nextIndex);
+                if (flowDistances) {
+                    flowDistances[nextIndex] =
+                        flowDistances[index] + 1;
+                }
                 queue.push(nextIndex);
             });
         }
 
         state.connected = connected;
+        if (flowDistances) {
+            state.flowDistances = flowDistances;
+            state.flowVersion++;
+        }
         return reachesSink;
+    }
+
+    getPipeFlowPresentation(state = this.state, reducedMotion = false) {
+        const empty = {
+            visible: new Set(),
+            leading: new Set(),
+            blocked: new Set(),
+            frame: 'empty',
+            pulsed: false,
+        };
+        if (!state || state.type !== 'pipes') return empty;
+        if (state.phase === 'failed' || state.timedOut) {
+            return {
+                ...empty,
+                frame: `failed:${state.flowVersion || 0}`,
+            };
+        }
+        if (state.difficulty < 4 || state.solved) {
+            return {
+                visible: new Set(state.connected),
+                leading: new Set(),
+                blocked: new Set(),
+                frame: state.solved ?
+                    `solved:${state.flowVersion || 0}` :
+                    'steady',
+                pulsed: false,
+            };
+        }
+
+        const distances = state.flowDistances;
+        if (!Array.isArray(distances)) return empty;
+        const maxDistance = distances.reduce(
+            (maximum, distance) => Math.max(maximum, distance),
+            -1
+        );
+        if (maxDistance < 0) {
+            const blockedPeriod = reducedMotion ? 1.4 : 0.9;
+            const blockedDuration = reducedMotion ? 0.35 : 0.2;
+            const blockedOn =
+                Math.max(0, state.flowPulseTime) % blockedPeriod <
+                blockedDuration;
+            const sourceIndex = state.sourceY * state.size;
+            return {
+                ...empty,
+                blocked: blockedOn ?
+                    new Set([sourceIndex]) :
+                    new Set(),
+                frame:
+                    `blocked:${state.flowVersion}:` +
+                    `${blockedOn ? 'on' : 'off'}`,
+                pulsed: true,
+            };
+        }
+
+        const baseStep = Math.max(
+            0.05,
+            Number(state.flowPulseStep) || 0.15
+        );
+        const step = reducedMotion ?
+            Math.max(0.35, baseStep) :
+            baseStep;
+        const trail = Math.max(1, Math.floor(state.flowPulseTrail) || 2);
+        const pause = Math.max(
+            step,
+            Number(state.flowPulsePause) || 0.65
+        );
+        const activeSteps = maxDistance + trail;
+        const activeDuration = activeSteps * step;
+        const cycleDuration = activeDuration + pause;
+        const phaseTime =
+            Math.max(0, state.flowPulseTime) % cycleDuration;
+        const headDistance = phaseTime >= activeDuration ?
+            maxDistance + trail :
+            Math.floor(phaseTime / step);
+        const firstVisibleDistance = headDistance - trail + 1;
+        const visible = new Set();
+        const leading = new Set();
+
+        distances.forEach((distance, index) => {
+            if (
+                distance < 0 ||
+                distance > headDistance ||
+                distance < firstVisibleDistance
+            ) return;
+            visible.add(index);
+            if (
+                distance === headDistance &&
+                distance <= maxDistance
+            ) {
+                leading.add(index);
+            }
+        });
+        return {
+            visible,
+            leading,
+            blocked: new Set(),
+            frame:
+                `${reducedMotion ? 'reduced' : 'pulse'}:` +
+                `${state.flowVersion}:${headDistance}:${maxDistance}`,
+            pulsed: true,
+        };
     }
 
     rotatePipe(value) {
@@ -670,7 +791,8 @@ class SafePuzzleEngine {
             index >= state.cells.length
         ) return false;
         if (state.cells[index].type === 'cross') {
-            state.status =
+            state.status = state.difficulty >= 4 ?
+                `${state.moves} drag · Fyrvägskorset är fast; pulsen delas åt alla håll.` :
                 'Fyrvägskorset sitter fast och leder ström åt alla fyra håll.';
             this.touch();
             return true;
@@ -678,10 +800,12 @@ class SafePuzzleEngine {
 
         state.cells[index].rotation = (state.cells[index].rotation + 1) % 4;
         state.moves++;
+        if (state.difficulty >= 4) state.flowPulseTime = 0;
         if (this.calculatePipeFlow(state)) {
             this.markSolved(`Kretsen är sluten efter ${state.moves} drag!`);
         } else {
-            state.status =
+            state.status = state.difficulty >= 4 ?
+                `${state.moves} drag · testpulsen startar om från IN.` :
                 `${state.moves} drag · följ den lysande strömmen från IN till UT.`;
             this.touch();
         }
@@ -696,14 +820,19 @@ class SafePuzzleEngine {
             cell.rotation = cell.initialRotation;
         });
         state.moves = 0;
+        if (state.difficulty >= 4) state.flowPulseTime = 0;
         if (timedOut) {
             state.phase = 'active';
             state.timeLeft = state.timeLimit;
             state.timedOut = false;
         }
-        state.status = timedOut ?
-            'Nytt försök — koppla strömmen från IN → UT.' :
-            'Kretsen återställdes. Tiden fortsätter att gå.';
+        state.status = state.difficulty >= 4 ?
+            timedOut ?
+                'Nytt försök — testpulsen startar om från IN.' :
+                'Kretsen återställdes. Testpulsen startar om; tiden fortsätter.' :
+            timedOut ?
+                'Nytt försök — koppla strömmen från IN → UT.' :
+                'Kretsen återställdes. Tiden fortsätter att gå.';
         this.calculatePipeFlow(state);
         this.touch();
         return true;
@@ -814,6 +943,9 @@ class SafePuzzleEngine {
             state.phase === 'active' &&
             !state.solved
         ) {
+            if (state.difficulty >= 4) {
+                state.flowPulseTime += elapsed;
+            }
             state.timeLeft = Math.max(0, state.timeLeft - elapsed);
             if (state.timeLeft <= 0) {
                 state.phase = 'failed';

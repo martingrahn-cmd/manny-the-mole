@@ -1175,6 +1175,12 @@
             color: #77f6b5;
         }
 
+        .puzzle-pipes.has-test-pulse .puzzle-pipes__labels > span {
+            color: #8ceffc;
+            text-shadow:
+                0 0 calc(8px * var(--game-scale)) rgba(83, 232, 255, 0.38);
+        }
+
         .puzzle-pipes__timer {
             margin-bottom: calc(8px * var(--game-scale));
             padding: calc(7px * var(--game-scale)) calc(9px * var(--game-scale));
@@ -1518,6 +1524,19 @@
                 0 0 calc(7px * var(--game-scale)) rgba(76, 255, 219, 0.86);
         }
 
+        .puzzle-pipes.has-test-pulse .puzzle-pipe-cell.is-flowing {
+            animation: none;
+        }
+
+        .puzzle-pipes.has-test-pulse
+        .puzzle-pipe-cell.is-flowing
+        .puzzle-pipe::before,
+        .puzzle-pipes.has-test-pulse
+        .puzzle-pipe-cell.is-flowing
+        .puzzle-pipe::after {
+            animation: none;
+        }
+
         .puzzle-pipe-cell.is-fixed.is-flowing,
         .puzzle-pipe-cell.is-fixed.is-flowing:hover:not(:disabled) {
             border-color: rgba(226, 190, 108, 0.62);
@@ -1531,6 +1550,36 @@
             box-shadow:
                 inset 0 0 0 max(1px, calc(1px * var(--game-scale))) rgba(103, 251, 226, 0.28),
                 inset 0 1px rgba(255, 255, 255, 0.07);
+        }
+
+        .puzzle-pipe-cell.is-pulse-head,
+        .puzzle-pipe-cell.is-fixed.is-pulse-head,
+        .puzzle-pipe-cell.is-fixed.is-pulse-head:hover:not(:disabled) {
+            z-index: 1;
+            border-color: rgba(225, 255, 252, 0.88);
+            box-shadow:
+                inset 0 0 0 max(1px, calc(1px * var(--game-scale))) rgba(162, 255, 239, 0.36),
+                0 0 calc(12px * var(--game-scale)) rgba(73, 255, 222, 0.54);
+        }
+
+        .puzzle-pipe-cell.is-pulse-head .puzzle-pipe {
+            filter:
+                brightness(1.28)
+                drop-shadow(0 0 calc(4px * var(--game-scale)) rgba(224, 255, 255, 1))
+                drop-shadow(0 0 calc(10px * var(--game-scale)) rgba(47, 255, 205, 0.84));
+        }
+
+        .puzzle-pipe-cell.is-pulse-blocked {
+            border-left-color: #ffb755;
+            box-shadow:
+                inset calc(4px * var(--game-scale)) 0 rgba(255, 149, 54, 0.46),
+                0 0 calc(10px * var(--game-scale)) rgba(255, 129, 50, 0.24);
+        }
+
+        .puzzle-pipe-cell.is-pulse-blocked .puzzle-pipe-port--in {
+            color: #ffc66f;
+            box-shadow:
+                0 0 calc(10px * var(--game-scale)) rgba(255, 142, 54, 0.7);
         }
 
         .puzzle-pipes__failure {
@@ -1979,8 +2028,8 @@
         </div>
     </main>
 
-    <script src="levels.js?v=13"></script>
-    <script src="puzzles.js?v=13"></script>
-    <script src="game.js?v=13"></script>
+    <script src="levels.js?v=14"></script>
+    <script src="puzzles.js?v=14"></script>
+    <script src="game.js?v=14"></script>
 </body>
 </html>

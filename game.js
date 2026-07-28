@@ -493,6 +493,8 @@ class GameUI {
         this.pipeTimer = null;
         this.pipeTimerFill = null;
         this.pipeTimerSeconds = null;
+        this.pipeCells = [];
+        this.lastPipeFlowFrame = null;
         this.screens = {
             menu: document.getElementById('screenMenu'),
             'puzzle-select': document.getElementById('screenPuzzleSelect'),
@@ -1169,6 +1171,7 @@ class GameUI {
         const shell = document.createElement('div');
         shell.className = 'puzzle-pipes';
         shell.classList.toggle('is-six', state.size === 6);
+        shell.classList.toggle('has-test-pulse', state.difficulty >= 4);
         shell.classList.toggle('is-failed', failed);
         shell.classList.toggle('is-solved', state.solved);
         this.pipePuzzleShell = shell;
@@ -1177,7 +1180,7 @@ class GameUI {
         labels.className = 'puzzle-pipes__labels';
         labels.innerHTML =
             '<strong><i aria-hidden="true"></i> INMATNING</strong>' +
-            '<span>AKTIV KRETS</span>' +
+            `<span>${state.difficulty >= 4 ? 'TESTPULS' : 'AKTIV KRETS'}</span>` +
             '<strong>UTGÅNG <i aria-hidden="true"></i></strong>';
         shell.append(labels);
 
@@ -1213,6 +1216,7 @@ class GameUI {
         grid.style.setProperty('--pipe-size', state.size);
         grid.classList.toggle('is-disabled', failed);
         this.pipePuzzleGrid = grid;
+        this.pipeCells = [];
         state.cells.forEach((cell, index) => {
             const x = index % state.size;
             const y = Math.floor(index / state.size);
@@ -1232,6 +1236,7 @@ class GameUI {
             );
             button.classList.toggle(
                 'is-flowing',
+                state.difficulty < 4 &&
                 state.connected.has(index)
             );
             button.classList.toggle(
@@ -1278,6 +1283,7 @@ class GameUI {
             }
             button.append(pipe);
             grid.append(button);
+            this.pipeCells[index] = button;
         });
         board.append(grid);
 
@@ -1317,7 +1323,38 @@ class GameUI {
             );
         }
         this.appendPuzzleCloseButton(state);
+        this.syncPipesFlow(state);
         this.syncPipesTimer(state);
+    }
+
+    syncPipesFlow(state) {
+        if (
+            state.type !== 'pipes' ||
+            this.pipeCells.length === 0
+        ) return;
+
+        const presentation =
+            this.game.safePuzzle.getPipeFlowPresentation(
+                state,
+                this.game.reducedMotion
+            );
+        if (presentation.frame === this.lastPipeFlowFrame) return;
+        this.lastPipeFlowFrame = presentation.frame;
+
+        this.pipeCells.forEach((cell, index) => {
+            cell.classList.toggle(
+                'is-flowing',
+                presentation.visible.has(index)
+            );
+            cell.classList.toggle(
+                'is-pulse-head',
+                presentation.leading.has(index)
+            );
+            cell.classList.toggle(
+                'is-pulse-blocked',
+                presentation.blocked.has(index)
+            );
+        });
     }
 
     syncPipesTimer(state) {
@@ -1406,7 +1443,10 @@ class GameUI {
             const meta = SAFE_PUZZLE_META[state.type];
             this.puzzleEyebrow.textContent = meta.eyebrow;
             this.puzzleTitle.textContent = meta.title;
-            this.puzzleCopy.textContent = meta.copy;
+            this.puzzleCopy.textContent =
+                state.type === 'pipes' && state.difficulty >= 4 ?
+                    'Vrid kretsdelarna och följ den korta testpulsen från IN till UT.' :
+                    meta.copy;
             this.puzzleDifficulty.textContent = `Låsgrad ${state.difficulty}`;
             this.puzzleStatus.textContent = state.status;
             this.puzzleStatus.classList.toggle('is-success', state.solved);
@@ -1420,6 +1460,8 @@ class GameUI {
             this.pipeTimer = null;
             this.pipeTimerFill = null;
             this.pipeTimerSeconds = null;
+            this.pipeCells = [];
+            this.lastPipeFlowFrame = null;
 
             if (state.type === 'keypad') {
                 this.renderKeypadPuzzle(state);
@@ -1458,6 +1500,7 @@ class GameUI {
         if (state.type === 'dial' && this.dialNeedle) {
             this.dialNeedle.style.transform = `rotate(${state.angle}deg)`;
         } else if (state.type === 'pipes') {
+            this.syncPipesFlow(state);
             this.syncPipesTimer(state);
         }
     }
