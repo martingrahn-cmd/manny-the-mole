@@ -29,22 +29,27 @@ const PIPE_FLOW_BALANCE = Object.freeze({
     1: Object.freeze({
         size: 4,
         step: 3.2,
+        safeLead: 1,
     }),
     2: Object.freeze({
         size: 5,
         step: 2.8,
+        safeLead: 1,
     }),
     3: Object.freeze({
         size: 5,
         step: 2.55,
+        safeLead: 1,
     }),
     4: Object.freeze({
         size: 6,
-        step: 2.35,
+        step: 3.2,
+        safeLead: 5,
     }),
     5: Object.freeze({
         size: 6,
-        step: 2.1,
+        step: 2.7,
+        safeLead: 4,
     }),
 });
 
@@ -428,12 +433,17 @@ class SafePuzzleEngine {
                 [cells[swapIndex], cells[index]];
         }
 
+        const safeLeadTargets = path
+            .slice(0, balance.safeLead)
+            .map(position => position.y * size + position.x);
+        safeLeadTargets.forEach(targetIndex => {
+            const correctPipeIndex = cells.findIndex(
+                cell => cell.solutionIndex === targetIndex
+            );
+            [cells[targetIndex], cells[correctPipeIndex]] =
+                [cells[correctPipeIndex], cells[targetIndex]];
+        });
         const sourceIndex = path[0].y * size;
-        const sourcePipeIndex = cells.findIndex(
-            cell => cell.solutionIndex === sourceIndex
-        );
-        [cells[sourceIndex], cells[sourcePipeIndex]] =
-            [cells[sourcePipeIndex], cells[sourceIndex]];
         cells.forEach((cell, index) => {
             cell.initialIndex = index;
             cell.revealed = index === sourceIndex;
