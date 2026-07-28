@@ -29,27 +29,22 @@ const PIPE_FLOW_BALANCE = Object.freeze({
     1: Object.freeze({
         size: 4,
         step: 3.2,
-        safeLead: 1,
     }),
     2: Object.freeze({
         size: 5,
         step: 2.8,
-        safeLead: 1,
     }),
     3: Object.freeze({
         size: 5,
         step: 2.55,
-        safeLead: 1,
     }),
     4: Object.freeze({
         size: 6,
-        step: 5,
-        safeLead: 6,
+        step: 6,
     }),
     5: Object.freeze({
         size: 6,
-        step: 4,
-        safeLead: 5,
+        step: 5,
     }),
 });
 
@@ -433,17 +428,12 @@ class SafePuzzleEngine {
                 [cells[swapIndex], cells[index]];
         }
 
-        const safeLeadTargets = path
-            .slice(0, balance.safeLead)
-            .map(position => position.y * size + position.x);
-        safeLeadTargets.forEach(targetIndex => {
-            const correctPipeIndex = cells.findIndex(
-                cell => cell.solutionIndex === targetIndex
-            );
-            [cells[targetIndex], cells[correctPipeIndex]] =
-                [cells[correctPipeIndex], cells[targetIndex]];
-        });
         const sourceIndex = path[0].y * size;
+        const sourcePipeIndex = cells.findIndex(
+            cell => cell.solutionIndex === sourceIndex
+        );
+        [cells[sourceIndex], cells[sourcePipeIndex]] =
+            [cells[sourcePipeIndex], cells[sourceIndex]];
         cells.forEach((cell, index) => {
             cell.initialIndex = index;
             cell.revealed = index === sourceIndex;
@@ -467,6 +457,8 @@ class SafePuzzleEngine {
             selectedIndex: null,
             flowPhase: 'flowing',
             flowStep: balance.step,
+            flowFastStep: 0.45,
+            flowFastForward: false,
             flowTimer: balance.step,
             flowIndex: sourceIndex,
             flowIncoming: 3,
@@ -477,8 +469,78 @@ class SafePuzzleEngine {
             flowVersion: 0,
             timedOut: false,
         };
+        this.refreshPipeFastForward(state);
         this.advancePipeFlow(state);
         return state;
+    }
+
+    getActivePipeStep(state = this.state) {
+        if (!state || state.type !== 'pipes') return 1;
+        return state.flowFastForward ?
+            state.flowFastStep :
+            state.flowStep;
+    }
+
+    isPipeRouteComplete(state = this.state) {
+        if (!state || state.type !== 'pipes') return false;
+
+        let index = state.sourceY * state.size;
+        let incoming = 3;
+        const visited = new Set();
+        const steps = [
+            { x: 0, y: -1 },
+            { x: 1, y: 0 },
+            { x: 0, y: 1 },
+            { x: -1, y: 0 },
+        ];
+
+        while (!visited.has(index)) {
+            visited.add(index);
+            const connections = this.getPipeConnections(state.cells[index]);
+            if (!connections[incoming]) return false;
+            const exits = connections
+                .map((connected, direction) =>
+                    connected && direction !== incoming ?
+                        direction :
+                        null
+                )
+                .filter(direction => direction !== null);
+            if (exits.length !== 1) return false;
+
+            const outgoing = exits[0];
+            const x = index % state.size;
+            const y = Math.floor(index / state.size);
+            if (
+                x === state.size - 1 &&
+                y === state.sinkY &&
+                outgoing === 1
+            ) return true;
+
+            const nextX = x + steps[outgoing].x;
+            const nextY = y + steps[outgoing].y;
+            if (
+                nextX < 0 ||
+                nextX >= state.size ||
+                nextY < 0 ||
+                nextY >= state.size
+            ) return false;
+            index = nextY * state.size + nextX;
+            incoming = (outgoing + 2) % 4;
+        }
+        return false;
+    }
+
+    refreshPipeFastForward(state = this.state) {
+        if (!state || state.type !== 'pipes') return false;
+        const routeComplete = this.isPipeRouteComplete(state);
+        state.flowFastForward = routeComplete;
+        if (routeComplete) {
+            state.flowTimer = Math.min(
+                state.flowTimer,
+                state.flowFastStep
+            );
+        }
+        return routeComplete;
     }
 
     failPipeFlow(state, message, blockedIndex = state.flowIndex) {
@@ -588,7 +650,8 @@ class SafePuzzleEngine {
 
         state.flowIndex = nextY * state.size + nextX;
         state.flowIncoming = (outgoing + 2) % 4;
-        state.status =
+        state.status = state.flowFastForward ?
+            'Vägen till UT är klar — trycket snabbspolas genom kretsen!' :
             `Flödet rör sig · ${state.filled.size} rör fyllda. ` +
             'Bygg vidare framför trycket!';
         this.touch();
@@ -604,6 +667,7 @@ class SafePuzzleEngine {
             pulsed: false,
         };
         if (!state || state.type !== 'pipes') return empty;
+        const activeStep = this.getActivePipeStep(state);
         const progress = state.solved || state.flowPhase === 'failed' ?
             1 :
             state.flowPhase === 'flowing' ?
@@ -611,7 +675,7 @@ class SafePuzzleEngine {
                 0,
                 Math.min(
                     1,
-                    1 - state.flowTimer / state.flowStep
+                    1 - state.flowTimer / activeStep
                 )
             ) :
             1;
@@ -704,7 +768,9 @@ class SafePuzzleEngine {
         ];
         state.moves++;
         state.selectedIndex = null;
-        state.status =
+        const routeComplete = this.refreshPipeFastForward(state);
+        state.status = routeComplete ?
+            'Kretsen är kopplad till UT! Trycket snabbspolas genom rören.' :
             `${state.moves} ${state.moves === 1 ? 'byte' : 'byten'} · ` +
             'fortsätt bygga framför det framryckande flödet.';
         this.touch();
@@ -723,6 +789,7 @@ class SafePuzzleEngine {
         state.phase = 'active';
         state.flowPhase = 'flowing';
         state.flowTimer = state.flowStep;
+        state.flowFastForward = false;
         state.flowIndex = state.sourceY * state.size;
         state.flowIncoming = 3;
         state.flowHead = null;
@@ -738,6 +805,7 @@ class SafePuzzleEngine {
         state.timedOut = false;
         state.status =
             'Nytt försök. Trycket rör sig redan genom startbiten.';
+        this.refreshPipeFastForward(state);
         this.advancePipeFlow(state);
         return true;
     }
@@ -858,7 +926,7 @@ class SafePuzzleEngine {
                 state.flowTimer <= 0 &&
                 advances < 8
             ) {
-                state.flowTimer += state.flowStep;
+                state.flowTimer += this.getActivePipeStep(state);
                 this.advancePipeFlow(state);
                 advances++;
             }
