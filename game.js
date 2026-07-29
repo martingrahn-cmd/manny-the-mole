@@ -1183,6 +1183,7 @@ class GameUI {
 
         const board = document.createElement('div');
         board.className = 'puzzle-pipes__board';
+        board.style.setProperty('--pipe-size', state.size);
         const grid = document.createElement('div');
         grid.className = 'puzzle-pipes__grid';
         grid.style.setProperty('--pipe-size', state.size);
@@ -1304,7 +1305,17 @@ class GameUI {
             grid.append(button);
             this.pipeCells[index] = button;
         });
-        board.append(grid);
+        const inTerminal = document.createElement('span');
+        inTerminal.className =
+            'puzzle-pipes__terminal puzzle-pipes__terminal--in';
+        inTerminal.style.setProperty('--terminal-row', state.sourceY);
+        inTerminal.setAttribute('aria-hidden', 'true');
+        const outTerminal = document.createElement('span');
+        outTerminal.className =
+            'puzzle-pipes__terminal puzzle-pipes__terminal--out';
+        outTerminal.style.setProperty('--terminal-row', state.sinkY);
+        outTerminal.setAttribute('aria-hidden', 'true');
+        board.append(grid, inTerminal, outTerminal);
 
         let failureBanner = null;
         if (failed) {
