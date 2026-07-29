@@ -12,7 +12,7 @@ const SAFE_PUZZLE_META = Object.freeze({
     pipes: {
         eyebrow: 'Säkringscentral',
         title: 'Återställ kretsen',
-        copy: 'Avtäck och byt fasta rör innan tryckflödet hinner ikapp dig.',
+        copy: 'Avtäck och byt ledare innan strömmen hinner ikapp dig.',
     },
 });
 
@@ -25,26 +25,38 @@ const PIPE_BASE_CONNECTIONS = Object.freeze({
 
 const PIPE_DIRECTION_NAMES = Object.freeze(['upp', 'höger', 'ned', 'vänster']);
 
+const PIPE_DIRECTION_SOURCES = Object.freeze([
+    'uppifrån',
+    'från höger',
+    'nedifrån',
+    'från vänster',
+]);
+
 const PIPE_FLOW_BALANCE = Object.freeze({
     1: Object.freeze({
         size: 4,
         step: 3.2,
+        safeLead: 2,
     }),
     2: Object.freeze({
         size: 5,
         step: 2.8,
+        safeLead: 3,
     }),
     3: Object.freeze({
         size: 5,
         step: 2.55,
+        safeLead: 3,
     }),
     4: Object.freeze({
         size: 6,
         step: 6,
+        safeLead: 6,
     }),
     5: Object.freeze({
         size: 6,
         step: 5,
+        safeLead: 5,
     }),
 });
 
@@ -428,12 +440,17 @@ class SafePuzzleEngine {
                 [cells[swapIndex], cells[index]];
         }
 
+        const safeLead = Math.max(1, balance.safeLead || 1);
+        path.slice(0, safeLead).forEach(position => {
+            const targetIndex = position.y * size + position.x;
+            const correctPipeIndex = cells.findIndex(
+                cell => cell.solutionIndex === targetIndex
+            );
+            [cells[targetIndex], cells[correctPipeIndex]] =
+                [cells[correctPipeIndex], cells[targetIndex]];
+        });
+
         const sourceIndex = path[0].y * size;
-        const sourcePipeIndex = cells.findIndex(
-            cell => cell.solutionIndex === sourceIndex
-        );
-        [cells[sourceIndex], cells[sourcePipeIndex]] =
-            [cells[sourcePipeIndex], cells[sourceIndex]];
         cells.forEach((cell, index) => {
             cell.initialIndex = index;
             cell.revealed = index === sourceIndex;
@@ -444,7 +461,7 @@ class SafePuzzleEngine {
             ...this.createBaseState('pipes', difficulty),
             phase: 'active',
             status:
-                'Trycket är i rörelse. Avtäck och byt rör framför flödet.',
+                'Strömmen är påslagen. Avtäck och byt ledare framför den.',
             size,
             cells,
             path,
@@ -572,7 +589,7 @@ class SafePuzzleEngine {
         ) {
             return this.failPipeFlow(
                 state,
-                'Trycket gick i en slinga och kretsen överbelastades.',
+                'Strömmen gick i en slinga och kretsen överbelastades.',
                 index
             );
         }
@@ -583,7 +600,7 @@ class SafePuzzleEngine {
         if (!connections[state.flowIncoming]) {
             return this.failPipeFlow(
                 state,
-                'Trycket träffade ett stängt rör. Kretsen slog ifrån.',
+                'Strömmen nådde en bruten ledare. Kretsen slog ifrån.',
                 index
             );
         }
@@ -598,7 +615,7 @@ class SafePuzzleEngine {
         if (exits.length !== 1) {
             return this.failPipeFlow(
                 state,
-                'Trycket nådde en återvändsgränd. Kretsen slog ifrån.',
+                'Strömmen nådde en återvändsgränd. Kretsen slog ifrån.',
                 index
             );
         }
@@ -621,8 +638,8 @@ class SafePuzzleEngine {
             outgoing === 1
         ) {
             this.markSolved(
-                `Trycket nådde UT efter ${state.moves} byten och ` +
-                `${state.reveals} avtäckta rör!`
+                `Strömmen nådde UT efter ${state.moves} byten och ` +
+                `${state.reveals} avtäckta ledare!`
             );
             return true;
         }
@@ -643,7 +660,7 @@ class SafePuzzleEngine {
         ) {
             return this.failPipeFlow(
                 state,
-                'Trycket lämnade kretskortet. Kretsen slog ifrån.',
+                'Strömmen lämnade kretskortet. Kretsen slog ifrån.',
                 index
             );
         }
@@ -651,9 +668,9 @@ class SafePuzzleEngine {
         state.flowIndex = nextY * state.size + nextX;
         state.flowIncoming = (outgoing + 2) % 4;
         state.status = state.flowFastForward ?
-            'Vägen till UT är klar — trycket snabbspolas genom kretsen!' :
-            `Flödet rör sig · ${state.filled.size} rör fyllda. ` +
-            'Bygg vidare framför trycket!';
+            'Vägen till UT är klar — strömmen snabbspolas genom kretsen!' :
+            `Strömmen rör sig · ${state.filled.size} ledare strömsatta. ` +
+            'Bygg vidare framför den!';
         this.touch();
         return true;
     }
@@ -720,7 +737,7 @@ class SafePuzzleEngine {
 
         if (state.filled.has(index)) {
             state.status =
-                'Röret är redan trycksatt och går inte längre att flytta.';
+                'Ledaren är redan strömsatt och går inte längre att flytta.';
             this.touch();
             return true;
         }
@@ -730,8 +747,8 @@ class SafePuzzleEngine {
             cell.revealed = true;
             state.reveals++;
             state.status =
-                `Rör avtäckta: ${state.reveals}/${state.cells.length}. ` +
-                'Markera två avtäckta rör för att byta plats.';
+                `Ledare avtäckta: ${state.reveals}/${state.cells.length}. ` +
+                'Markera två avtäckta ledare för att byta plats.';
             this.touch();
             return true;
         }
@@ -739,7 +756,7 @@ class SafePuzzleEngine {
         if (state.selectedIndex === null) {
             state.selectedIndex = index;
             state.status =
-                'Röret är markerat. Välj ett annat avtäckt rör för att byta.';
+                'Ledaren är markerad. Välj en annan avtäckt ledare för att byta.';
             this.touch();
             return true;
         }
@@ -754,7 +771,7 @@ class SafePuzzleEngine {
         if (state.filled.has(state.selectedIndex)) {
             state.selectedIndex = null;
             state.status =
-                'Det markerade röret hann trycksättas. Välj ett annat.';
+                'Den markerade ledaren hann strömsättas. Välj en annan.';
             this.touch();
             return true;
         }
@@ -770,9 +787,9 @@ class SafePuzzleEngine {
         state.selectedIndex = null;
         const routeComplete = this.refreshPipeFastForward(state);
         state.status = routeComplete ?
-            'Kretsen är kopplad till UT! Trycket snabbspolas genom rören.' :
+            'Kretsen är kopplad till UT! Strömmen snabbspolas genom ledarna.' :
             `${state.moves} ${state.moves === 1 ? 'byte' : 'byten'} · ` +
-            'fortsätt bygga framför det framryckande flödet.';
+            'fortsätt bygga framför den framryckande strömmen.';
         this.touch();
         return true;
     }
@@ -804,7 +821,7 @@ class SafePuzzleEngine {
         state.selectedIndex = null;
         state.timedOut = false;
         state.status =
-            'Nytt försök. Trycket rör sig redan genom startbiten.';
+            'Nytt försök. Strömmen går redan genom startledaren.';
         this.refreshPipeFastForward(state);
         this.advancePipeFlow(state);
         return true;
@@ -812,12 +829,12 @@ class SafePuzzleEngine {
 
     getPipeLabel(index) {
         const state = this.state;
-        if (!state || state.type !== 'pipes') return 'Rör';
+        if (!state || state.type !== 'pipes') return 'Ledare';
         const cell = state.cells[index];
         const row = Math.floor(index / state.size) + 1;
         const column = index % state.size + 1;
         if (!cell.revealed && !state.filled.has(index)) {
-            return `Dold rörplatta, rad ${row}, kolumn ${column}. Avtäck.`;
+            return `Dold ledarplatta, rad ${row}, kolumn ${column}. Avtäck.`;
         }
         const connections = this.getPipeConnections(cell)
             .map((connected, direction) =>
@@ -825,12 +842,15 @@ class SafePuzzleEngine {
             )
             .filter(Boolean)
             .join(' och ');
-        const stateLabel = state.filled.has(index) ?
-            'Trycksatt och låst.' :
-            state.selectedIndex === index ?
-                'Markerat för byte.' :
-                'Välj för att byta.';
-        return `Fast rör rad ${row}, kolumn ${column}. ` +
+        const stateLabel = state.flowBlockedIndex === index ?
+            'Här bröts kretsen — strömmen kom in ' +
+            `${PIPE_DIRECTION_SOURCES[state.flowIncoming]}.` :
+            state.filled.has(index) ?
+                'Strömsatt och låst.' :
+                state.selectedIndex === index ?
+                    'Markerad för byte.' :
+                    'Välj för att byta.';
+        return `Fast ledare rad ${row}, kolumn ${column}. ` +
             `Öppet ${connections}. ${stateLabel}`;
     }
 

@@ -136,7 +136,7 @@ const SAFE_ASSET_KEYS = Object.freeze({
 const SAFE_TYPE_LABELS = Object.freeze({
     keypad: 'Minneslås',
     dial: 'Rattlås',
-    pipes: 'Rörlås',
+    pipes: 'Kretslås',
 });
 
 function isColoredBlockValue(value) {
@@ -1177,7 +1177,7 @@ class GameUI {
         labels.className = 'puzzle-pipes__labels';
         labels.innerHTML =
             '<strong><i aria-hidden="true"></i> INMATNING</strong>' +
-            '<span>TRYCKFLÖDE</span>' +
+            '<span>STRÖMFLÖDE</span>' +
             '<strong>UTGÅNG <i aria-hidden="true"></i></strong>';
         shell.append(labels);
 
@@ -1306,6 +1306,7 @@ class GameUI {
         });
         board.append(grid);
 
+        let failureBanner = null;
         if (failed) {
             const failure = document.createElement('div');
             failure.className = 'puzzle-pipes__failure';
@@ -1316,13 +1317,17 @@ class GameUI {
             failureIcon.setAttribute('aria-hidden', 'true');
             const failureCopy = document.createElement('span');
             const failureTitle = document.createElement('strong');
-            failureTitle.textContent = 'FLÖDET BRÖTS';
+            failureTitle.textContent = 'KRETSEN BRÖTS';
             const failureHint = document.createElement('small');
-            failureHint.textContent =
-                'Trycket nådde ett felkopplat rör. Starta om och bygg framför flödet.';
+            failureHint.textContent = Number.isInteger(state.flowBlockedIndex) ?
+                'Brottet är markerat på rad ' +
+                `${Math.floor(state.flowBlockedIndex / state.size) + 1}` +
+                ', kolumn ' +
+                `${state.flowBlockedIndex % state.size + 1}.` :
+                'Se hur ledarna sitter innan du försöker igen.';
             failureCopy.append(failureTitle, failureHint);
             failure.append(failureIcon, failureCopy);
-            board.append(failure);
+            failureBanner = failure;
         }
 
         const legend = document.createElement('div');
@@ -1331,7 +1336,7 @@ class GameUI {
             '<span><b>1</b> Avtäck</span>' +
             '<span><b>2</b> Markera</span>' +
             '<span><b>3</b> Byt plats</span>';
-        shell.append(legend, board);
+        shell.append(failureBanner || legend, board);
         this.puzzleBody.append(shell);
 
         if (failed) {
