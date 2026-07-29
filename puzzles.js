@@ -51,7 +51,7 @@ const PIPE_FLOW_BALANCE = Object.freeze({
     }),
     3: Object.freeze({
         size: 5,
-        step: 2.55,
+        step: 3.3,
         opening: 8,
         safeLead: 3,
         turnChance: 0.58,
@@ -59,7 +59,7 @@ const PIPE_FLOW_BALANCE = Object.freeze({
     }),
     4: Object.freeze({
         size: 6,
-        step: 3.6,
+        step: 4.5,
         opening: 10,
         safeLead: 4,
         turnChance: 0.62,
@@ -67,7 +67,7 @@ const PIPE_FLOW_BALANCE = Object.freeze({
     }),
     5: Object.freeze({
         size: 6,
-        step: 3.1,
+        step: 4,
         opening: 11,
         safeLead: 4,
         turnChance: 0.7,
