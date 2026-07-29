@@ -35,41 +35,46 @@ const PIPE_DIRECTION_SOURCES = Object.freeze([
 const PIPE_FLOW_BALANCE = Object.freeze({
     1: Object.freeze({
         size: 4,
-        step: 3.2,
-        opening: 5,
+        step: 3.8,
+        opening: 6,
         safeLead: 2,
+        startRevealed: 0.5,
         turnChance: 0,
         doubleTurnChance: 0,
     }),
     2: Object.freeze({
         size: 5,
-        step: 3.2,
-        opening: 6.5,
+        step: 3.8,
+        opening: 8,
         safeLead: 3,
+        startRevealed: 0.45,
         turnChance: 0,
         doubleTurnChance: 0,
     }),
     3: Object.freeze({
         size: 5,
-        step: 3.3,
-        opening: 8,
+        step: 4,
+        opening: 9,
         safeLead: 3,
+        startRevealed: 0.4,
         turnChance: 0.58,
         doubleTurnChance: 0.2,
     }),
     4: Object.freeze({
         size: 6,
-        step: 4.5,
-        opening: 10,
+        step: 5.2,
+        opening: 12,
         safeLead: 4,
+        startRevealed: 0.35,
         turnChance: 0.62,
         doubleTurnChance: 0.45,
     }),
     5: Object.freeze({
         size: 6,
-        step: 4,
-        opening: 11,
+        step: 4.8,
+        opening: 13,
         safeLead: 4,
+        startRevealed: 0.3,
         turnChance: 0.7,
         doubleTurnChance: 0.55,
     }),
@@ -456,6 +461,22 @@ class SafePuzzleEngine {
             cell.initialRevealed = index === sourceIndex;
         });
 
+        const openFaceUp = Math.round(
+            (cells.length - 1) * (balance.startRevealed || 0)
+        );
+        const candidates = cells
+            .map((cell, index) => index)
+            .filter(index => index !== sourceIndex);
+        for (let index = candidates.length - 1; index > 0; index--) {
+            const swapIndex = Math.floor(random() * (index + 1));
+            [candidates[index], candidates[swapIndex]] =
+                [candidates[swapIndex], candidates[index]];
+        }
+        candidates.slice(0, openFaceUp).forEach(index => {
+            cells[index].revealed = true;
+            cells[index].initialRevealed = true;
+        });
+
         const state = {
             ...this.createBaseState('pipes', difficulty),
             phase: 'active',
@@ -468,7 +489,7 @@ class SafePuzzleEngine {
             connected: new Set(),
             filled: new Set(),
             moves: 0,
-            reveals: 1,
+            reveals: 1 + openFaceUp,
             selectedIndex: null,
             flowPhase: 'flowing',
             flowStep: balance.step,
