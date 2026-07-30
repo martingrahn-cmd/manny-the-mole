@@ -260,6 +260,186 @@
             background: #eef4ff;
         }
 
+        .touch-controls {
+            --touch-stick-size: min(38vw, max(124px, calc(150px * var(--game-scale))));
+            --touch-drill-size: min(26vw, max(84px, calc(102px * var(--game-scale))));
+            position: absolute;
+            z-index: 7;
+            right: 0;
+            bottom: 0;
+            left: 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            padding:
+                0
+                max(14px, env(safe-area-inset-right, 0px))
+                max(16px, env(safe-area-inset-bottom, 0px))
+                max(14px, env(safe-area-inset-left, 0px));
+            touch-action: none;
+        }
+
+        .touch-controls[hidden] {
+            display: none;
+        }
+
+        .touch-stick {
+            position: relative;
+            width: var(--touch-stick-size);
+            height: var(--touch-stick-size);
+            pointer-events: auto;
+            touch-action: none;
+            -webkit-user-select: none;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .touch-stick__ring {
+            position: absolute;
+            inset: 0;
+            border: max(2px, calc(2px * var(--game-scale))) solid
+                rgba(126, 214, 255, 0.3);
+            border-radius: 50%;
+            background:
+                radial-gradient(
+                    circle at 50% 50%,
+                    rgba(12, 30, 44, 0.62),
+                    rgba(6, 14, 22, 0.44) 68%,
+                    rgba(6, 14, 22, 0.16)
+                );
+            box-shadow: inset 0 0 calc(22px * var(--game-scale))
+                rgba(86, 190, 240, 0.13);
+        }
+
+        .touch-stick__tick {
+            position: absolute;
+            width: max(4px, calc(5px * var(--game-scale)));
+            height: max(4px, calc(5px * var(--game-scale)));
+            border-radius: 50%;
+            background: rgba(140, 220, 255, 0.34);
+        }
+
+        .touch-stick__tick--up {
+            top: 9%;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        .touch-stick__tick--down {
+            bottom: 9%;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        .touch-stick__tick--left {
+            top: 50%;
+            left: 9%;
+            transform: translateY(-50%);
+        }
+
+        .touch-stick__tick--right {
+            top: 50%;
+            right: 9%;
+            transform: translateY(-50%);
+        }
+
+        .touch-stick.is-left .touch-stick__tick--left,
+        .touch-stick.is-right .touch-stick__tick--right,
+        .touch-stick.is-up .touch-stick__tick--up,
+        .touch-stick.is-down .touch-stick__tick--down {
+            background: #8ee9ff;
+            box-shadow: 0 0 calc(10px * var(--game-scale))
+                rgba(126, 226, 255, 0.85);
+        }
+
+        .touch-stick__knob {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 42%;
+            height: 42%;
+            transform:
+                translate(-50%, -50%)
+                translate(
+                    calc(var(--stick-x, 0) * 1px),
+                    calc(var(--stick-y, 0) * 1px)
+                );
+            border: max(1px, calc(1px * var(--game-scale))) solid
+                rgba(176, 236, 255, 0.5);
+            border-radius: 50%;
+            background:
+                radial-gradient(
+                    circle at 38% 32%,
+                    rgba(150, 226, 255, 0.94),
+                    rgba(52, 132, 178, 0.86) 62%,
+                    rgba(24, 74, 106, 0.9)
+                );
+            box-shadow: 0 calc(3px * var(--game-scale))
+                calc(12px * var(--game-scale)) rgba(0, 0, 0, 0.45);
+        }
+
+        .touch-stick.is-active .touch-stick__knob {
+            border-color: rgba(206, 246, 255, 0.86);
+        }
+
+        .touch-drill {
+            width: var(--touch-drill-size);
+            height: var(--touch-drill-size);
+            border: max(2px, calc(2px * var(--game-scale))) solid
+                rgba(255, 197, 122, 0.42);
+            border-radius: 50%;
+            background:
+                radial-gradient(
+                    circle at 42% 34%,
+                    rgba(255, 214, 150, 0.3),
+                    rgba(58, 30, 12, 0.72) 66%,
+                    rgba(30, 15, 6, 0.78)
+                );
+            color: #ffd9a4;
+            font: 900 max(11px, calc(13px * var(--game-scale))) / 1
+                ui-monospace, monospace;
+            letter-spacing: 0.08em;
+            pointer-events: auto;
+            touch-action: none;
+            -webkit-user-select: none;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .touch-drill.is-pressed {
+            border-color: #ffc46a;
+            background:
+                radial-gradient(
+                    circle at 42% 34%,
+                    rgba(255, 226, 176, 0.55),
+                    rgba(120, 62, 20, 0.82) 64%,
+                    rgba(56, 27, 10, 0.86)
+                );
+            box-shadow: 0 0 calc(20px * var(--game-scale))
+                rgba(255, 160, 60, 0.5);
+            color: #fff1d8;
+        }
+
+        .side-drill-hint__keys {
+            display: contents;
+        }
+
+        .side-drill-hint__touch {
+            display: none;
+        }
+
+        @media (pointer: coarse) {
+            .puzzle-help,
+            .controls,
+            .side-drill-hint__keys {
+                display: none;
+            }
+
+            .side-drill-hint__touch {
+                display: contents;
+            }
+        }
+
         .side-drill-hint {
             position: absolute;
             top: max(56px, calc(72px * var(--game-scale)));
@@ -2109,7 +2289,25 @@
             </header>
 
             <div id="sideDrillHint" class="side-drill-hint" role="status" hidden>
-                <kbd>←/→</kbd><span>+</span><kbd>Space</kbd><strong>Borra åt sidan</strong>
+                <span class="side-drill-hint__keys"><kbd>←/→</kbd><span>+</span><kbd>Space</kbd></span><span class="side-drill-hint__touch"><kbd>Spak i sidled</kbd><span>+</span><kbd>BORR</kbd></span><strong>Borra åt sidan</strong>
+            </div>
+            <div id="touchControls" class="touch-controls" hidden>
+                <div id="touchStick" class="touch-stick" aria-hidden="true">
+                    <span class="touch-stick__ring"></span>
+                    <span class="touch-stick__knob"></span>
+                    <span class="touch-stick__tick touch-stick__tick--up"></span>
+                    <span class="touch-stick__tick touch-stick__tick--right"></span>
+                    <span class="touch-stick__tick touch-stick__tick--down"></span>
+                    <span class="touch-stick__tick touch-stick__tick--left"></span>
+                </div>
+                <button
+                    id="touchDrill"
+                    class="touch-drill"
+                    type="button"
+                    aria-label="Borra"
+                >
+                    <span aria-hidden="true">BORR</span>
+                </button>
             </div>
             <div id="countdownDisplay" class="countdown" aria-live="assertive" hidden>3</div>
             <div id="gameToast" class="toast" role="status" hidden></div>

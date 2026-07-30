@@ -316,6 +316,192 @@ class GamepadHandler {
     }
 }
 
+const TOUCH_STICK_DEADZONE = 0.32;
+
+class TouchControls {
+    constructor() {
+        this.available =
+            window.matchMedia?.('(pointer: coarse)')?.matches === true ||
+            navigator.maxTouchPoints > 0;
+        this.stick = null;
+        this.drill = null;
+        this.stickPointer = null;
+        this.origin = { x: 0, y: 0 };
+        this.radius = 1;
+        this.direction = { left: false, right: false, up: false, down: false };
+        this.drillPointers = new Set();
+        this.last = {
+            left: false,
+            right: false,
+            up: false,
+            down: false,
+            dig: false,
+        };
+    }
+
+    attach(stickElement, drillElement) {
+        this.stick = stickElement;
+        this.drill = drillElement;
+        if (!this.stick || !this.drill) return;
+
+        this.stick.addEventListener(
+            'pointerdown',
+            event => this.beginStick(event),
+            { passive: false }
+        );
+        this.stick.addEventListener(
+            'pointermove',
+            event => this.moveStick(event),
+            { passive: false }
+        );
+        ['pointerup', 'pointercancel'].forEach(name => {
+            this.stick.addEventListener(name, event => this.endStick(event));
+        });
+
+        this.drill.addEventListener(
+            'pointerdown',
+            event => {
+                event.preventDefault();
+                this.capture(this.drill, event.pointerId);
+                this.drillPointers.add(event.pointerId);
+                this.drill.classList.add('is-pressed');
+            },
+            { passive: false }
+        );
+        ['pointerup', 'pointercancel'].forEach(name => {
+            this.drill.addEventListener(name, event => {
+                this.drillPointers.delete(event.pointerId);
+                if (this.drillPointers.size === 0) {
+                    this.drill.classList.remove('is-pressed');
+                }
+            });
+        });
+        // Ett finger som glider ut ur knappen ska inte fastna som nedtryckt.
+        window.addEventListener('pointercancel', () => this.release());
+        window.addEventListener('blur', () => this.release());
+    }
+
+    capture(element, pointerId) {
+        // Kan kasta om pekaren redan släppts; fångsten är en bonus, inte ett krav.
+        try {
+            element.setPointerCapture?.(pointerId);
+        } catch {
+            /* pekaren finns inte längre */
+        }
+    }
+
+    beginStick(event) {
+        event.preventDefault();
+        const bounds = this.stick.getBoundingClientRect();
+        this.origin = {
+            x: bounds.left + bounds.width / 2,
+            y: bounds.top + bounds.height / 2,
+        };
+        this.radius = Math.max(1, bounds.width / 2);
+        this.stickPointer = event.pointerId;
+        this.capture(this.stick, event.pointerId);
+        this.stick.classList.add('is-active');
+        this.applyStick(event.clientX, event.clientY);
+    }
+
+    moveStick(event) {
+        if (this.stickPointer !== event.pointerId) return;
+        event.preventDefault();
+        this.applyStick(event.clientX, event.clientY);
+    }
+
+    endStick(event) {
+        if (this.stickPointer !== event.pointerId) return;
+        this.stickPointer = null;
+        this.stick.classList.remove('is-active');
+        this.setDirection({
+            left: false,
+            right: false,
+            up: false,
+            down: false,
+        });
+        this.stick.style.setProperty('--stick-x', '0');
+        this.stick.style.setProperty('--stick-y', '0');
+    }
+
+    applyStick(clientX, clientY) {
+        const dx = (clientX - this.origin.x) / this.radius;
+        const dy = (clientY - this.origin.y) / this.radius;
+        const distance = Math.hypot(dx, dy);
+        const clamp = distance > 1 ? 1 / distance : 1;
+        this.stick.style.setProperty(
+            '--stick-x',
+            String(Math.round(dx * clamp * this.radius * 0.58))
+        );
+        this.stick.style.setProperty(
+            '--stick-y',
+            String(Math.round(dy * clamp * this.radius * 0.58))
+        );
+
+        if (distance < TOUCH_STICK_DEADZONE) {
+            this.setDirection({
+                left: false,
+                right: false,
+                up: false,
+                down: false,
+            });
+            return;
+        }
+
+        // Fyrvägs: rutnätet mår bättre av en dominant axel än av diagonaler.
+        const horizontal = Math.abs(dx) >= Math.abs(dy);
+        this.setDirection({
+            left: horizontal && dx < 0,
+            right: horizontal && dx > 0,
+            up: !horizontal && dy < 0,
+            down: !horizontal && dy > 0,
+        });
+    }
+
+    setDirection(next) {
+        this.direction = next;
+        if (!this.stick) return;
+        this.stick.classList.toggle('is-left', next.left);
+        this.stick.classList.toggle('is-right', next.right);
+        this.stick.classList.toggle('is-up', next.up);
+        this.stick.classList.toggle('is-down', next.down);
+    }
+
+    release() {
+        this.drillPointers.clear();
+        this.drill?.classList.remove('is-pressed');
+        this.stickPointer = null;
+        this.stick?.classList.remove('is-active');
+        this.setDirection({
+            left: false,
+            right: false,
+            up: false,
+            down: false,
+        });
+        this.stick?.style.setProperty('--stick-x', '0');
+        this.stick?.style.setProperty('--stick-y', '0');
+    }
+
+    getInput() {
+        const { left, right, up, down } = this.direction;
+        const dig = this.drillPointers.size > 0;
+        const input = {
+            left,
+            right,
+            up,
+            down,
+            dig,
+            digJustPressed: dig && !this.last.dig,
+            leftJustPressed: left && !this.last.left,
+            rightJustPressed: right && !this.last.right,
+            upJustPressed: up && !this.last.up,
+            downJustPressed: down && !this.last.down,
+        };
+        this.last = { left, right, up, down, dig };
+        return input;
+    }
+}
+
 class ArcadeSound {
     constructor() {
         this.context = null;
@@ -464,6 +650,7 @@ class GameUI {
         this.airModule = document.getElementById('hudAirModule');
         this.pauseButton = document.getElementById('pauseButton');
         this.sideDrillHint = document.getElementById('sideDrillHint');
+        this.touchControls = document.getElementById('touchControls');
         this.countdown = document.getElementById('countdownDisplay');
         this.toast = document.getElementById('gameToast');
         this.gameoverEyebrow = document.getElementById('gameoverEyebrow');
@@ -1607,6 +1794,14 @@ class GameUI {
             );
         this.hud.hidden = hideHud;
         this.pauseButton.hidden = game.gameState !== 'playing';
+        if (this.touchControls) {
+            const showTouchControls =
+                game.touch.available && game.gameState === 'playing';
+            if (this.touchControls.hidden === showTouchControls) {
+                this.touchControls.hidden = !showTouchControls;
+                if (!showTouchControls) game.touch.release();
+            }
+        }
         const showSideDrillHint =
             game.gameState === 'playing' &&
             !game.hasSideDrilled &&
@@ -1676,6 +1871,11 @@ class Game {
         this.frame = document.getElementById('gameFrame') || this.canvas.parentElement;
         
         this.gamepad = new GamepadHandler();
+        this.touch = new TouchControls();
+        this.touch.attach(
+            document.getElementById('touchStick'),
+            document.getElementById('touchDrill')
+        );
         this.sound = new ArcadeSound();
         
         this.grid = [];
@@ -2138,22 +2338,23 @@ class Game {
     }
     
     getInput() {
-        // Combine keyboard and gamepad input
+        // Combine keyboard, gamepad and touch input
         const gp = this.gamepad.getInput();
-        
+        const tc = this.touch.getInput();
+
         return {
-            left: this.keys['ArrowLeft'] || this.keys['a'] || gp?.left,
-            right: this.keys['ArrowRight'] || this.keys['d'] || gp?.right,
-            up: this.keys['ArrowUp'] || this.keys['w'] || gp?.up,
-            down: this.keys['ArrowDown'] || this.keys['s'] || gp?.down,
-            dig: this.keys[' '] || gp?.dig,
-            digJustPressed: this.keysJustPressed[' '] || gp?.digJustPressed,
+            left: this.keys['ArrowLeft'] || this.keys['a'] || gp?.left || tc.left,
+            right: this.keys['ArrowRight'] || this.keys['d'] || gp?.right || tc.right,
+            up: this.keys['ArrowUp'] || this.keys['w'] || gp?.up || tc.up,
+            down: this.keys['ArrowDown'] || this.keys['s'] || gp?.down || tc.down,
+            dig: this.keys[' '] || gp?.dig || tc.dig,
+            digJustPressed: this.keysJustPressed[' '] || gp?.digJustPressed || tc.digJustPressed,
             pauseJustPressed: gp?.pauseJustPressed,
             // Direction just pressed (for facing changes)
-            leftJustPressed: this.keysJustPressed['ArrowLeft'] || this.keysJustPressed['a'] || gp?.leftJustPressed,
-            rightJustPressed: this.keysJustPressed['ArrowRight'] || this.keysJustPressed['d'] || gp?.rightJustPressed,
-            upJustPressed: this.keysJustPressed['ArrowUp'] || this.keysJustPressed['w'] || gp?.upJustPressed,
-            downJustPressed: this.keysJustPressed['ArrowDown'] || this.keysJustPressed['s'] || gp?.downJustPressed,
+            leftJustPressed: this.keysJustPressed['ArrowLeft'] || this.keysJustPressed['a'] || gp?.leftJustPressed || tc.leftJustPressed,
+            rightJustPressed: this.keysJustPressed['ArrowRight'] || this.keysJustPressed['d'] || gp?.rightJustPressed || tc.rightJustPressed,
+            upJustPressed: this.keysJustPressed['ArrowUp'] || this.keysJustPressed['w'] || gp?.upJustPressed || tc.upJustPressed,
+            downJustPressed: this.keysJustPressed['ArrowDown'] || this.keysJustPressed['s'] || gp?.downJustPressed || tc.downJustPressed,
         };
     }
     
