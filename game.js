@@ -1370,9 +1370,16 @@ class GameUI {
 
         const labels = document.createElement('div');
         labels.className = 'puzzle-pipes__labels';
+        const anchorTotal = state.anchors.length;
+        const anchorsPassed = state.anchors.filter(
+            anchor => state.filled.has(anchor)
+        ).length;
         labels.innerHTML =
             '<strong><i aria-hidden="true"></i> INMATNING</strong>' +
-            '<span>STRÖMFLÖDE</span>' +
+            (anchorTotal > 0 ?
+                '<span class="puzzle-pipes__anchors">SÄKRINGAR ' +
+                `${anchorsPassed}/${anchorTotal}</span>` :
+                '<span>STRÖMFLÖDE</span>') +
             '<strong>UTGÅNG <i aria-hidden="true"></i></strong>';
         shell.append(labels);
 
@@ -1524,10 +1531,13 @@ class GameUI {
             failureIcon.setAttribute('aria-hidden', 'true');
             const failureCopy = document.createElement('span');
             const failureTitle = document.createElement('strong');
-            failureTitle.textContent = 'KRETSEN BRÖTS';
+            const missadSäkring = state.flowBlockedReason === 'anchor';
+            failureTitle.textContent = missadSäkring ?
+                'SÄKRING FÖRBIGÅNGEN' :
+                'KRETSEN BRÖTS';
             const failureHint = document.createElement('small');
             failureHint.textContent = Number.isInteger(state.flowBlockedIndex) ?
-                'Brottet är markerat på rad ' +
+                (missadSäkring ? 'Säkringen är markerad på rad ' : 'Brottet är markerat på rad ') +
                 `${Math.floor(state.flowBlockedIndex / state.size) + 1}` +
                 ', kolumn ' +
                 `${state.flowBlockedIndex % state.size + 1}.` :
@@ -1539,7 +1549,11 @@ class GameUI {
 
         const legend = document.createElement('div');
         legend.className = 'puzzle-pipes__legend';
-        legend.innerHTML =
+        legend.innerHTML = anchorTotal > 0 ?
+            '<span><b>1</b> Avtäck</span>' +
+            '<span><b>2</b> Byt plats</span>' +
+            '<span class="puzzle-pipes__anchors"><b>!</b> ' +
+            'Dra strömmen genom de gula</span>' :
             '<span><b>1</b> Avtäck</span>' +
             '<span><b>2</b> Markera</span>' +
             '<span><b>3</b> Byt plats</span>';

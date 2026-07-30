@@ -521,6 +521,9 @@ class SafePuzzleEngine {
             connected: new Set(),
             filled: new Set(),
             moves: 0,
+            anchors: cells
+                .map((cell, index) => (cell.welded ? index : -1))
+                .filter(index => index >= 0),
             reveals: cells.filter(cell => cell.revealed).length,
             selectedIndex: null,
             flowPhase: 'flowing',
@@ -536,6 +539,7 @@ class SafePuzzleEngine {
             flowHeadIncoming: null,
             flowHeadOutgoing: null,
             flowBlockedIndex: null,
+            flowBlockedReason: 'break',
             flowVersion: 0,
             timedOut: false,
         };
@@ -543,6 +547,20 @@ class SafePuzzleEngine {
         this.advancePipeFlow(state);
         state.status = this.getPipeOpeningStatus(state);
         return state;
+    }
+
+    getPipeProgressStatus(state) {
+        const kvar = state.anchors.filter(
+            anchor => !state.filled.has(anchor)
+        ).length;
+        if (kvar > 0) {
+            return `${state.filled.size} ledare strömsatta · ` +
+                `${kvar} fastsvetsad${kvar === 1 ? '' : 'e'} punkt` +
+                `${kvar === 1 ? '' : 'er'} kvar att passera.`;
+        }
+        return `Strömmen rör sig · ${state.filled.size} ledare ` +
+            `${state.filled.size === 1 ? 'strömsatt' : 'strömsatta'}. ` +
+            'Bygg vidare framför den!';
     }
 
     getPipeOpeningStatus(state) {
@@ -625,8 +643,9 @@ class SafePuzzleEngine {
         return routeComplete;
     }
 
-    failPipeFlow(state, message, blockedIndex = state.flowIndex) {
+    failPipeFlow(state, message, blockedIndex = state.flowIndex, reason = 'break') {
         state.phase = 'failed';
+        state.flowBlockedReason = reason;
         state.flowPhase = 'failed';
         state.timedOut = true;
         state.flowBlockedIndex = blockedIndex;
@@ -702,6 +721,20 @@ class SafePuzzleEngine {
             y === state.sinkY &&
             outgoing === 1
         ) {
+            const missade = state.anchors.filter(
+                anchor => !state.filled.has(anchor)
+            );
+            if (missade.length > 0) {
+                return this.failPipeFlow(
+                    state,
+                    `Strömmen nådde UT men gick förbi ${missade.length} ` +
+                    `${missade.length === 1 ?
+                        'fastsvetsad punkt' :
+                        'fastsvetsade punkter'}. Kretsen underkändes.`,
+                    missade[0],
+                    'anchor'
+                );
+            }
             this.markSolved(
                 `Strömmen nådde UT efter ${state.moves} byten och ` +
                 `${state.reveals} avtäckta ledare!`
@@ -734,9 +767,7 @@ class SafePuzzleEngine {
         state.flowIncoming = (outgoing + 2) % 4;
         state.status = state.flowFastForward ?
             'Vägen till UT är klar — strömmen snabbspolas genom kretsen!' :
-            `Strömmen rör sig · ${state.filled.size} ledare ` +
-            `${state.filled.size === 1 ? 'strömsatt' : 'strömsatta'}. ` +
-            'Bygg vidare framför den!';
+            this.getPipeProgressStatus(state);
         this.touch();
         return true;
     }
@@ -888,6 +919,7 @@ class SafePuzzleEngine {
         state.flowHeadIncoming = null;
         state.flowHeadOutgoing = null;
         state.flowBlockedIndex = null;
+        state.flowBlockedReason = 'break';
         state.flowVersion++;
         state.filled = new Set();
         state.connected = new Set();
@@ -917,8 +949,10 @@ class SafePuzzleEngine {
             .filter(Boolean)
             .join(' och ');
         const stateLabel = state.flowBlockedIndex === index ?
-            'Här bröts kretsen — strömmen kom in ' +
-            `${PIPE_DIRECTION_SOURCES[state.flowIncoming]}.` :
+            (state.flowBlockedReason === 'anchor' ?
+                'Missad säkring — strömmen gick aldrig här.' :
+                'Här bröts kretsen — strömmen kom in ' +
+                `${PIPE_DIRECTION_SOURCES[state.flowIncoming]}.`) :
             cell.welded ?
                 'Fastsvetsad — sitter fast.' :
             state.filled.has(index) ?
