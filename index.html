@@ -26,6 +26,9 @@
             width: 100%;
             height: 100%;
             overflow: hidden;
+            /* Inget gummiband eller pull-to-refresh när man drar i spaken. */
+            overscroll-behavior: none;
+            touch-action: manipulation;
             background:
                 radial-gradient(circle at 50% 18%, rgba(50, 46, 91, 0.34), transparent 34%),
                 radial-gradient(circle at 18% 82%, rgba(16, 116, 136, 0.13), transparent 32%),
@@ -53,6 +56,7 @@
 
         #gameFrame {
             --game-scale: 1;
+            touch-action: none;
             position: absolute;
             top: 50%;
             left: 50%;
@@ -265,17 +269,7 @@
             --touch-drill-size: min(26vw, max(84px, calc(102px * var(--game-scale))));
             position: absolute;
             z-index: 7;
-            right: 0;
-            bottom: 0;
-            left: 0;
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-end;
-            padding:
-                0
-                max(14px, env(safe-area-inset-right, 0px))
-                max(16px, env(safe-area-inset-bottom, 0px))
-                max(14px, env(safe-area-inset-left, 0px));
+            inset: 0;
             touch-action: none;
         }
 
@@ -283,15 +277,34 @@
             display: none;
         }
 
-        .touch-stick {
-            position: relative;
-            width: var(--touch-stick-size);
-            height: var(--touch-stick-size);
+        /* Spaken uppstår där tummen landar, så zonen är osynlig men gripbar. */
+        .touch-stick-zone {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 62%;
+            height: 68%;
             pointer-events: auto;
             touch-action: none;
             -webkit-user-select: none;
             user-select: none;
             -webkit-tap-highlight-color: transparent;
+        }
+
+        .touch-stick {
+            position: absolute;
+            top: var(--stick-origin-y, 50%);
+            left: var(--stick-origin-x, 50%);
+            width: var(--touch-stick-size);
+            height: var(--touch-stick-size);
+            transform: translate(-50%, -50%);
+            opacity: 0;
+            transition: opacity 130ms ease;
+            pointer-events: none;
+        }
+
+        .touch-stick.is-active {
+            opacity: 1;
         }
 
         .touch-stick__ring {
@@ -383,6 +396,9 @@
         }
 
         .touch-drill {
+            position: absolute;
+            right: max(14px, env(safe-area-inset-right, 0px));
+            bottom: max(16px, env(safe-area-inset-bottom, 0px));
             width: var(--touch-drill-size);
             height: var(--touch-drill-size);
             border: max(2px, calc(2px * var(--game-scale))) solid
@@ -428,17 +444,6 @@
             display: none;
         }
 
-        @media (pointer: coarse) {
-            .puzzle-help,
-            .controls,
-            .side-drill-hint__keys {
-                display: none;
-            }
-
-            .side-drill-hint__touch {
-                display: contents;
-            }
-        }
 
         .side-drill-hint {
             position: absolute;
@@ -2257,6 +2262,74 @@
                 transition-duration: 0.01ms !important;
             }
         }
+        @media (pointer: coarse) {
+            .puzzle-help,
+            .controls,
+            .side-drill-hint__keys {
+                display: none;
+            }
+
+            .side-drill-hint__touch {
+                display: contents;
+            }
+
+            /* Ramen krymper till ~0.83 på en telefon, så typsnittsgolven
+               biter och lämnar 8–10 px text. Höj golven där de syns. */
+            .hud-label,
+            .eyebrow,
+            .level-select-title,
+            .campaign-progress,
+            .puzzle-mode-entry__copy small,
+            .puzzle-mode-card__copy p {
+                font-size: 11px;
+            }
+
+            .side-drill-hint,
+            kbd {
+                font-size: 11px;
+            }
+
+            .level-card__lock {
+                font-size: 11px;
+            }
+
+            .level-card__number,
+            .level-card__summary {
+                font-size: 12px;
+            }
+
+            .puzzle-pipe-cover b {
+                font-size: 12px;
+            }
+
+            .level-card__title,
+            .puzzle-grade-button,
+            .puzzle-status {
+                font-size: 13px;
+            }
+
+            .puzzle-pipe-port {
+                min-width: 17px;
+                font-size: 8px;
+            }
+
+            .puzzles.is-six .puzzle-pipe-port,
+            .puzzle-pipes.is-six .puzzle-pipe-port {
+                min-width: 15px;
+                font-size: 7px;
+            }
+
+            /* Lite mindre luft i rutnätet ger större tryckytor. */
+            .puzzle-pipes__grid {
+                gap: 3px;
+                padding: 6px;
+            }
+
+            .puzzle-pipes__board {
+                --pipe-pad: 6px;
+                --pipe-gap: 3px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -2292,13 +2365,15 @@
                 <span class="side-drill-hint__keys"><kbd>←/→</kbd><span>+</span><kbd>Space</kbd></span><span class="side-drill-hint__touch"><kbd>Spak i sidled</kbd><span>+</span><kbd>BORR</kbd></span><strong>Borra åt sidan</strong>
             </div>
             <div id="touchControls" class="touch-controls" hidden>
-                <div id="touchStick" class="touch-stick" aria-hidden="true">
+                <div id="touchStickZone" class="touch-stick-zone" aria-hidden="true">
+                <div id="touchStick" class="touch-stick">
                     <span class="touch-stick__ring"></span>
                     <span class="touch-stick__knob"></span>
                     <span class="touch-stick__tick touch-stick__tick--up"></span>
                     <span class="touch-stick__tick touch-stick__tick--right"></span>
                     <span class="touch-stick__tick touch-stick__tick--down"></span>
                     <span class="touch-stick__tick touch-stick__tick--left"></span>
+                </div>
                 </div>
                 <button
                     id="touchDrill"

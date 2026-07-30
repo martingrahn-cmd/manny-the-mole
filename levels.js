@@ -7,7 +7,7 @@ const CAMPAIGN_LEVELS = Object.freeze([
         summary: 'Lär dig gräva nedåt och hämta luft i en trygg sidoficka.',
         start: { x: 3, y: 2, facing: 'down', oxygen: 100 },
         safe: {
-            type: 'keypad',
+            type: 'pipes',
             difficulty: 1,
             x: 2,
             y: 21,

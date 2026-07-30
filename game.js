@@ -323,6 +323,7 @@ class TouchControls {
         this.available =
             window.matchMedia?.('(pointer: coarse)')?.matches === true ||
             navigator.maxTouchPoints > 0;
+        this.zone = null;
         this.stick = null;
         this.drill = null;
         this.stickPointer = null;
@@ -339,23 +340,24 @@ class TouchControls {
         };
     }
 
-    attach(stickElement, drillElement) {
+    attach(zoneElement, stickElement, drillElement) {
+        this.zone = zoneElement;
         this.stick = stickElement;
         this.drill = drillElement;
-        if (!this.stick || !this.drill) return;
+        if (!this.zone || !this.stick || !this.drill) return;
 
-        this.stick.addEventListener(
+        this.zone.addEventListener(
             'pointerdown',
             event => this.beginStick(event),
             { passive: false }
         );
-        this.stick.addEventListener(
+        this.zone.addEventListener(
             'pointermove',
             event => this.moveStick(event),
             { passive: false }
         );
         ['pointerup', 'pointercancel'].forEach(name => {
-            this.stick.addEventListener(name, event => this.endStick(event));
+            this.zone.addEventListener(name, event => this.endStick(event));
         });
 
         this.drill.addEventListener(
@@ -392,14 +394,20 @@ class TouchControls {
 
     beginStick(event) {
         event.preventDefault();
-        const bounds = this.stick.getBoundingClientRect();
-        this.origin = {
-            x: bounds.left + bounds.width / 2,
-            y: bounds.top + bounds.height / 2,
-        };
-        this.radius = Math.max(1, bounds.width / 2);
+        // Spaken föds under tummen istället för på en fast plats.
+        const zone = this.zone.getBoundingClientRect();
+        this.origin = { x: event.clientX, y: event.clientY };
+        this.radius = Math.max(1, this.stick.offsetWidth / 2);
+        this.stick.style.setProperty(
+            '--stick-origin-x',
+            `${event.clientX - zone.left}px`
+        );
+        this.stick.style.setProperty(
+            '--stick-origin-y',
+            `${event.clientY - zone.top}px`
+        );
         this.stickPointer = event.pointerId;
-        this.capture(this.stick, event.pointerId);
+        this.capture(this.zone, event.pointerId);
         this.stick.classList.add('is-active');
         this.applyStick(event.clientX, event.clientY);
     }
@@ -1873,6 +1881,7 @@ class Game {
         this.gamepad = new GamepadHandler();
         this.touch = new TouchControls();
         this.touch.attach(
+            document.getElementById('touchStickZone'),
             document.getElementById('touchStick'),
             document.getElementById('touchDrill')
         );
@@ -2016,7 +2025,10 @@ class Game {
             SCALE = windowWidth / (GRID_WIDTH * GRID_SIZE);
         }
         
-        SCALE *= 0.95;
+        // Ramens luftmarginal kostar mer än den ger på en liten skärm.
+        const coarsePointer =
+            window.matchMedia?.('(pointer: coarse)')?.matches === true;
+        SCALE *= coarsePointer ? 0.995 : 0.95;
         
         CANVAS_WIDTH = GRID_WIDTH * GRID_SIZE;
         CANVAS_HEIGHT = VIEWPORT_HEIGHT * GRID_SIZE;
