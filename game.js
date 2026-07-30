@@ -1403,6 +1403,7 @@ class GameUI {
                 state.selectedIndex === index
             );
             button.classList.toggle('is-locked', state.filled.has(index));
+            button.classList.toggle('is-welded', cell.welded === true);
             button.setAttribute(
                 'aria-label',
                 this.game.safePuzzle.getPipeLabel(index)

@@ -56,7 +56,6 @@
 
         #gameFrame {
             --game-scale: 1;
-            touch-action: none;
             position: absolute;
             top: 50%;
             left: 50%;
@@ -943,6 +942,77 @@
         .puzzle-mode-card[data-puzzle="pipes"] {
             --puzzle-accent: #6af0b5;
             --puzzle-accent-rgb: 106, 240, 181;
+        }
+
+        .puzzle-grade-list {
+            display: flex;
+            grid-column: 1 / -1;
+            flex-direction: column;
+            gap: calc(4px * var(--game-scale));
+            margin-top: calc(6px * var(--game-scale));
+        }
+
+        .puzzle-grade-row {
+            display: flex;
+            gap: calc(9px * var(--game-scale));
+            align-items: center;
+            padding: calc(7px * var(--game-scale)) calc(10px * var(--game-scale));
+            border: max(1px, calc(1px * var(--game-scale))) solid
+                rgba(var(--puzzle-accent-rgb), 0.22);
+            border-radius: calc(9px * var(--game-scale));
+            background: rgba(4, 11, 18, 0.52);
+            color: inherit;
+            text-align: left;
+        }
+
+        .puzzle-grade-row:hover:not(:disabled),
+        .puzzle-grade-row.is-menu-focused {
+            border-color: rgba(var(--puzzle-accent-rgb), 0.6);
+            background: rgba(var(--puzzle-accent-rgb), 0.11);
+        }
+
+        .puzzle-grade-row__nr {
+            display: grid;
+            width: calc(22px * var(--game-scale));
+            min-width: 20px;
+            aspect-ratio: 1;
+            flex: none;
+            place-items: center;
+            border-radius: 50%;
+            background: rgba(var(--puzzle-accent-rgb), 0.16);
+            color: var(--puzzle-accent);
+            font: 900 max(10px, calc(11px * var(--game-scale))) / 1
+                ui-monospace, monospace;
+        }
+
+        .puzzle-grade-row__main {
+            display: flex;
+            min-width: 0;
+            flex: 1;
+            flex-direction: column;
+            gap: calc(2px * var(--game-scale));
+        }
+
+        .puzzle-grade-row__main strong {
+            font-size: max(11px, calc(12px * var(--game-scale)));
+            font-weight: 700;
+        }
+
+        .puzzle-grade-row__main small {
+            color: rgba(203, 220, 240, 0.62);
+            font-size: max(9px, calc(10px * var(--game-scale)));
+        }
+
+        .puzzle-grade-row__tag {
+            flex: none;
+            padding: calc(2px * var(--game-scale)) calc(6px * var(--game-scale));
+            border: max(1px, calc(1px * var(--game-scale))) solid
+                rgba(230, 196, 150, 0.5);
+            border-radius: 999px;
+            color: #e6c496;
+            font: 900 max(8px, calc(9px * var(--game-scale))) / 1
+                ui-monospace, monospace;
+            letter-spacing: 0.06em;
         }
 
         .puzzle-mode-card__icon {
@@ -2005,6 +2075,36 @@
                 drop-shadow(0 0 calc(10px * var(--game-scale)) rgba(47, 255, 205, 0.84));
         }
 
+        .puzzle-pipe-cell.is-welded {
+            border-color: rgba(198, 168, 122, 0.55);
+            background:
+                repeating-linear-gradient(
+                    -45deg,
+                    rgba(214, 178, 122, 0.07) 0 5px,
+                    transparent 5px 10px
+                ),
+                rgba(28, 26, 24, 0.7);
+            cursor: default;
+        }
+
+        .puzzle-pipe-cell.is-welded .puzzle-pipe {
+            --pipe-color: #cbb389;
+        }
+
+        /* Niten säger "den här sitter fast" utan att kräva en förklaring. */
+        .puzzle-pipe-cell.is-welded::after {
+            position: absolute;
+            top: calc(3px * var(--game-scale));
+            right: calc(3px * var(--game-scale));
+            width: max(3px, calc(4px * var(--game-scale)));
+            height: max(3px, calc(4px * var(--game-scale)));
+            border-radius: 50%;
+            background: #e0c496;
+            box-shadow: 0 0 calc(5px * var(--game-scale))
+                rgba(230, 196, 150, 0.8);
+            content: "";
+        }
+
         .puzzle-pipe-cell.is-pulse-blocked {
             z-index: 4;
             border-color: #ff8a5c;
@@ -2474,13 +2574,44 @@
                                 <h3>Kretslås</h3>
                                 <p>Led strömmen från IN till UT innan tiden går ut.</p>
                             </div>
-                            <div class="puzzle-grade-picker puzzle-grade-picker--five" role="group" aria-label="Kretslås, välj låsgrad">
-                                <span>Låsgrad</span>
-                                <button class="puzzle-grade-button" type="button" data-action="start-puzzle" data-puzzle="pipes" data-difficulty="1" aria-label="Starta kretslås, låsgrad 1">1</button>
-                                <button class="puzzle-grade-button" type="button" data-action="start-puzzle" data-puzzle="pipes" data-difficulty="2" aria-label="Starta kretslås, låsgrad 2">2</button>
-                                <button class="puzzle-grade-button" type="button" data-action="start-puzzle" data-puzzle="pipes" data-difficulty="3" aria-label="Starta kretslås, låsgrad 3">3</button>
-                                <button class="puzzle-grade-button" type="button" data-action="start-puzzle" data-puzzle="pipes" data-difficulty="4" aria-label="Starta kretslås, låsgrad 4">4</button>
-                                <button class="puzzle-grade-button" type="button" data-action="start-puzzle" data-puzzle="pipes" data-difficulty="5" aria-label="Starta kretslås, låsgrad 5">5</button>
+                            <div class="puzzle-grade-list" role="group" aria-label="Kretslås, välj låsgrad">
+                                <button class="puzzle-grade-row" type="button" data-action="start-puzzle" data-puzzle="pipes" data-difficulty="1" aria-label="Starta kretslås, låsgrad 1: 4 gånger 4, 3,8 sekunder per steg, hälften av brickorna uppvända">
+                                    <span class="puzzle-grade-row__nr" aria-hidden="true">1</span>
+                                    <span class="puzzle-grade-row__main">
+                                        <strong>4×4 · introduktion</strong>
+                                        <small>3,8 s per steg · 9 av 16 uppvända</small>
+                                    </span>
+                                </button>
+                                <button class="puzzle-grade-row" type="button" data-action="start-puzzle" data-puzzle="pipes" data-difficulty="2" aria-label="Starta kretslås, låsgrad 2: 5 gånger 5, 3,8 sekunder per steg">
+                                    <span class="puzzle-grade-row__nr" aria-hidden="true">2</span>
+                                    <span class="puzzle-grade-row__main">
+                                        <strong>5×5 · större bräde</strong>
+                                        <small>3,8 s per steg · 12 av 25 uppvända</small>
+                                    </span>
+                                </button>
+                                <button class="puzzle-grade-row" type="button" data-action="start-puzzle" data-puzzle="pipes" data-difficulty="3" aria-label="Starta kretslås, låsgrad 3: 5 gånger 5, slingrande bana, 4 sekunder per steg">
+                                    <span class="puzzle-grade-row__nr" aria-hidden="true">3</span>
+                                    <span class="puzzle-grade-row__main">
+                                        <strong>5×5 · slingrande bana</strong>
+                                        <small>4 s per steg · 11 av 25 uppvända</small>
+                                    </span>
+                                </button>
+                                <button class="puzzle-grade-row" type="button" data-action="start-puzzle" data-puzzle="pipes" data-difficulty="4" aria-label="Starta kretslås, låsgrad 4: 6 gånger 6 med två fastsvetsade ledare">
+                                    <span class="puzzle-grade-row__nr" aria-hidden="true">4</span>
+                                    <span class="puzzle-grade-row__main">
+                                        <strong>6×6 · fastsvetsade ledare</strong>
+                                        <small>5,2 s per steg · 2 ankare som sitter fast</small>
+                                    </span>
+                                    <span class="puzzle-grade-row__tag" aria-hidden="true">NYTT</span>
+                                </button>
+                                <button class="puzzle-grade-row" type="button" data-action="start-puzzle" data-puzzle="pipes" data-difficulty="5" aria-label="Starta kretslås, låsgrad 5: 6 gånger 6 med tre fastsvetsade ledare och mest dolda brickor">
+                                    <span class="puzzle-grade-row__nr" aria-hidden="true">5</span>
+                                    <span class="puzzle-grade-row__main">
+                                        <strong>6×6 · mest dolt</strong>
+                                        <small>4,8 s per steg · 3 ankare · 12 av 36 uppvända</small>
+                                    </span>
+                                    <span class="puzzle-grade-row__tag" aria-hidden="true">NYTT</span>
+                                </button>
                             </div>
                         </article>
                     </div>

@@ -38,6 +38,7 @@ const PIPE_FLOW_BALANCE = Object.freeze({
         step: 3.8,
         opening: 6,
         safeLead: 2,
+        welded: 0,
         startRevealed: 0.5,
         turnChance: 0,
         doubleTurnChance: 0,
@@ -47,6 +48,7 @@ const PIPE_FLOW_BALANCE = Object.freeze({
         step: 3.8,
         opening: 8,
         safeLead: 3,
+        welded: 0,
         startRevealed: 0.45,
         turnChance: 0,
         doubleTurnChance: 0,
@@ -56,6 +58,7 @@ const PIPE_FLOW_BALANCE = Object.freeze({
         step: 4,
         opening: 9,
         safeLead: 3,
+        welded: 0,
         startRevealed: 0.4,
         turnChance: 0.58,
         doubleTurnChance: 0.2,
@@ -65,7 +68,8 @@ const PIPE_FLOW_BALANCE = Object.freeze({
         step: 5.2,
         opening: 12,
         safeLead: 4,
-        startRevealed: 0.35,
+        welded: 2,
+        startRevealed: 0.3,
         turnChance: 0.62,
         doubleTurnChance: 0.45,
     }),
@@ -74,7 +78,8 @@ const PIPE_FLOW_BALANCE = Object.freeze({
         step: 4.8,
         opening: 13,
         safeLead: 4,
-        startRevealed: 0.3,
+        welded: 3,
+        startRevealed: 0.26,
         turnChance: 0.7,
         doubleTurnChance: 0.55,
     }),
@@ -444,15 +449,36 @@ class SafePuzzleEngine {
                 [cells[swapIndex], cells[index]];
         }
 
-        const safeLead = Math.max(1, balance.safeLead || 1);
-        path.slice(0, safeLead).forEach(position => {
-            const targetIndex = position.y * size + position.x;
+        const placeCorrectPipe = targetIndex => {
             const correctPipeIndex = cells.findIndex(
                 cell => cell.solutionIndex === targetIndex
             );
             [cells[targetIndex], cells[correctPipeIndex]] =
                 [cells[correctPipeIndex], cells[targetIndex]];
+            return cells[targetIndex];
+        };
+
+        const safeLead = Math.max(1, balance.safeLead || 1);
+        path.slice(0, safeLead).forEach(position => {
+            placeCorrectPipe(position.y * size + position.x);
         });
+
+        // Fastsvetsade ledare sitter rätt men går inte att flytta, så banan
+        // byggs mellan givna ankare i stället för från ingenting.
+        const weldCount = Math.min(
+            balance.welded || 0,
+            Math.max(0, path.length - safeLead - 1)
+        );
+        const weldable = path.slice(safeLead, path.length - 1);
+        for (let slot = 0; slot < weldCount; slot++) {
+            const spread = Math.floor(
+                ((slot + 1) * weldable.length) / (weldCount + 1)
+            );
+            const position = weldable[Math.min(spread, weldable.length - 1)];
+            if (!position) continue;
+            const cell = placeCorrectPipe(position.y * size + position.x);
+            cell.welded = true;
+        }
 
         const sourceIndex = path[0].y * size;
         cells.forEach((cell, index) => {
@@ -476,6 +502,12 @@ class SafePuzzleEngine {
             cells[index].revealed = true;
             cells[index].initialRevealed = true;
         });
+        // En fastsvetsad ledare är ett ankare bara om man ser den.
+        cells.forEach(cell => {
+            if (!cell.welded) return;
+            cell.revealed = true;
+            cell.initialRevealed = true;
+        });
 
         const state = {
             ...this.createBaseState('pipes', difficulty),
@@ -489,7 +521,7 @@ class SafePuzzleEngine {
             connected: new Set(),
             filled: new Set(),
             moves: 0,
-            reveals: 1 + openFaceUp,
+            reveals: cells.filter(cell => cell.revealed).length,
             selectedIndex: null,
             flowPhase: 'flowing',
             flowStep: balance.step,
@@ -778,6 +810,13 @@ class SafePuzzleEngine {
         }
 
         const cell = state.cells[index];
+        if (cell.welded) {
+            state.status =
+                'Den ledaren är fastsvetsad. Bygg vidare från den i stället.';
+            this.touch();
+            return true;
+        }
+
         if (!cell.revealed) {
             cell.revealed = true;
             state.reveals++;
@@ -880,6 +919,8 @@ class SafePuzzleEngine {
         const stateLabel = state.flowBlockedIndex === index ?
             'Här bröts kretsen — strömmen kom in ' +
             `${PIPE_DIRECTION_SOURCES[state.flowIncoming]}.` :
+            cell.welded ?
+                'Fastsvetsad — sitter fast.' :
             state.filled.has(index) ?
                 'Strömsatt och låst.' :
                 state.selectedIndex === index ?
