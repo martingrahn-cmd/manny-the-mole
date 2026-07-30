@@ -83,6 +83,17 @@ const PIPE_FLOW_BALANCE = Object.freeze({
         turnChance: 0.7,
         doubleTurnChance: 0.55,
     }),
+    6: Object.freeze({
+        size: 6,
+        step: 5.4,
+        opening: 13,
+        safeLead: 3,
+        welded: 2,
+        startRevealed: 0.34,
+        turnChance: 0,
+        doubleTurnChance: 0,
+        branching: true,
+    }),
 });
 
 const DIAL_BALANCE = Object.freeze({
@@ -102,7 +113,7 @@ class SafePuzzleEngine {
             throw new Error(`Unknown safe puzzle type: ${type}`);
         }
 
-        const maximumDifficulty = type === 'pipes' ? 5 : 3;
+        const maximumDifficulty = type === 'pipes' ? 6 : 3;
         const safeDifficulty = Math.max(
             1,
             Math.min(maximumDifficulty, Math.floor(difficulty))
@@ -391,34 +402,144 @@ class SafePuzzleEngine {
         return path;
     }
 
+    addRequired(required, size, x, y, direction) {
+        const key = y * size + x;
+        if (!required.has(key)) required.set(key, new Set());
+        required.get(key).add(direction);
+    }
+
+    connectRequired(required, size, from, to) {
+        this.addRequired(
+            required, size, from.x, from.y, this.directionBetween(from, to)
+        );
+        this.addRequired(
+            required, size, to.x, to.y, this.directionBetween(to, from)
+        );
+    }
+
+    buildLinearLayout(balance, difficulty, random) {
+        const size = balance.size;
+        const path = this.buildPipePath(balance, difficulty, random);
+        const required = new Map();
+        path.forEach((position, index) => {
+            const previous = index === 0 ?
+                { x: -1, y: position.y } :
+                path[index - 1];
+            const next = index === path.length - 1 ?
+                { x: size, y: position.y } :
+                path[index + 1];
+            this.addRequired(
+                required, size, position.x, position.y,
+                this.directionBetween(position, previous)
+            );
+            this.addRequired(
+                required, size, position.x, position.y,
+                this.directionBetween(position, next)
+            );
+        });
+        return {
+            required,
+            order: path.map(position => position.y * size + position.x),
+            sinks: [{ x: size - 1, y: path[path.length - 1].y }],
+            sourceY: path[0].y,
+        };
+    }
+
+    // Två utgångar som matas av ett T-kors: strömmen delar sig i stammen och
+    // grenarna hålls i var sin halva så de aldrig kan korsa varandra.
+    buildBranchingLayout(balance, random) {
+        const size = balance.size;
+        const sourceY = 2 + Math.floor(random() * 2);
+        const splitX = 1 + Math.floor(random() * 2);
+        const rowUp = Math.floor(random() * sourceY);
+        const rowDown = sourceY + 1 +
+            Math.floor(random() * (size - sourceY - 1));
+        const required = new Map();
+        const order = [];
+        const push = (x, y) => {
+            const key = y * size + x;
+            if (!order.includes(key)) order.push(key);
+        };
+
+        this.addRequired(required, size, 0, sourceY, 3);
+        for (let x = 0; x <= splitX; x++) push(x, sourceY);
+        for (let x = 0; x < splitX; x++) {
+            this.connectRequired(
+                required, size,
+                { x, y: sourceY }, { x: x + 1, y: sourceY }
+            );
+        }
+
+        // Grenen kröker en gång på vägen ut, annars blir den en lång raksträcka.
+        const branch = (row, step) => {
+            this.connectRequired(
+                required, size,
+                { x: splitX, y: sourceY }, { x: splitX, y: sourceY + step }
+            );
+            for (let y = sourceY + step; y !== row; y += step) {
+                push(splitX, y);
+                this.connectRequired(
+                    required, size,
+                    { x: splitX, y }, { x: splitX, y: y + step }
+                );
+            }
+            push(splitX, row);
+
+            const jogRow = row + step;
+            const kanKröka =
+                jogRow >= 0 &&
+                jogRow < size &&
+                (step < 0 ? jogRow < sourceY : jogRow > sourceY) &&
+                size - 1 - splitX >= 3;
+            const jogX = kanKröka ?
+                splitX + 1 + Math.floor(random() * (size - 2 - splitX)) :
+                -1;
+
+            let y = row;
+            for (let x = splitX; x < size - 1; x++) {
+                if (x === jogX) {
+                    this.connectRequired(
+                        required, size, { x, y }, { x, y: jogRow }
+                    );
+                    y = jogRow;
+                    push(x, y);
+                }
+                this.connectRequired(
+                    required, size, { x, y }, { x: x + 1, y }
+                );
+                push(x + 1, y);
+            }
+            this.addRequired(required, size, size - 1, y, 1);
+            return y;
+        };
+        const sinkUp = branch(rowUp, -1);
+        const sinkDown = branch(rowDown, 1);
+
+        return {
+            required,
+            order,
+            sinks: [{ x: size - 1, y: sinkUp }, { x: size - 1, y: sinkDown }],
+            sourceY,
+        };
+    }
+
     createPipesState(difficulty, seed) {
         const random = this.createRandom(seed);
         const balance = PIPE_FLOW_BALANCE[difficulty];
         const size = balance.size;
-        const path = this.buildPipePath(balance, difficulty, random);
-        const pathByCell = new Map(
-            path.map((position, pathIndex) => [
-                `${position.x},${position.y}`,
-                pathIndex,
-            ])
-        );
+        const layout = balance.branching ?
+            this.buildBranchingLayout(balance, random) :
+            this.buildLinearLayout(balance, difficulty, random);
+        const path = layout.order.map(index => ({
+            x: index % size,
+            y: Math.floor(index / size),
+        }));
         const cells = [];
 
         for (let y = 0; y < size; y++) {
             for (let x = 0; x < size; x++) {
-                const pathIndex = pathByCell.get(`${x},${y}`);
-                if (pathIndex !== undefined) {
-                    const current = path[pathIndex];
-                    const previous = pathIndex === 0 ?
-                        { x: -1, y: current.y } :
-                        path[pathIndex - 1];
-                    const next = pathIndex === path.length - 1 ?
-                        { x: size, y: current.y } :
-                        path[pathIndex + 1];
-                    const required = new Set([
-                        this.directionBetween(current, previous),
-                        this.directionBetween(current, next),
-                    ]);
+                const required = layout.required.get(y * size + x);
+                if (required !== undefined) {
                     const pipe = this.findPipeForDirections(required);
                     cells.push({
                         id: `pipe-${y * size + x}`,
@@ -516,8 +637,11 @@ class SafePuzzleEngine {
             size,
             cells,
             path,
-            sourceY: path[0].y,
-            sinkY: path[path.length - 1].y,
+            sourceY: layout.sourceY,
+            sinks: layout.sinks.map(sink => sink.y * size + sink.x),
+            sinkY: layout.sinks[0].y,
+            branching: balance.branching === true,
+            poweredSinks: new Set(),
             connected: new Set(),
             filled: new Set(),
             moves: 0,
@@ -533,11 +657,8 @@ class SafePuzzleEngine {
             flowFastForward: false,
             flowInterval: balance.opening,
             flowTimer: balance.opening,
-            flowIndex: sourceIndex,
-            flowIncoming: 3,
-            flowHead: null,
-            flowHeadIncoming: null,
-            flowHeadOutgoing: null,
+            heads: [{ index: sourceIndex, incoming: 3 }],
+            trail: [],
             flowBlockedIndex: null,
             flowBlockedReason: 'break',
             flowVersion: 0,
@@ -553,6 +674,11 @@ class SafePuzzleEngine {
         const kvar = state.anchors.filter(
             anchor => !state.filled.has(anchor)
         ).length;
+        const utKvar = state.sinks.length - state.poweredSinks.size;
+        if (state.sinks.length > 1 && kvar === 0) {
+            return `${state.filled.size} ledare strömsatta · ` +
+                `${utKvar} av ${state.sinks.length} utgångar kvar att mata.`;
+        }
         if (kvar > 0) {
             return `${state.filled.size} ledare strömsatta · ` +
                 `${kvar} fastsvetsad${kvar === 1 ? '' : 'e'} punkt` +
@@ -580,50 +706,69 @@ class SafePuzzleEngine {
     isPipeRouteComplete(state = this.state) {
         if (!state || state.type !== 'pipes') return false;
 
-        let index = state.sourceY * state.size;
-        let incoming = 3;
-        const visited = new Set();
         const steps = [
             { x: 0, y: -1 },
             { x: 1, y: 0 },
             { x: 0, y: 1 },
             { x: -1, y: 0 },
         ];
+        let huvuden = [{
+            index: state.sourceY * state.size,
+            incoming: 3,
+        }];
+        const besökta = new Set();
+        const nådda = new Set();
 
-        while (!visited.has(index)) {
-            visited.add(index);
-            const connections = this.getPipeConnections(state.cells[index]);
-            if (!connections[incoming]) return false;
-            const exits = connections
-                .map((connected, direction) =>
-                    connected && direction !== incoming ?
-                        direction :
-                        null
-                )
-                .filter(direction => direction !== null);
-            if (exits.length !== 1) return false;
+        for (let varv = 0; varv < state.cells.length && huvuden.length; varv++) {
+            const nästa = [];
+            for (const head of huvuden) {
+                if (besökta.has(head.index)) return false;
+                besökta.add(head.index);
+                const connections = this.getPipeConnections(
+                    state.cells[head.index]
+                );
+                if (!connections[head.incoming]) return false;
+                const exits = connections
+                    .map((connected, direction) =>
+                        connected && direction !== head.incoming ?
+                            direction :
+                            null
+                    )
+                    .filter(direction => direction !== null);
+                if (exits.length === 0) return false;
+                if (exits.length > 1 && !state.branching) return false;
 
-            const outgoing = exits[0];
-            const x = index % state.size;
-            const y = Math.floor(index / state.size);
-            if (
-                x === state.size - 1 &&
-                y === state.sinkY &&
-                outgoing === 1
-            ) return true;
-
-            const nextX = x + steps[outgoing].x;
-            const nextY = y + steps[outgoing].y;
-            if (
-                nextX < 0 ||
-                nextX >= state.size ||
-                nextY < 0 ||
-                nextY >= state.size
-            ) return false;
-            index = nextY * state.size + nextX;
-            incoming = (outgoing + 2) % 4;
+                const x = head.index % state.size;
+                const y = Math.floor(head.index / state.size);
+                for (const outgoing of exits) {
+                    if (
+                        x === state.size - 1 &&
+                        outgoing === 1 &&
+                        state.sinks.includes(head.index)
+                    ) {
+                        nådda.add(head.index);
+                        continue;
+                    }
+                    const nextX = x + steps[outgoing].x;
+                    const nextY = y + steps[outgoing].y;
+                    if (
+                        nextX < 0 ||
+                        nextX >= state.size ||
+                        nextY < 0 ||
+                        nextY >= state.size
+                    ) return false;
+                    nästa.push({
+                        index: nextY * state.size + nextX,
+                        incoming: (outgoing + 2) % 4,
+                    });
+                }
+            }
+            huvuden = nästa;
         }
-        return false;
+
+        if (huvuden.length > 0) return false;
+        if (nådda.size !== state.sinks.length) return false;
+        return state.anchors.every(anchor => besökta.has(anchor));
     }
 
     refreshPipeFastForward(state = this.state) {
@@ -643,12 +788,15 @@ class SafePuzzleEngine {
         return routeComplete;
     }
 
-    failPipeFlow(state, message, blockedIndex = state.flowIndex, reason = 'break') {
+    failPipeFlow(state, message, blockedIndex = null, reason = 'break') {
         state.phase = 'failed';
         state.flowBlockedReason = reason;
         state.flowPhase = 'failed';
         state.timedOut = true;
-        state.flowBlockedIndex = blockedIndex;
+        state.flowBlockedIndex = blockedIndex === null ?
+            (state.heads[0]?.index ?? null) :
+            blockedIndex;
+        state.heads = [];
         state.selectedIndex = null;
         state.status = message;
         state.flowVersion++;
@@ -664,63 +812,121 @@ class SafePuzzleEngine {
             state.flowPhase !== 'flowing'
         ) return false;
 
-        const index = state.flowIndex;
-        if (
-            !Number.isInteger(index) ||
-            index < 0 ||
-            index >= state.cells.length ||
-            state.filled.has(index)
-        ) {
-            return this.failPipeFlow(
-                state,
-                'Strömmen gick i en slinga och kretsen överbelastades.',
-                index
-            );
+        const steps = [
+            { x: 0, y: -1 },
+            { x: 1, y: 0 },
+            { x: 0, y: 1 },
+            { x: -1, y: 0 },
+        ];
+        const trail = [];
+        const nästaHuvuden = [];
+        const besökta = new Set();
+
+        for (const head of state.heads) {
+            const index = head.index;
+            if (
+                !Number.isInteger(index) ||
+                index < 0 ||
+                index >= state.cells.length ||
+                state.filled.has(index) ||
+                besökta.has(index)
+            ) {
+                return this.failPipeFlow(
+                    state,
+                    'Strömmen gick i en slinga och kretsen överbelastades.',
+                    index
+                );
+            }
+            besökta.add(index);
+
+            const cell = state.cells[index];
+            cell.revealed = true;
+            const connections = this.getPipeConnections(cell);
+            if (!connections[head.incoming]) {
+                return this.failPipeFlow(
+                    state,
+                    'Strömmen nådde en bruten ledare. Kretsen slog ifrån.',
+                    index
+                );
+            }
+
+            const exits = connections
+                .map((connected, direction) =>
+                    connected && direction !== head.incoming ?
+                        direction :
+                        null
+                )
+                .filter(direction => direction !== null);
+            if (exits.length === 0) {
+                return this.failPipeFlow(
+                    state,
+                    'Strömmen nådde en återvändsgränd. Kretsen slog ifrån.',
+                    index
+                );
+            }
+            if (exits.length > 1 && !state.branching) {
+                return this.failPipeFlow(
+                    state,
+                    'Strömmen nådde en återvändsgränd. Kretsen slog ifrån.',
+                    index
+                );
+            }
+
+            state.filled.add(index);
+            trail.push({ index, incoming: head.incoming, outgoings: exits });
+            if (state.selectedIndex === index) state.selectedIndex = null;
+
+            const x = index % state.size;
+            const y = Math.floor(index / state.size);
+            for (const outgoing of exits) {
+                if (
+                    x === state.size - 1 &&
+                    outgoing === 1 &&
+                    state.sinks.includes(index)
+                ) {
+                    state.poweredSinks.add(index);
+                    continue;
+                }
+                const nextX = x + steps[outgoing].x;
+                const nextY = y + steps[outgoing].y;
+                if (
+                    nextX < 0 ||
+                    nextX >= state.size ||
+                    nextY < 0 ||
+                    nextY >= state.size
+                ) {
+                    return this.failPipeFlow(
+                        state,
+                        'Strömmen lämnade kretskortet. Kretsen slog ifrån.',
+                        index
+                    );
+                }
+                nästaHuvuden.push({
+                    index: nextY * state.size + nextX,
+                    incoming: (outgoing + 2) % 4,
+                });
+            }
         }
 
-        const cell = state.cells[index];
-        cell.revealed = true;
-        const connections = this.getPipeConnections(cell);
-        if (!connections[state.flowIncoming]) {
-            return this.failPipeFlow(
-                state,
-                'Strömmen nådde en bruten ledare. Kretsen slog ifrån.',
-                index
-            );
-        }
-
-        const exits = connections
-            .map((connected, direction) =>
-                connected && direction !== state.flowIncoming ?
-                    direction :
-                    null
-            )
-            .filter(direction => direction !== null);
-        if (exits.length !== 1) {
-            return this.failPipeFlow(
-                state,
-                'Strömmen nådde en återvändsgränd. Kretsen slog ifrån.',
-                index
-            );
-        }
-
-        const outgoing = exits[0];
-        state.filled.add(index);
         state.connected = new Set(state.filled);
-        state.flowHead = index;
-        state.flowHeadIncoming = state.flowIncoming;
-        state.flowHeadOutgoing = outgoing;
+        state.trail = trail;
+        state.heads = nästaHuvuden;
         state.flowBlockedIndex = null;
         state.flowVersion++;
-        if (state.selectedIndex === index) state.selectedIndex = null;
 
-        const x = index % state.size;
-        const y = Math.floor(index / state.size);
-        if (
-            x === state.size - 1 &&
-            y === state.sinkY &&
-            outgoing === 1
-        ) {
+        if (nästaHuvuden.length === 0) {
+            const saknade = state.sinks.filter(
+                sink => !state.poweredSinks.has(sink)
+            );
+            if (saknade.length > 0) {
+                return this.failPipeFlow(
+                    state,
+                    `Strömmen nådde bara ${state.poweredSinks.size} av ` +
+                    `${state.sinks.length} utgångar. Kretsen underkändes.`,
+                    saknade[0],
+                    'sink'
+                );
+            }
             const missade = state.anchors.filter(
                 anchor => !state.filled.has(anchor)
             );
@@ -736,35 +942,13 @@ class SafePuzzleEngine {
                 );
             }
             this.markSolved(
-                `Strömmen nådde UT efter ${state.moves} byten och ` +
+                `Strömmen nådde ${state.sinks.length > 1 ? 'båda UT' : 'UT'} ` +
+                `efter ${state.moves} byten och ` +
                 `${state.reveals} avtäckta ledare!`
             );
             return true;
         }
 
-        const steps = [
-            { x: 0, y: -1 },
-            { x: 1, y: 0 },
-            { x: 0, y: 1 },
-            { x: -1, y: 0 },
-        ];
-        const nextX = x + steps[outgoing].x;
-        const nextY = y + steps[outgoing].y;
-        if (
-            nextX < 0 ||
-            nextX >= state.size ||
-            nextY < 0 ||
-            nextY >= state.size
-        ) {
-            return this.failPipeFlow(
-                state,
-                'Strömmen lämnade kretskortet. Kretsen slog ifrån.',
-                index
-            );
-        }
-
-        state.flowIndex = nextY * state.size + nextX;
-        state.flowIncoming = (outgoing + 2) % 4;
         state.status = state.flowFastForward ?
             'Vägen till UT är klar — strömmen snabbspolas genom kretsen!' :
             this.getPipeProgressStatus(state);
@@ -777,6 +961,7 @@ class SafePuzzleEngine {
             visible: new Set(),
             leading: new Set(),
             blocked: new Set(),
+            trail: [],
             frame: 'empty',
             pulsed: false,
         };
@@ -786,37 +971,25 @@ class SafePuzzleEngine {
         const progress = state.solved || state.flowPhase === 'failed' ?
             1 :
             state.flowPhase === 'flowing' ?
-            Math.max(
-                0,
-                Math.min(
-                    1,
-                    1 - state.flowTimer / activeStep
-                )
-            ) :
+            Math.max(0, Math.min(1, 1 - state.flowTimer / activeStep)) :
             1;
+        const trail = state.trail || [];
         const visible = new Set(state.filled);
-        if (
-            state.flowPhase === 'flowing' &&
-            state.flowHead !== null &&
-            !state.solved
-        ) {
-            visible.delete(state.flowHead);
+        if (state.flowPhase === 'flowing' && !state.solved) {
+            trail.forEach(entry => visible.delete(entry.index));
         }
         return {
             visible,
-            leading: state.flowHead === null ?
-                new Set() :
-                new Set([state.flowHead]),
+            leading: new Set(trail.map(entry => entry.index)),
             blocked: state.flowBlockedIndex === null ?
                 new Set() :
                 new Set([state.flowBlockedIndex]),
+            trail,
             frame: `${state.flowPhase}:${state.flowVersion}`,
             pulsed: false,
             progress: reducedMotion ?
                 Math.round(progress * 4) / 4 :
                 progress,
-            incoming: state.flowHeadIncoming,
-            outgoing: state.flowHeadOutgoing,
         };
     }
 
@@ -913,11 +1086,9 @@ class SafePuzzleEngine {
         state.flowInterval = state.flowOpening;
         state.flowTimer = state.flowOpening;
         state.flowFastForward = false;
-        state.flowIndex = state.sourceY * state.size;
-        state.flowIncoming = 3;
-        state.flowHead = null;
-        state.flowHeadIncoming = null;
-        state.flowHeadOutgoing = null;
+        state.heads = [{ index: state.sourceY * state.size, incoming: 3 }];
+        state.trail = [];
+        state.poweredSinks = new Set();
         state.flowBlockedIndex = null;
         state.flowBlockedReason = 'break';
         state.flowVersion++;

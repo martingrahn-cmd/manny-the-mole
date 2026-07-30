@@ -1423,10 +1423,7 @@ class GameUI {
                 'is-source',
                 x === 0 && y === state.sourceY
             );
-            button.classList.toggle(
-                'is-sink',
-                x === state.size - 1 && y === state.sinkY
-            );
+            button.classList.toggle('is-sink', state.sinks.includes(index));
             if (
                 x === 0 &&
                 y === state.sourceY &&
@@ -1441,7 +1438,7 @@ class GameUI {
                 port.textContent = 'IN';
                 port.setAttribute('aria-hidden', 'true');
                 button.append(port);
-            } else if (x === state.size - 1 && y === state.sinkY) {
+            } else if (state.sinks.includes(index)) {
                 const port = document.createElement('span');
                 port.className = 'puzzle-pipe-port puzzle-pipe-port--out';
                 port.textContent = 'UT';
@@ -1462,19 +1459,17 @@ class GameUI {
                 pipe.append(junction);
             }
             button.append(pipe);
-            if (
-                index === state.flowHead &&
-                Number.isInteger(state.flowHeadIncoming) &&
-                Number.isInteger(state.flowHeadOutgoing)
-            ) {
+            const trailEntry = (state.trail || []).find(
+                entry => entry.index === index
+            );
+            if (trailEntry) {
                 const edgePoints = [
                     [50, 0],
                     [100, 50],
                     [50, 100],
                     [0, 50],
                 ];
-                const incoming = edgePoints[state.flowHeadIncoming];
-                const outgoing = edgePoints[state.flowHeadOutgoing];
+                const incoming = edgePoints[trailEntry.incoming];
                 const trace = document.createElementNS(
                     'http://www.w3.org/2000/svg',
                     'svg'
@@ -1482,21 +1477,28 @@ class GameUI {
                 trace.classList.add('puzzle-pipe-flow-trace');
                 trace.setAttribute('viewBox', '0 0 100 100');
                 trace.setAttribute('aria-hidden', 'true');
-                const tracePath = document.createElementNS(
-                    'http://www.w3.org/2000/svg',
-                    'path'
-                );
-                tracePath.setAttribute(
-                    'd',
-                    `M ${incoming[0]} ${incoming[1]} ` +
-                    `L 50 50 L ${outgoing[0]} ${outgoing[1]}`
-                );
-                tracePath.setAttribute('pathLength', '1');
-                trace.append(tracePath);
-                const flowHead = document.createElement('span');
-                flowHead.className = 'puzzle-pipe-flow-head';
-                flowHead.setAttribute('aria-hidden', 'true');
-                button.append(trace, flowHead);
+                // Ett T-kors får en linje per gren, alla ritade i takt.
+                trailEntry.outgoings.forEach(direction => {
+                    const outgoing = edgePoints[direction];
+                    const tracePath = document.createElementNS(
+                        'http://www.w3.org/2000/svg',
+                        'path'
+                    );
+                    tracePath.setAttribute(
+                        'd',
+                        `M ${incoming[0]} ${incoming[1]} ` +
+                        `L 50 50 L ${outgoing[0]} ${outgoing[1]}`
+                    );
+                    tracePath.setAttribute('pathLength', '1');
+                    trace.append(tracePath);
+                });
+                button.append(trace);
+                if (trailEntry.outgoings.length === 1) {
+                    const flowHead = document.createElement('span');
+                    flowHead.className = 'puzzle-pipe-flow-head';
+                    flowHead.setAttribute('aria-hidden', 'true');
+                    button.append(flowHead);
+                }
             }
             if (!cell.revealed && !state.filled.has(index)) {
                 const cover = document.createElement('span');
@@ -1513,12 +1515,19 @@ class GameUI {
             'puzzle-pipes__terminal puzzle-pipes__terminal--in';
         inTerminal.style.setProperty('--terminal-row', state.sourceY);
         inTerminal.setAttribute('aria-hidden', 'true');
-        const outTerminal = document.createElement('span');
-        outTerminal.className =
-            'puzzle-pipes__terminal puzzle-pipes__terminal--out';
-        outTerminal.style.setProperty('--terminal-row', state.sinkY);
-        outTerminal.setAttribute('aria-hidden', 'true');
-        board.append(grid, inTerminal, outTerminal);
+        board.append(grid, inTerminal);
+        // En pil per utgång, så två utgångar syns som två uttag.
+        state.sinks.forEach(sinkIndex => {
+            const outTerminal = document.createElement('span');
+            outTerminal.className =
+                'puzzle-pipes__terminal puzzle-pipes__terminal--out';
+            outTerminal.style.setProperty(
+                '--terminal-row',
+                Math.floor(sinkIndex / state.size)
+            );
+            outTerminal.setAttribute('aria-hidden', 'true');
+            board.append(outTerminal);
+        });
 
         let failureBanner = null;
         if (failed) {
@@ -1605,14 +1614,18 @@ class GameUI {
             );
             if (!presentation.leading.has(index)) return;
 
+            const entry = presentation.trail.find(
+                item => item.index === index
+            );
+            if (!entry) return;
             const edgePoints = [
                 [50, 11],
                 [89, 50],
                 [50, 89],
                 [11, 50],
             ];
-            const incoming = edgePoints[presentation.incoming];
-            const outgoing = edgePoints[presentation.outgoing];
+            const incoming = edgePoints[entry.incoming];
+            const outgoing = edgePoints[entry.outgoings[0]];
             if (!incoming || !outgoing) return;
             const progress = Math.max(
                 0,
@@ -1627,12 +1640,10 @@ class GameUI {
             const y = from[1] + (to[1] - from[1]) * legProgress;
             cell.style.setProperty('--flow-head-x', `${x}%`);
             cell.style.setProperty('--flow-head-y', `${y}%`);
-            const trace = cell.querySelector(
-                '.puzzle-pipe-flow-trace path'
-            );
-            if (trace) {
-                trace.style.strokeDashoffset = String(1 - progress);
-            }
+            cell.querySelectorAll('.puzzle-pipe-flow-trace path')
+                .forEach(trace => {
+                    trace.style.strokeDashoffset = String(1 - progress);
+                });
         });
     }
 
@@ -3077,7 +3088,7 @@ class Game {
     startStandalonePuzzle(type, difficulty) {
         const puzzleType = String(type || '');
         const puzzleDifficulty = Number(difficulty);
-        const maximumDifficulty = puzzleType === 'pipes' ? 5 : 3;
+        const maximumDifficulty = puzzleType === 'pipes' ? 6 : 3;
         if (
             this.gameState !== 'puzzle-select' ||
             !Object.prototype.hasOwnProperty.call(
