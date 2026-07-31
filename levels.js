@@ -6,6 +6,11 @@ const CAMPAIGN_LEVELS = Object.freeze([
         completeTitle: 'Första schaktet klart',
         summary: 'Lär dig gräva nedåt och hämta luft i en trygg sidoficka.',
         start: { x: 3, y: 2, facing: 'down', oxygen: 100 },
+        reward: {
+            icon: '🦷',
+            name: 'Ett gebiss',
+            blurb: 'Någons löständer. Fortfarande fuktiga.',
+        },
         safe: {
             type: 'pipes',
             difficulty: 1,
@@ -52,6 +57,11 @@ const CAMPAIGN_LEVELS = Object.freeze([
         completeTitle: 'Sidogångarna klara',
         summary: 'Följ öppningarna i berget och våga vända tillbaka efter luft.',
         start: { x: 3, y: 2, facing: 'down', oxygen: 100 },
+        reward: {
+            icon: '🧦',
+            name: 'En ensam strumpa',
+            blurb: 'Storlek 43. Den andra är inte här.',
+        },
         safe: {
             type: 'dial',
             difficulty: 1,
@@ -110,6 +120,11 @@ const CAMPAIGN_LEVELS = Object.freeze([
         completeTitle: 'Första raset avklarat',
         summary: 'Läs skakningen, lämna fallzonen och borra igenom ditt första X-block.',
         start: { x: 3, y: 2, facing: 'down', oxygen: 100 },
+        reward: {
+            icon: '📜',
+            name: 'Lagfarten på ett hål',
+            blurb: 'Undertecknad av en mullvad. Juridiskt tveksam.',
+        },
         safe: {
             type: 'pipes',
             difficulty: 1,
@@ -173,6 +188,11 @@ const CAMPAIGN_LEVELS = Object.freeze([
         completeTitle: 'Stöden säkrade',
         summary: 'Byt sida mellan stöden, vänta ut raset och forcera en spärrad mittgång.',
         start: { x: 3, y: 2, facing: 'down', oxygen: 100 },
+        reward: {
+            icon: '🖼️',
+            name: 'Ett inramat porträtt',
+            blurb: 'En rivaliserande mullvad. Signerat, dessvärre.',
+        },
         safe: {
             type: 'keypad',
             difficulty: 2,
@@ -240,6 +260,11 @@ const CAMPAIGN_LEVELS = Object.freeze([
         completeTitle: 'Gångarna kartlagda',
         summary: 'Planera sidbytena, hämta luft under skyddstak och öppna två X-portar.',
         start: { x: 3, y: 2, facing: 'down', oxygen: 100 },
+        reward: {
+            icon: '🫙',
+            name: 'Burk med maskgelé',
+            blurb: 'Bäst före 1974. Oöppnad.',
+        },
         safe: {
             type: 'dial',
             difficulty: 2,
@@ -310,6 +335,11 @@ const CAMPAIGN_LEVELS = Object.freeze([
         completeTitle: 'Djupa låset öppnat',
         summary: 'Knyt ihop allt du lärt dig: raszoner, sidofickor och tre hårda X-spärrar.',
         start: { x: 3, y: 2, facing: 'down', oxygen: 100 },
+        reward: {
+            icon: '🗝️',
+            name: 'Nyckeln till ett större kassaskåp',
+            blurb: 'Det finns alltid ett större kassaskåp.',
+        },
         safe: {
             type: 'pipes',
             difficulty: 3,

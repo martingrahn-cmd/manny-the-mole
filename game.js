@@ -671,6 +671,10 @@ class GameUI {
         this.wonCopy = document.getElementById('wonCopy');
         this.wonPrimaryButton = document.getElementById('wonPrimaryButton');
         this.wonScore = document.getElementById('wonScore');
+        this.wonBestAir = document.getElementById('wonBestAir');
+        this.wonRewardIcon = document.getElementById('wonRewardIcon');
+        this.wonRewardName = document.getElementById('wonRewardName');
+        this.wonRewardBlurb = document.getElementById('wonRewardBlurb');
         this.wonAir = document.getElementById('wonAir');
         this.levelSelect = document.getElementById('levelSelect');
         this.campaignProgress = document.getElementById('campaignProgress');
@@ -966,7 +970,8 @@ class GameUI {
         CAMPAIGN_LEVELS.forEach((level, levelIndex) => {
             const unlocked = this.game.isLevelUnlocked(levelIndex);
             const completed = this.game.isLevelCompleted(levelIndex);
-            const bestScore = this.game.getLevelBestScore(levelIndex);
+            const bestAir = this.game.getLevelBestAir(levelIndex);
+            const reward = level.reward;
             const safeLabel = SAFE_TYPE_LABELS[level.safe.type];
             const card = document.createElement('button');
             card.type = 'button';
@@ -985,7 +990,10 @@ class GameUI {
                 'aria-label',
                 unlocked ?
                     `Nivå ${level.number}, ${level.title}. ${
-                        completed ? `Klar. Bästa byte ${bestScore}.` : 'Upplåst.'
+                        completed ?
+                            `Klar. Bästa luft ${bestAir} procent. ` +
+                            `I skåpet: ${reward.name}.` :
+                            'Upplåst.'
                     } ${safeLabel}.` :
                     `Nivå ${level.number}, ${level.title}. Låst. Klara nivå ${
                         CAMPAIGN_LEVELS[levelIndex - 1]?.number
@@ -1037,7 +1045,7 @@ class GameUI {
             const meta = document.createElement('span');
             meta.className = 'level-card__meta';
             meta.textContent = completed ?
-                `${safeLabel} · bäst ${bestScore}` :
+                `${safeLabel} · bästa luft ${bestAir}%` :
                 !unlocked ?
                     'Klara föregående nivå' :
                     `${safeLabel} · ${
@@ -1047,6 +1055,19 @@ class GameUI {
             const content = document.createElement('span');
             content.className = 'level-card__content';
             content.append(top, title, summary, meta);
+
+            // Bytet från skåpet stannar kvar på kortet som ett kvitto.
+            if (completed && reward) {
+                const find = document.createElement('span');
+                find.className = 'level-card__find';
+                find.setAttribute('aria-hidden', 'true');
+                const findIcon = document.createElement('i');
+                findIcon.textContent = reward.icon;
+                const findName = document.createElement('b');
+                findName.textContent = reward.name;
+                find.append(findIcon, findName);
+                content.append(find);
+            }
 
             card.append(previewFrame, content);
             this.levelSelect.append(card);
@@ -1818,6 +1839,16 @@ class GameUI {
         }
         this.wonScore.textContent = game.lastLevelScore.toString();
         this.wonAir.textContent = `${Math.floor(game.oxygen)}%`;
+        if (this.wonBestAir) {
+            this.wonBestAir.textContent =
+                `${game.getLevelBestAir(game.currentLevelIndex)}%`;
+        }
+        const reward = game.currentLevel?.reward;
+        if (reward && this.wonRewardName) {
+            this.wonRewardIcon.textContent = reward.icon;
+            this.wonRewardName.textContent = reward.name;
+            this.wonRewardBlurb.textContent = reward.blurb;
+        }
 
         const hideHud =
             game.gameState === 'menu' ||
@@ -4270,7 +4301,7 @@ class Game {
             levels[level.id] = {
                 unlocked: levelIndex === 0,
                 completed: false,
-                bestScore: 0,
+                bestAir: 0,
             };
         });
         return { version: 1, levels };
@@ -4292,8 +4323,8 @@ class Game {
             if (!saved || typeof saved !== 'object') return;
 
             const completed = saved.completed === true;
-            const bestScore = Number.isFinite(saved.bestScore) ?
-                Math.max(0, Math.floor(saved.bestScore)) :
+            const bestAir = Number.isFinite(saved.bestAir) ?
+                Math.max(0, Math.min(100, Math.floor(saved.bestAir))) :
                 0;
             normalized.levels[level.id] = {
                 unlocked:
@@ -4301,7 +4332,7 @@ class Game {
                     completed ||
                     saved.unlocked === true,
                 completed,
-                bestScore,
+                bestAir,
             };
         });
 
@@ -4350,8 +4381,8 @@ class Game {
         return this.getLevelProgress(levelIndex)?.completed === true;
     }
 
-    getLevelBestScore(levelIndex) {
-        return this.getLevelProgress(levelIndex)?.bestScore || 0;
+    getLevelBestAir(levelIndex) {
+        return this.getLevelProgress(levelIndex)?.bestAir || 0;
     }
 
     getCompletedLevelCount() {
@@ -4391,8 +4422,10 @@ class Game {
             entry.unlocked = true;
             changed = true;
         }
-        if (this.lastLevelScore > entry.bestScore) {
-            entry.bestScore = this.lastLevelScore;
+        const airLeft = Math.max(0, Math.min(100, Math.floor(this.oxygen)));
+        this.lastLevelAir = airLeft;
+        if (airLeft > entry.bestAir) {
+            entry.bestAir = airLeft;
             changed = true;
         }
 
