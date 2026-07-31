@@ -63,8 +63,8 @@ const CAMPAIGN_LEVELS = Object.freeze([
             blurb: 'Storlek 43. Den andra är inte här.',
         },
         safe: {
-            type: 'dial',
-            difficulty: 1,
+            type: 'pipes',
+            difficulty: 2,
             x: 2,
             y: 31,
             width: 2,
@@ -127,7 +127,7 @@ const CAMPAIGN_LEVELS = Object.freeze([
         },
         safe: {
             type: 'pipes',
-            difficulty: 1,
+            difficulty: 3,
             x: 2,
             y: 37,
             width: 2,
@@ -194,8 +194,8 @@ const CAMPAIGN_LEVELS = Object.freeze([
             blurb: 'En rivaliserande mullvad. Signerat, dessvärre.',
         },
         safe: {
-            type: 'keypad',
-            difficulty: 2,
+            type: 'pipes',
+            difficulty: 4,
             x: 2,
             y: 39,
             width: 2,
@@ -266,8 +266,8 @@ const CAMPAIGN_LEVELS = Object.freeze([
             blurb: 'Bäst före 1974. Oöppnad.',
         },
         safe: {
-            type: 'dial',
-            difficulty: 2,
+            type: 'pipes',
+            difficulty: 5,
             x: 2,
             y: 42,
             width: 2,
@@ -342,7 +342,7 @@ const CAMPAIGN_LEVELS = Object.freeze([
         },
         safe: {
             type: 'pipes',
-            difficulty: 3,
+            difficulty: 6,
             x: 2,
             y: 45,
             width: 2,

@@ -972,7 +972,8 @@ class GameUI {
             const completed = this.game.isLevelCompleted(levelIndex);
             const bestAir = this.game.getLevelBestAir(levelIndex);
             const reward = level.reward;
-            const safeLabel = SAFE_TYPE_LABELS[level.safe.type];
+            const safeLabel = `${SAFE_TYPE_LABELS[level.safe.type]} ` +
+                `${level.safe.difficulty}`;
             const card = document.createElement('button');
             card.type = 'button';
             card.className = 'level-card';
