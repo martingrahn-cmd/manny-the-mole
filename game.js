@@ -37,6 +37,7 @@ const DIG_ANIM_DURATION = 0.18;
 const DRILL_ANIM_SPEED = 24;
 const MAX_DEBRIS_PARTICLES = 44;
 const PROGRESS_STORAGE_KEY = 'manny-the-mole:campaign-progress';
+const SAFE_INTRO_DURATION = 0.85;
 
 let CANVAS_WIDTH = GRID_WIDTH * GRID_SIZE;
 let CANVAS_HEIGHT = VIEWPORT_HEIGHT * GRID_SIZE;
@@ -1880,6 +1881,7 @@ class Game {
         this.itemsByCell = new Map();
         this.reinforcedRoofCells = new Set();
         this.safe = null;
+        this.safeIntroTimer = 0;
         this.debrisParticles = [];
         this.screenShake = 0;
         this.screenShakePhase = 0;
@@ -1926,6 +1928,7 @@ class Game {
         this.standalonePuzzleRun = 0;
         this.safeContactArmed = true;
         this.puzzleBonus = 0;
+        this.safeIntroTimer = 0;
         this.boundGameLoop = this.gameLoop.bind(this);
         this.ui = new GameUI(this);
         
@@ -2432,6 +2435,16 @@ class Game {
         }
         
         this.updatePlayer(deltaTime, input);
+        // Under beaten vid skåpet fryser grävningen: ingen fysik, inget syre,
+        // ingen ny träffkontroll. Spelkänslan i övrigt är orörd.
+        if (this.safeIntroTimer > 0) {
+            this.safeIntroTimer = Math.max(0, this.safeIntroTimer - deltaTime);
+            if (this.safeIntroTimer === 0) this.openSafePuzzle();
+            this.updateCamera(deltaTime);
+            this.keysJustPressed = {};
+            return;
+        }
+
         if (this.gameState === 'playing') {
             this.checkWinCondition();
         }
@@ -2959,8 +2972,19 @@ class Game {
 
     beginSafePuzzle() {
         if (this.gameState !== 'playing' || !this.safe) return false;
+        if (this.safeIntroTimer > 0) return false;
         this.safeContactArmed = false;
+        this.safeIntroTimer = 0;
         this.clearKeyboardInput();
+        // En kort beat vid skåpet innan panelen tar över skärmen.
+        this.safeIntroTimer = SAFE_INTRO_DURATION;
+        this.sound.playTone(190, 300, 0.22, 0.04, 'square');
+        this.sound.playTone(120, 96, 0.5, 0.03, 'triangle', 0.12);
+        return true;
+    }
+
+    openSafePuzzle() {
+        if (!this.safe) return false;
         this.puzzleContext = 'campaign';
         this.safePuzzle.start(
             this.safe.type,
@@ -2968,6 +2992,7 @@ class Game {
             this.currentLevel.id
         );
         this.gameState = 'puzzle';
+        this.lastRenderedState = null;
         this.sound.playTone(260, 430, 0.12, 0.035, 'square');
         return true;
     }
@@ -4529,6 +4554,7 @@ class Game {
         this.puzzleContext = null;
         this.safeContactArmed = true;
         this.puzzleBonus = 0;
+        this.safeIntroTimer = 0;
         this.lastLevelScore = 0;
         this.newlyUnlockedLevelIndex = null;
         this.hasPlayerDug = false;
@@ -5375,6 +5401,42 @@ class Game {
         ctx.restore();
     }
 
+    // Ljuset växer ur skåpet under beaten och sveper ut över rutan.
+    renderSafeIntro(screenX, screenY, width, height) {
+        if (this.safeIntroTimer <= 0) return;
+        const ctx = this.ctx;
+        const framsteg = 1 - this.safeIntroTimer / SAFE_INTRO_DURATION;
+        const mittX = screenX + width / 2;
+        const mittY = screenY + height / 2;
+        const puls = this.reducedMotion ?
+            framsteg :
+            framsteg * (0.82 + 0.18 * Math.sin(framsteg * 22));
+
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        const radie = Math.max(width, height) * (0.45 + framsteg * 1.5);
+        const sken = ctx.createRadialGradient(
+            mittX, mittY, 0, mittX, mittY, radie
+        );
+        sken.addColorStop(0, `rgba(150, 240, 210, ${0.5 * puls})`);
+        sken.addColorStop(0.45, `rgba(80, 200, 190, ${0.24 * puls})`);
+        sken.addColorStop(1, 'rgba(40, 120, 140, 0)');
+        ctx.fillStyle = sken;
+        ctx.beginPath();
+        ctx.arc(mittX, mittY, radie, 0, Math.PI * 2);
+        ctx.fill();
+
+        // en ring som expanderar som en tryckvåg
+        const ring = Math.max(width, height) * (0.3 + framsteg * 1.8);
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.strokeStyle = `rgba(170, 250, 225, ${0.55 * (1 - framsteg)})`;
+        ctx.lineWidth = Math.max(1, 3 * (1 - framsteg));
+        ctx.beginPath();
+        ctx.arc(mittX, mittY, ring, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+    }
+
     renderSafe(x, y) {
         const ctx = this.ctx;
         const screenX = this.pixelSnap(x);
@@ -5389,6 +5451,7 @@ class Game {
             ctx.imageSmoothingEnabled = false;
             ctx.drawImage(safeSprite, screenX, screenY, width, height);
             ctx.restore();
+            this.renderSafeIntro(screenX, screenY, width, height);
             return;
         }
 

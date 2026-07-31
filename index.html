@@ -961,6 +961,100 @@
             white-space: nowrap;
         }
 
+        /* Den lösta kretsen laddas upp innan skärmen lämnar över. */
+        @keyframes circuit-charge {
+            0% {
+                box-shadow: 0 0 0 rgba(106, 240, 181, 0);
+            }
+
+            40% {
+                box-shadow:
+                    0 0 calc(30px * var(--game-scale))
+                        rgba(106, 240, 181, 0.55),
+                    inset 0 0 calc(24px * var(--game-scale))
+                        rgba(106, 240, 181, 0.28);
+            }
+
+            100% {
+                box-shadow:
+                    0 0 calc(14px * var(--game-scale))
+                        rgba(106, 240, 181, 0.3),
+                    inset 0 0 calc(10px * var(--game-scale))
+                        rgba(106, 240, 181, 0.14);
+            }
+        }
+
+        .puzzle-pipes.is-solved .puzzle-pipes__grid {
+            border-color: rgba(106, 240, 181, 0.6);
+            animation: circuit-charge 620ms ease-out both;
+        }
+
+        .puzzle-pipes.is-solved .puzzle-pipe-cell.is-flowing,
+        .puzzle-pipes.is-solved .puzzle-pipe-cell.is-locked {
+            border-color: rgba(140, 255, 208, 0.75);
+        }
+
+        .puzzle-pipes.is-solved .puzzle-pipe {
+            --pipe-color: #9dffd6;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .puzzle-pipes.is-solved .puzzle-pipes__grid {
+                animation: none;
+            }
+        }
+
+        /* Pusselpanelen kommer in som en valvdörr som slår upp. */
+        @keyframes vault-open {
+            from {
+                opacity: 0;
+                transform: translateY(calc(14px * var(--game-scale)))
+                    scale(0.94);
+                clip-path: inset(50% 0 50% 0);
+            }
+
+            to {
+                opacity: 1;
+                transform: none;
+                clip-path: inset(0 0 0 0);
+            }
+        }
+
+        #screenPuzzle:not([hidden]) .screen-panel {
+            animation: vault-open 420ms cubic-bezier(0.16, 0.84, 0.34, 1) both;
+        }
+
+        @keyframes vault-find-drop {
+            from {
+                opacity: 0;
+                transform: translateY(calc(-10px * var(--game-scale)))
+                    scale(0.92);
+            }
+
+            to {
+                opacity: 1;
+                transform: none;
+            }
+        }
+
+        #screenWon:not([hidden]) .vault-find {
+            animation: vault-find-drop 460ms
+                cubic-bezier(0.2, 1.3, 0.4, 1) 160ms both;
+        }
+
+        #screenWon:not([hidden]) .vault-find__icon {
+            animation: vault-find-drop 520ms
+                cubic-bezier(0.2, 1.5, 0.4, 1) 320ms both;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            #screenPuzzle:not([hidden]) .screen-panel,
+            #screenWon:not([hidden]) .vault-find,
+            #screenWon:not([hidden]) .vault-find__icon {
+                animation: none;
+            }
+        }
+
         .gallery-grid {
             display: grid;
             gap: calc(7px * var(--game-scale));
