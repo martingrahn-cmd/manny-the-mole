@@ -946,10 +946,11 @@
             color: rgba(240, 200, 130, 0.86);
         }
 
-        .level-card__find i {
-            font-size: max(11px, calc(12px * var(--game-scale)));
-            font-style: normal;
-            line-height: 1;
+        .level-card__find img {
+            width: max(14px, calc(16px * var(--game-scale)));
+            height: auto;
+            flex: none;
+            image-rendering: pixelated;
         }
 
         .level-card__find b {
@@ -958,6 +959,79 @@
             font-weight: 700;
             text-overflow: ellipsis;
             white-space: nowrap;
+        }
+
+        .gallery-grid {
+            display: grid;
+            gap: calc(7px * var(--game-scale));
+            margin-top: calc(12px * var(--game-scale));
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .gallery-item {
+            display: flex;
+            gap: calc(9px * var(--game-scale));
+            align-items: center;
+            padding: calc(9px * var(--game-scale));
+            border: max(1px, calc(1px * var(--game-scale))) solid
+                rgba(240, 200, 130, 0.3);
+            border-radius: calc(10px * var(--game-scale));
+            background: rgba(9, 14, 22, 0.62);
+            text-align: left;
+        }
+
+        .gallery-item.is-locked {
+            border-color: rgba(150, 168, 196, 0.17);
+            background: rgba(8, 11, 17, 0.5);
+        }
+
+        .gallery-item__art {
+            display: grid;
+            width: max(40px, calc(46px * var(--game-scale)));
+            aspect-ratio: 1;
+            flex: none;
+            place-items: center;
+            border-radius: calc(8px * var(--game-scale));
+            background: rgba(0, 0, 0, 0.32);
+        }
+
+        .gallery-item__art img {
+            width: 78%;
+            height: auto;
+            image-rendering: pixelated;
+        }
+
+        /* Ett hittat fynd lyser; ett ohittat är bara ett tomt fack. */
+        .gallery-item.is-locked .gallery-item__art {
+            color: rgba(150, 168, 196, 0.44);
+            font: 900 max(15px, calc(18px * var(--game-scale))) / 1
+                ui-monospace, monospace;
+        }
+
+        .gallery-item__copy {
+            display: flex;
+            min-width: 0;
+            flex-direction: column;
+            gap: calc(2px * var(--game-scale));
+        }
+
+        .gallery-item__copy strong {
+            color: #ffe6b8;
+            font-size: max(11px, calc(12px * var(--game-scale)));
+            text-wrap: balance;
+        }
+
+        .gallery-item.is-locked .gallery-item__copy strong {
+            color: rgba(186, 202, 224, 0.55);
+        }
+
+        .gallery-item__copy small {
+            color: rgba(203, 220, 240, 0.6);
+            font-size: max(9px, calc(10px * var(--game-scale)));
+        }
+
+        .gallery-back {
+            margin-top: calc(12px * var(--game-scale));
         }
 
         .vault-find {
@@ -979,11 +1053,12 @@
         }
 
         .vault-find__icon {
+            width: max(38px, calc(44px * var(--game-scale)));
+            height: auto;
             flex: none;
-            font-size: max(26px, calc(30px * var(--game-scale)));
-            line-height: 1;
+            image-rendering: pixelated;
             filter: drop-shadow(
-                0 0 calc(10px * var(--game-scale)) rgba(240, 200, 130, 0.5)
+                0 0 calc(10px * var(--game-scale)) rgba(240, 200, 130, 0.45)
             );
         }
 
@@ -2331,6 +2406,11 @@
                 --pipe-pad: 6px;
                 --pipe-gap: 3px;
             }
+
+            /* Två kolumner blir för smala för bildtexterna på en telefon. */
+            .gallery-grid {
+                grid-template-columns: minmax(0, 1fr);
+            }
         }
     </style>
 </head>
@@ -2409,7 +2489,20 @@
                             <span class="puzzle-mode-entry__icon" aria-hidden="true">◇</span>
                             <span class="puzzle-mode-entry__copy">
                                 <strong>Pusselläge</strong>
-                                <small>Spela kassaskåpens tre låstyper direkt</small>
+                                <small>Spela kretslåsets sex grader direkt</small>
+                            </span>
+                            <span class="puzzle-mode-entry__arrow" aria-hidden="true">→</span>
+                        </button>
+                        <button
+                            class="menu-button menu-button--puzzle-mode"
+                            type="button"
+                            data-action="gallery"
+                            aria-label="Öppna galleriet över fynd"
+                        >
+                            <span class="puzzle-mode-entry__icon" aria-hidden="true">▣</span>
+                            <span class="puzzle-mode-entry__copy">
+                                <strong>Galleriet</strong>
+                                <small id="galleryEntryCount">Prylarna du hittat i skåpen</small>
                             </span>
                             <span class="puzzle-mode-entry__arrow" aria-hidden="true">→</span>
                         </button>
@@ -2505,6 +2598,28 @@
                 </div>
             </section>
 
+            <section
+                id="screenGallery"
+                class="screen screen--gallery"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="galleryTitle"
+                aria-describedby="galleryCopy"
+                hidden
+            >
+                <div class="screen-panel screen-panel--gallery">
+                    <p class="eyebrow">Bytet</p>
+                    <h2 id="galleryTitle">Galleriet</h2>
+                    <p id="galleryCopy" class="screen-copy">
+                        Allt som stod i kassaskåpen. Ett skåp, en pryl.
+                    </p>
+                    <div id="galleryGrid" class="gallery-grid"></div>
+                    <button class="menu-button gallery-back" type="button" data-action="menu">
+                        Tillbaka till nivåerna
+                    </button>
+                </div>
+            </section>
+
             <section id="screenPaused" class="screen" aria-label="Pausmeny" hidden>
                 <div class="screen-panel">
                     <p class="eyebrow">Spelet är pausat</p>
@@ -2579,7 +2694,7 @@
                     <h2 id="wonTitle">Första schaktet klart</h2>
                     <p id="wonCopy" class="screen-copy">Bra grävt. Nästa schakt väntar.</p>
                     <div class="vault-find">
-                        <span id="wonRewardIcon" class="vault-find__icon" aria-hidden="true">🦷</span>
+                        <img id="wonRewardIcon" class="vault-find__icon" alt="" src="" width="16" height="16">
                         <span class="vault-find__copy">
                             <small>I kassaskåpet</small>
                             <strong id="wonRewardName">Ett gebiss</strong>

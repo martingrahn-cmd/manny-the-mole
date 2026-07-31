@@ -7,7 +7,7 @@ const CAMPAIGN_LEVELS = Object.freeze([
         summary: 'Lär dig gräva nedåt och hämta luft i en trygg sidoficka.',
         start: { x: 3, y: 2, facing: 'down', oxygen: 100 },
         reward: {
-            icon: '🦷',
+            image: 'assets/vault-dentures.png',
             name: 'Ett gebiss',
             blurb: 'Någons löständer. Fortfarande fuktiga.',
         },
@@ -58,7 +58,7 @@ const CAMPAIGN_LEVELS = Object.freeze([
         summary: 'Följ öppningarna i berget och våga vända tillbaka efter luft.',
         start: { x: 3, y: 2, facing: 'down', oxygen: 100 },
         reward: {
-            icon: '🧦',
+            image: 'assets/vault-sock.png',
             name: 'En ensam strumpa',
             blurb: 'Storlek 43. Den andra är inte här.',
         },
@@ -121,7 +121,7 @@ const CAMPAIGN_LEVELS = Object.freeze([
         summary: 'Läs skakningen, lämna fallzonen och borra igenom ditt första X-block.',
         start: { x: 3, y: 2, facing: 'down', oxygen: 100 },
         reward: {
-            icon: '📜',
+            image: 'assets/vault-deed.png',
             name: 'Lagfarten på ett hål',
             blurb: 'Undertecknad av en mullvad. Juridiskt tveksam.',
         },
@@ -189,7 +189,7 @@ const CAMPAIGN_LEVELS = Object.freeze([
         summary: 'Byt sida mellan stöden, vänta ut raset och forcera en spärrad mittgång.',
         start: { x: 3, y: 2, facing: 'down', oxygen: 100 },
         reward: {
-            icon: '🖼️',
+            image: 'assets/vault-portrait.png',
             name: 'Ett inramat porträtt',
             blurb: 'En rivaliserande mullvad. Signerat, dessvärre.',
         },
@@ -261,7 +261,7 @@ const CAMPAIGN_LEVELS = Object.freeze([
         summary: 'Planera sidbytena, hämta luft under skyddstak och öppna två X-portar.',
         start: { x: 3, y: 2, facing: 'down', oxygen: 100 },
         reward: {
-            icon: '🫙',
+            image: 'assets/vault-jar.png',
             name: 'Burk med maskgelé',
             blurb: 'Bäst före 1974. Oöppnad.',
         },
@@ -336,7 +336,7 @@ const CAMPAIGN_LEVELS = Object.freeze([
         summary: 'Knyt ihop allt du lärt dig: raszoner, sidofickor och tre hårda X-spärrar.',
         start: { x: 3, y: 2, facing: 'down', oxygen: 100 },
         reward: {
-            icon: '🗝️',
+            image: 'assets/vault-key.png',
             name: 'Nyckeln till ett större kassaskåp',
             blurb: 'Det finns alltid ett större kassaskåp.',
         },

@@ -664,6 +664,9 @@ class GameUI {
         this.wonPrimaryButton = document.getElementById('wonPrimaryButton');
         this.wonScore = document.getElementById('wonScore');
         this.wonBestAir = document.getElementById('wonBestAir');
+        this.galleryGrid = document.getElementById('galleryGrid');
+        this.galleryEntryCount =
+            document.getElementById('galleryEntryCount');
         this.wonRewardIcon = document.getElementById('wonRewardIcon');
         this.wonRewardName = document.getElementById('wonRewardName');
         this.wonRewardBlurb = document.getElementById('wonRewardBlurb');
@@ -686,6 +689,7 @@ class GameUI {
         this.screens = {
             menu: document.getElementById('screenMenu'),
             'puzzle-select': document.getElementById('screenPuzzleSelect'),
+            gallery: document.getElementById('screenGallery'),
             paused: document.getElementById('screenPaused'),
             puzzle: document.getElementById('screenPuzzle'),
             gameover: document.getElementById('screenGameover'),
@@ -693,6 +697,7 @@ class GameUI {
         };
 
         this.refreshLevelSelect();
+        this.refreshGallery();
 
         this.root.addEventListener('click', event => {
             const button = event.target.closest?.('[data-action]');
@@ -712,6 +717,7 @@ class GameUI {
             else if (action === 'puzzles' || action === 'puzzle-menu') {
                 this.game.showPuzzleSelect();
             }
+            else if (action === 'gallery') this.game.showGallery();
             else if (action === 'start-puzzle') {
                 this.game.startStandalonePuzzle(
                     button.dataset.puzzle,
@@ -913,7 +919,10 @@ class GameUI {
             this.game.clearKeyboardInput();
             if (this.game.gameState === 'paused') {
                 this.game.resumeGame();
-            } else if (this.game.gameState === 'puzzle-select') {
+            } else if (
+                this.game.gameState === 'puzzle-select' ||
+                this.game.gameState === 'gallery'
+            ) {
                 this.game.showMainMenu();
             } else if (this.game.gameState === 'puzzle') {
                 this.game.cancelSafePuzzle();
@@ -940,6 +949,60 @@ class GameUI {
             }
             focusedControl.click();
         }
+    }
+
+    refreshGallery() {
+        if (!this.galleryGrid) return;
+        const hittade = CAMPAIGN_LEVELS.filter(
+            (_, index) => this.game.isLevelCompleted(index)
+        ).length;
+        if (this.galleryEntryCount) {
+            this.galleryEntryCount.textContent =
+                `Prylarna du hittat i skåpen · ${hittade} av ` +
+                `${CAMPAIGN_LEVELS.length}`;
+        }
+
+        this.galleryGrid.replaceChildren();
+        CAMPAIGN_LEVELS.forEach((level, levelIndex) => {
+            const hittad = this.game.isLevelCompleted(levelIndex);
+            const item = document.createElement('div');
+            item.className = 'gallery-item';
+            item.classList.toggle('is-locked', !hittad);
+
+            const art = document.createElement('span');
+            art.className = 'gallery-item__art';
+            if (hittad) {
+                const bild = document.createElement('img');
+                bild.src = level.reward.image;
+                bild.alt = '';
+                art.append(bild);
+            } else {
+                art.textContent = '?';
+                art.setAttribute('aria-hidden', 'true');
+            }
+
+            const copy = document.createElement('span');
+            copy.className = 'gallery-item__copy';
+            const namn = document.createElement('strong');
+            namn.textContent = hittad ?
+                level.reward.name :
+                `Skåp ${level.number}`;
+            const text = document.createElement('small');
+            text.textContent = hittad ?
+                level.reward.blurb :
+                'Ännu inte öppnat.';
+            copy.append(namn, text);
+
+            item.append(art, copy);
+            item.setAttribute(
+                'aria-label',
+                hittad ?
+                    `${level.reward.name}. ${level.reward.blurb} ` +
+                    `Hittad i nivå ${level.number}.` :
+                    `Skåp ${level.number} är ännu inte öppnat.`
+            );
+            this.galleryGrid.append(item);
+        });
     }
 
     refreshLevelSelect() {
@@ -1042,8 +1105,9 @@ class GameUI {
                 const find = document.createElement('span');
                 find.className = 'level-card__find';
                 find.setAttribute('aria-hidden', 'true');
-                const findIcon = document.createElement('i');
-                findIcon.textContent = reward.icon;
+                const findIcon = document.createElement('img');
+                findIcon.src = reward.image;
+                findIcon.alt = '';
                 const findName = document.createElement('b');
                 findName.textContent = reward.name;
                 find.append(findIcon, findName);
@@ -1652,13 +1716,14 @@ class GameUI {
         }
         const reward = game.currentLevel?.reward;
         if (reward && this.wonRewardName) {
-            this.wonRewardIcon.textContent = reward.icon;
+            this.wonRewardIcon.src = reward.image;
             this.wonRewardName.textContent = reward.name;
             this.wonRewardBlurb.textContent = reward.blurb;
         }
 
         const hideHud =
             game.gameState === 'menu' ||
+            game.gameState === 'gallery' ||
             game.gameState === 'puzzle-select' ||
             (
                 game.gameState === 'puzzle' &&
@@ -2251,7 +2316,10 @@ class Game {
             return;
         }
 
-        if (this.gameState === 'puzzle-select') {
+        if (
+            this.gameState === 'puzzle-select' ||
+            this.gameState === 'gallery'
+        ) {
             this.updateEffects(deltaTime * 0.35);
             this.keysJustPressed = {};
             return;
@@ -2901,6 +2969,15 @@ class Game {
         );
         this.gameState = 'puzzle';
         this.sound.playTone(260, 430, 0.12, 0.035, 'square');
+        return true;
+    }
+
+    showGallery() {
+        this.clearKeyboardInput();
+        this.safePuzzle.clear();
+        this.puzzleContext = null;
+        this.gameState = 'gallery';
+        this.lastRenderedState = null;
         return true;
     }
 
@@ -4233,6 +4310,7 @@ class Game {
 
         if (changed) this.saveProgress();
         this.ui?.refreshLevelSelect();
+        this.ui?.refreshGallery();
     }
 
     hasNextLevel() {
