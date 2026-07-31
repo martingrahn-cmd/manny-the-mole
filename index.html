@@ -1125,57 +1125,6 @@
             font-size: max(8px, calc(8px * var(--game-scale)));
             line-height: 1.25;
         }
-
-        .puzzle-grade-picker {
-            display: grid;
-            grid-column: 1 / -1;
-            grid-template-columns: auto repeat(3, minmax(0, 1fr));
-            gap: calc(5px * var(--game-scale));
-            align-items: center;
-        }
-
-        .puzzle-grade-picker > span {
-            padding-right: calc(3px * var(--game-scale));
-            color: rgba(218, 228, 240, 0.42);
-            font-size: max(7px, calc(7px * var(--game-scale)));
-            font-weight: 800;
-            letter-spacing: 0.09em;
-            text-transform: uppercase;
-        }
-
-        .puzzle-grade-picker--five {
-            grid-template-columns: auto repeat(5, minmax(0, 1fr));
-            gap: calc(4px * var(--game-scale));
-        }
-
-        .puzzle-grade-picker--five .puzzle-grade-button {
-            min-width: 0;
-            padding-right: calc(3px * var(--game-scale));
-            padding-left: calc(3px * var(--game-scale));
-        }
-
-        .puzzle-grade-button {
-            min-height: calc(30px * var(--game-scale));
-            padding: calc(6px * var(--game-scale));
-            border: max(1px, calc(1px * var(--game-scale))) solid rgba(var(--puzzle-accent-rgb), 0.18);
-            border-radius: calc(8px * var(--game-scale));
-            background: rgba(var(--puzzle-accent-rgb), 0.055);
-            color: rgba(239, 247, 255, 0.82);
-            font: 800 max(9px, calc(10px * var(--game-scale))) / 1 ui-monospace, monospace;
-            cursor: pointer;
-            transition: border-color 130ms ease, background 130ms ease, color 130ms ease, transform 130ms ease;
-        }
-
-        .puzzle-grade-button:hover,
-        .puzzle-grade-button:focus-visible,
-        .puzzle-grade-button.is-menu-focused {
-            transform: translateY(calc(-1px * var(--game-scale)));
-            border-color: rgba(var(--puzzle-accent-rgb), 0.7);
-            background: rgba(var(--puzzle-accent-rgb), 0.16);
-            color: #ffffff;
-            box-shadow: 0 0 calc(12px * var(--game-scale)) rgba(var(--puzzle-accent-rgb), 0.15);
-        }
-
         .puzzle-select-back {
             margin-top: calc(11px * var(--game-scale));
         }
@@ -2515,11 +2464,6 @@
             }
 
             .level-card__title,
-            .puzzle-grade-button,
-            .puzzle-status {
-                font-size: 13px;
-            }
-
             .puzzle-pipe-port {
                 min-width: 17px;
                 font-size: 8px;
@@ -2658,11 +2602,28 @@
                                 <h3>Kodlås</h3>
                                 <p>Minns och återskapa sifferföljden.</p>
                             </div>
-                            <div class="puzzle-grade-picker" role="group" aria-label="Kodlås, välj låsgrad">
-                                <span>Låsgrad</span>
-                                <button class="puzzle-grade-button puzzle-control--primary" type="button" data-action="start-puzzle" data-puzzle="keypad" data-difficulty="1" aria-label="Starta kodlås, låsgrad 1">1</button>
-                                <button class="puzzle-grade-button" type="button" data-action="start-puzzle" data-puzzle="keypad" data-difficulty="2" aria-label="Starta kodlås, låsgrad 2">2</button>
-                                <button class="puzzle-grade-button" type="button" data-action="start-puzzle" data-puzzle="keypad" data-difficulty="3" aria-label="Starta kodlås, låsgrad 3">3</button>
+                            <div class="puzzle-grade-list" role="group" aria-label="Kodlås, välj låsgrad">
+                                <button class="puzzle-grade-row puzzle-control--primary" type="button" data-action="start-puzzle" data-puzzle="keypad" data-difficulty="1" aria-label="Starta kodlås, låsgrad 1: tre siffror">
+                                    <span class="puzzle-grade-row__nr" aria-hidden="true">1</span>
+                                    <span class="puzzle-grade-row__main">
+                                        <strong>3 siffror</strong>
+                                        <small>Följden visas en gång innan din tur</small>
+                                    </span>
+                                </button>
+                                <button class="puzzle-grade-row" type="button" data-action="start-puzzle" data-puzzle="keypad" data-difficulty="2" aria-label="Starta kodlås, låsgrad 2: fyra siffror">
+                                    <span class="puzzle-grade-row__nr" aria-hidden="true">2</span>
+                                    <span class="puzzle-grade-row__main">
+                                        <strong>4 siffror</strong>
+                                        <small>En siffra till att hålla i minnet</small>
+                                    </span>
+                                </button>
+                                <button class="puzzle-grade-row" type="button" data-action="start-puzzle" data-puzzle="keypad" data-difficulty="3" aria-label="Starta kodlås, låsgrad 3: fem siffror">
+                                    <span class="puzzle-grade-row__nr" aria-hidden="true">3</span>
+                                    <span class="puzzle-grade-row__main">
+                                        <strong>5 siffror</strong>
+                                        <small>Längsta följden · ett fel nollställer inmatningen</small>
+                                    </span>
+                                </button>
                             </div>
                         </article>
 
@@ -2672,11 +2633,28 @@
                                 <h3>Rattlås</h3>
                                 <p>Fånga de mekaniska stiften i rätt zon.</p>
                             </div>
-                            <div class="puzzle-grade-picker" role="group" aria-label="Rattlås, välj låsgrad">
-                                <span>Låsgrad</span>
-                                <button class="puzzle-grade-button" type="button" data-action="start-puzzle" data-puzzle="dial" data-difficulty="1" aria-label="Starta rattlås, låsgrad 1">1</button>
-                                <button class="puzzle-grade-button" type="button" data-action="start-puzzle" data-puzzle="dial" data-difficulty="2" aria-label="Starta rattlås, låsgrad 2">2</button>
-                                <button class="puzzle-grade-button" type="button" data-action="start-puzzle" data-puzzle="dial" data-difficulty="3" aria-label="Starta rattlås, låsgrad 3">3</button>
+                            <div class="puzzle-grade-list" role="group" aria-label="Rattlås, välj låsgrad">
+                                <button class="puzzle-grade-row" type="button" data-action="start-puzzle" data-puzzle="dial" data-difficulty="1" aria-label="Starta rattlås, låsgrad 1: två stift, 124 grader per sekund">
+                                    <span class="puzzle-grade-row__nr" aria-hidden="true">1</span>
+                                    <span class="puzzle-grade-row__main">
+                                        <strong>2 stift · 124°/s</strong>
+                                        <small>Grön zon 32° · ratten accelererar per satt stift</small>
+                                    </span>
+                                </button>
+                                <button class="puzzle-grade-row" type="button" data-action="start-puzzle" data-puzzle="dial" data-difficulty="2" aria-label="Starta rattlås, låsgrad 2: tre stift, 148 grader per sekund">
+                                    <span class="puzzle-grade-row__nr" aria-hidden="true">2</span>
+                                    <span class="puzzle-grade-row__main">
+                                        <strong>3 stift · 148 → 220°/s</strong>
+                                        <small>Grön zon 26° · en miss nollställer alla stift</small>
+                                    </span>
+                                </button>
+                                <button class="puzzle-grade-row" type="button" data-action="start-puzzle" data-puzzle="dial" data-difficulty="3" aria-label="Starta rattlås, låsgrad 3: fyra stift, 150 grader per sekund">
+                                    <span class="puzzle-grade-row__nr" aria-hidden="true">3</span>
+                                    <span class="puzzle-grade-row__main">
+                                        <strong>4 stift · 150 → 222°/s</strong>
+                                        <small>Grön zon 24° · smalast zon och flest stift</small>
+                                    </span>
+                                </button>
                             </div>
                         </article>
 
