@@ -933,12 +933,6 @@
                 0 calc(7px * var(--game-scale)) calc(18px * var(--game-scale)) rgba(0, 0, 0, 0.19);
             text-align: left;
         }
-
-        .puzzle-mode-card[data-puzzle="dial"] {
-            --puzzle-accent: #ffd36d;
-            --puzzle-accent-rgb: 255, 211, 109;
-        }
-
         .puzzle-mode-card[data-puzzle="pipes"] {
             --puzzle-accent: #6af0b5;
             --puzzle-accent-rgb: 106, 240, 181;
@@ -1223,54 +1217,6 @@
             color: rgba(217, 225, 239, 0.4);
             font-size: max(8px, calc(8px * var(--game-scale)));
         }
-
-        .puzzle-keypad {
-            width: min(100%, calc(242px * var(--game-scale)));
-            padding: calc(12px * var(--game-scale));
-            border: max(1px, calc(1px * var(--game-scale))) solid rgba(110, 221, 239, 0.15);
-            border-radius: calc(17px * var(--game-scale));
-            background:
-                linear-gradient(150deg, rgba(38, 48, 63, 0.95), rgba(12, 17, 27, 0.98));
-            box-shadow:
-                inset 0 1px rgba(255, 255, 255, 0.08),
-                inset 0 calc(-12px * var(--game-scale)) calc(25px * var(--game-scale)) rgba(0, 0, 0, 0.24);
-        }
-
-        .puzzle-keypad__display {
-            display: grid;
-            min-height: calc(52px * var(--game-scale));
-            place-items: center;
-            border: max(1px, calc(1px * var(--game-scale))) solid rgba(84, 220, 223, 0.22);
-            border-radius: calc(9px * var(--game-scale));
-            background: #06181a;
-            box-shadow: inset 0 0 calc(18px * var(--game-scale)) rgba(0, 0, 0, 0.72);
-            color: #89f6df;
-            font: 800 max(19px, calc(23px * var(--game-scale))) / 1 ui-monospace, monospace;
-            letter-spacing: 0.18em;
-            text-indent: 0.18em;
-            text-shadow: 0 0 calc(11px * var(--game-scale)) rgba(89, 246, 213, 0.46);
-        }
-
-        .puzzle-keypad__display.is-lit {
-            background: #0a2c2d;
-            color: #ecfff9;
-            box-shadow:
-                inset 0 0 calc(20px * var(--game-scale)) rgba(0, 0, 0, 0.5),
-                0 0 calc(20px * var(--game-scale)) rgba(80, 230, 210, 0.2);
-        }
-
-        .puzzle-keypad__display.is-success {
-            color: #ffdc70;
-            letter-spacing: 0.08em;
-        }
-
-        .puzzle-keypad__grid {
-            display: grid;
-            grid-template-columns: repeat(3, minmax(0, 1fr));
-            gap: calc(6px * var(--game-scale));
-            margin-top: calc(9px * var(--game-scale));
-        }
-
         .puzzle-key {
             min-height: calc(39px * var(--game-scale));
             border: max(1px, calc(1px * var(--game-scale))) solid rgba(255, 255, 255, 0.12);
@@ -1307,110 +1253,6 @@
         .puzzle-key--zero {
             grid-column: 2;
         }
-
-        .puzzle-dial {
-            display: grid;
-            place-items: center;
-        }
-
-        .puzzle-dial__locks {
-            display: flex;
-            gap: calc(7px * var(--game-scale));
-            margin-bottom: calc(10px * var(--game-scale));
-        }
-
-        .puzzle-dial__lock {
-            display: grid;
-            width: calc(27px * var(--game-scale));
-            min-width: 23px;
-            aspect-ratio: 1;
-            place-items: center;
-            border: max(1px, calc(1px * var(--game-scale))) solid rgba(255, 255, 255, 0.12);
-            border-radius: 50%;
-            background: #111624;
-            color: rgba(230, 237, 248, 0.48);
-            font-size: max(8px, calc(9px * var(--game-scale)));
-            font-weight: 800;
-        }
-
-        .puzzle-dial__lock.is-current {
-            border-color: rgba(255, 214, 99, 0.56);
-            color: #ffdd78;
-            box-shadow: 0 0 calc(12px * var(--game-scale)) rgba(255, 199, 66, 0.22);
-        }
-
-        .puzzle-dial__lock.is-set {
-            border-color: rgba(105, 240, 177, 0.55);
-            background: rgba(20, 107, 77, 0.46);
-            color: #7ff0b5;
-        }
-
-        .puzzle-dial__face {
-            position: relative;
-            width: calc(206px * var(--game-scale));
-            min-width: 176px;
-            aspect-ratio: 1;
-            overflow: hidden;
-            border: calc(10px * var(--game-scale)) solid #262d3c;
-            border-radius: 50%;
-            background:
-                radial-gradient(circle, #30394c 0 17%, #121827 18% 57%, #070a12 58%);
-            box-shadow:
-                inset 0 0 calc(24px * var(--game-scale)) rgba(0, 0, 0, 0.78),
-                0 0 0 max(1px, calc(2px * var(--game-scale))) rgba(255, 212, 99, 0.27),
-                0 calc(14px * var(--game-scale)) calc(30px * var(--game-scale)) rgba(0, 0, 0, 0.42);
-        }
-
-        .puzzle-dial__target,
-        .puzzle-dial__ticks {
-            position: absolute;
-            inset: 0;
-            border-radius: 50%;
-        }
-
-        .puzzle-dial__target {
-            filter: drop-shadow(0 0 calc(7px * var(--game-scale)) rgba(105, 240, 177, 0.52));
-            -webkit-mask: radial-gradient(circle, transparent 0 66%, #000 67% 79%, transparent 80%);
-            mask: radial-gradient(circle, transparent 0 66%, #000 67% 79%, transparent 80%);
-        }
-
-        .puzzle-dial__ticks span {
-            position: absolute;
-            top: 4%;
-            left: calc(50% - 1px);
-            width: max(1px, calc(2px * var(--game-scale)));
-            height: 7%;
-            transform-origin: 50% 657%;
-            border-radius: 999px;
-            background: rgba(222, 232, 245, 0.5);
-        }
-
-        .puzzle-dial__needle {
-            position: absolute;
-            bottom: 50%;
-            left: calc(50% - max(1px, calc(2px * var(--game-scale))));
-            width: max(2px, calc(4px * var(--game-scale)));
-            height: 43%;
-            transform-origin: 50% 100%;
-            border-radius: 999px;
-            background: linear-gradient(#ffdf70, #e16f38);
-            box-shadow: 0 0 calc(10px * var(--game-scale)) rgba(255, 176, 65, 0.48);
-            will-change: transform;
-        }
-
-        .puzzle-dial__hub {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            width: 19%;
-            aspect-ratio: 1;
-            transform: translate(-50%, -50%);
-            border: max(1px, calc(2px * var(--game-scale))) solid #d59b48;
-            border-radius: 50%;
-            background: radial-gradient(circle at 35% 30%, #ffe290, #9a4a2b 72%);
-            box-shadow: 0 calc(4px * var(--game-scale)) calc(9px * var(--game-scale)) rgba(0, 0, 0, 0.48);
-        }
-
         .puzzle-pipes {
             width: min(100%, calc(306px * var(--game-scale)));
             color: #dbe8f7;
@@ -2596,72 +2438,10 @@
                     <p class="eyebrow">Vault Puzzles</p>
                     <h2 id="puzzleSelectTitle">Pusselläge</h2>
                     <p id="puzzleSelectCopy" class="screen-copy">
-                        Välj låstyp och låsgrad. Spela direkt utan att gräva genom en hel nivå.
+                        Välj låsgrad och spela kretslåset direkt, utan att gräva dit.
                     </p>
 
-                    <div class="puzzle-mode-list" aria-label="Välj kassaskåpspussel">
-                        <article class="puzzle-mode-card" data-puzzle="keypad">
-                            <span class="puzzle-mode-card__icon" aria-hidden="true">1·8</span>
-                            <div class="puzzle-mode-card__copy">
-                                <h3>Kodlås</h3>
-                                <p>Minns och återskapa sifferföljden.</p>
-                            </div>
-                            <div class="puzzle-grade-list" role="group" aria-label="Kodlås, välj låsgrad">
-                                <button class="puzzle-grade-row puzzle-control--primary" type="button" data-action="start-puzzle" data-puzzle="keypad" data-difficulty="1" aria-label="Starta kodlås, låsgrad 1: tre siffror">
-                                    <span class="puzzle-grade-row__nr" aria-hidden="true">1</span>
-                                    <span class="puzzle-grade-row__main">
-                                        <strong>3 siffror</strong>
-                                        <small>Följden visas en gång innan din tur</small>
-                                    </span>
-                                </button>
-                                <button class="puzzle-grade-row" type="button" data-action="start-puzzle" data-puzzle="keypad" data-difficulty="2" aria-label="Starta kodlås, låsgrad 2: fyra siffror">
-                                    <span class="puzzle-grade-row__nr" aria-hidden="true">2</span>
-                                    <span class="puzzle-grade-row__main">
-                                        <strong>4 siffror</strong>
-                                        <small>En siffra till att hålla i minnet</small>
-                                    </span>
-                                </button>
-                                <button class="puzzle-grade-row" type="button" data-action="start-puzzle" data-puzzle="keypad" data-difficulty="3" aria-label="Starta kodlås, låsgrad 3: fem siffror">
-                                    <span class="puzzle-grade-row__nr" aria-hidden="true">3</span>
-                                    <span class="puzzle-grade-row__main">
-                                        <strong>5 siffror</strong>
-                                        <small>Längsta följden · ett fel nollställer inmatningen</small>
-                                    </span>
-                                </button>
-                            </div>
-                        </article>
-
-                        <article class="puzzle-mode-card" data-puzzle="dial">
-                            <span class="puzzle-mode-card__icon" aria-hidden="true">◉</span>
-                            <div class="puzzle-mode-card__copy">
-                                <h3>Rattlås</h3>
-                                <p>Fånga de mekaniska stiften i rätt zon.</p>
-                            </div>
-                            <div class="puzzle-grade-list" role="group" aria-label="Rattlås, välj låsgrad">
-                                <button class="puzzle-grade-row" type="button" data-action="start-puzzle" data-puzzle="dial" data-difficulty="1" aria-label="Starta rattlås, låsgrad 1: två stift, 124 grader per sekund">
-                                    <span class="puzzle-grade-row__nr" aria-hidden="true">1</span>
-                                    <span class="puzzle-grade-row__main">
-                                        <strong>2 stift · 124°/s</strong>
-                                        <small>Grön zon 32° · ratten accelererar per satt stift</small>
-                                    </span>
-                                </button>
-                                <button class="puzzle-grade-row" type="button" data-action="start-puzzle" data-puzzle="dial" data-difficulty="2" aria-label="Starta rattlås, låsgrad 2: tre stift, 148 grader per sekund">
-                                    <span class="puzzle-grade-row__nr" aria-hidden="true">2</span>
-                                    <span class="puzzle-grade-row__main">
-                                        <strong>3 stift · 148 → 220°/s</strong>
-                                        <small>Grön zon 26° · en miss nollställer alla stift</small>
-                                    </span>
-                                </button>
-                                <button class="puzzle-grade-row" type="button" data-action="start-puzzle" data-puzzle="dial" data-difficulty="3" aria-label="Starta rattlås, låsgrad 3: fyra stift, 150 grader per sekund">
-                                    <span class="puzzle-grade-row__nr" aria-hidden="true">3</span>
-                                    <span class="puzzle-grade-row__main">
-                                        <strong>4 stift · 150 → 222°/s</strong>
-                                        <small>Grön zon 24° · smalast zon och flest stift</small>
-                                    </span>
-                                </button>
-                            </div>
-                        </article>
-
+                    <div class="puzzle-mode-list" aria-label="Välj låsgrad">
                         <article class="puzzle-mode-card" data-puzzle="pipes">
                             <span class="puzzle-mode-card__icon" aria-hidden="true">└─</span>
                             <div class="puzzle-mode-card__copy">

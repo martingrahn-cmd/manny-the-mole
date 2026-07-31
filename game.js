@@ -53,8 +53,6 @@ const ASSETS = {
     mole_walk_right: null,
     mole_falling: null,
     gold: null,
-    safe_keypad: null,
-    safe_dial: null,
     safe_pipes: null,
     loaded: false
 };
@@ -71,8 +69,6 @@ function loadAssets() {
             ['mole_walk_right', 'assets/mole_walk_right.png'],
             ['mole_falling', 'assets/mole_falling.png'],
             ['gold', 'assets/gold.png'],
-            ['safe_keypad', 'assets/safe-keypad.png'],
-            ['safe_dial', 'assets/safe-dial.png'],
             ['safe_pipes', 'assets/safe-pipes.png'],
         ];
         
@@ -127,15 +123,11 @@ const BLOCK_TYPES = {
     ITEM: 12, // Treasures and oxygen - blocks can't fall through them
 };
 
-const SAFE_TYPES = new Set(['keypad', 'dial', 'pipes']);
+const SAFE_TYPES = new Set(['pipes']);
 const SAFE_ASSET_KEYS = Object.freeze({
-    keypad: 'safe_keypad',
-    dial: 'safe_dial',
     pipes: 'safe_pipes',
 });
 const SAFE_TYPE_LABELS = Object.freeze({
-    keypad: 'Minneslås',
-    dial: 'Rattlås',
     pipes: 'Kretslås',
 });
 
@@ -782,18 +774,6 @@ class GameUI {
             return false;
         }
 
-        const puzzle = this.game.safePuzzle?.state;
-        if (
-            puzzle?.type === 'keypad' &&
-            puzzle.phase === 'input' &&
-            /^[0-9]$/.test(event.key)
-        ) {
-            event.preventDefault();
-            event.stopPropagation();
-            this.game.clearKeyboardInput();
-            this.game.handleSafePuzzleAction('puzzle-key', event.key);
-            return true;
-        }
         return false;
     }
 
@@ -1224,162 +1204,6 @@ class GameUI {
         );
     }
 
-    renderKeypadPuzzle(state) {
-        const shell = document.createElement('div');
-        shell.className = 'puzzle-keypad';
-
-        const display = document.createElement('div');
-        display.className = 'puzzle-keypad__display';
-        if (state.phase === 'watch') {
-            display.textContent = state.shownDigit ?? '·';
-            display.classList.toggle(
-                'is-lit',
-                state.shownDigit !== null
-            );
-        } else if (state.phase === 'input') {
-            display.textContent = state.code.map((digit, index) =>
-                index < state.input.length ? state.input[index] : '–'
-            ).join(' ');
-        } else if (state.solved) {
-            display.textContent = 'OPEN';
-            display.classList.add('is-success');
-        } else {
-            display.textContent = state.code.map(() => '•').join(' ');
-        }
-        shell.append(display);
-
-        const keypad = document.createElement('div');
-        keypad.className = 'puzzle-keypad__grid';
-        const digits = [1, 2, 3, 4, 5, 6, 7, 8, 9, 0];
-        digits.forEach((digit, index) => {
-            const button = document.createElement('button');
-            button.type = 'button';
-            button.className = 'puzzle-key';
-            button.dataset.action = 'puzzle-key';
-            button.dataset.value = String(digit);
-            button.textContent = String(digit);
-            button.disabled = state.phase !== 'input';
-            button.setAttribute('aria-label', `Siffra ${digit}`);
-            if (digit === 0) button.classList.add('puzzle-key--zero');
-            if (state.shownDigit === digit && state.phase === 'watch') {
-                button.classList.add('is-lit');
-            }
-            if (index === 0 && state.phase === 'input') {
-                button.classList.add('puzzle-control--primary');
-            }
-            keypad.append(button);
-        });
-        shell.append(keypad);
-        this.puzzleBody.append(shell);
-
-        if (state.phase === 'ready') {
-            this.puzzleActions.append(
-                this.createPuzzleButton(
-                    state.misses > 0 ? 'Visa koden igen' : 'Visa koden',
-                    'puzzle-begin',
-                    { primary: true }
-                )
-            );
-        } else if (state.phase === 'input') {
-            this.puzzleActions.append(
-                this.createPuzzleButton(
-                    'Visa igen',
-                    'puzzle-reset'
-                )
-            );
-        }
-        this.appendPuzzleCloseButton(state);
-    }
-
-    renderDialPuzzle(state, game) {
-        const shell = document.createElement('div');
-        shell.className = 'puzzle-dial';
-
-        const locks = document.createElement('div');
-        locks.className = 'puzzle-dial__locks';
-        locks.setAttribute('aria-label',
-            `${state.lockIndex} av ${state.targets.length} stift satta`
-        );
-        state.targets.forEach((target, index) => {
-            const lock = document.createElement('span');
-            lock.className = 'puzzle-dial__lock';
-            lock.classList.toggle('is-set', index < state.lockIndex);
-            lock.classList.toggle('is-current', index === state.lockIndex);
-            lock.textContent = index < state.lockIndex ? '✓' : String(index + 1);
-            locks.append(lock);
-        });
-        shell.append(locks);
-
-        const dial = document.createElement('div');
-        dial.className = 'puzzle-dial__face';
-        const target = document.createElement('div');
-        target.className = 'puzzle-dial__target';
-        const currentTarget = state.targets[
-            Math.min(state.lockIndex, state.targets.length - 1)
-        ];
-        const targetStart = currentTarget - state.targetWidth / 2;
-        target.style.background = `conic-gradient(
-            from ${targetStart}deg,
-            rgba(105, 240, 177, 0.95) 0deg ${state.targetWidth}deg,
-            transparent ${state.targetWidth}deg 360deg
-        )`;
-
-        const ticks = document.createElement('div');
-        ticks.className = 'puzzle-dial__ticks';
-        for (let index = 0; index < 12; index++) {
-            const tick = document.createElement('span');
-            tick.style.transform = `rotate(${index * 30}deg)`;
-            ticks.append(tick);
-        }
-
-        const needle = document.createElement('div');
-        needle.className = 'puzzle-dial__needle';
-        needle.style.transform = `rotate(${state.angle}deg)`;
-        const hub = document.createElement('div');
-        hub.className = 'puzzle-dial__hub';
-        dial.append(target, ticks, needle, hub);
-        shell.append(dial);
-        this.puzzleBody.append(shell);
-        this.dialNeedle = needle;
-
-        if (state.phase === 'ready') {
-            this.puzzleActions.append(
-                this.createPuzzleButton(
-                    'Starta ratt',
-                    'puzzle-begin',
-                    { primary: true }
-                )
-            );
-        } else if (state.phase === 'active') {
-            if (game.reducedMotion) {
-                this.puzzleActions.append(
-                    this.createPuzzleButton(
-                        '← Vrid',
-                        'puzzle-dial-nudge',
-                        { value: -8 }
-                    )
-                );
-            }
-            this.puzzleActions.append(
-                this.createPuzzleButton(
-                    'Lås stift',
-                    'puzzle-dial-hit',
-                    { primary: true }
-                )
-            );
-            if (game.reducedMotion) {
-                this.puzzleActions.append(
-                    this.createPuzzleButton(
-                        'Vrid →',
-                        'puzzle-dial-nudge',
-                        { value: 8 }
-                    )
-                );
-            }
-        }
-        this.appendPuzzleCloseButton(state);
-    }
-
     renderPipesPuzzle(state) {
         const failed = state.phase === 'failed' || state.timedOut === true;
         const shell = document.createElement('div');
@@ -1722,31 +1546,15 @@ class GameUI {
             );
             this.puzzleBody.replaceChildren();
             this.puzzleActions.replaceChildren();
-            this.dialNeedle = null;
             this.pipePuzzleShell = null;
             this.pipePuzzleGrid = null;
             this.pipeCells = [];
             this.lastPipeFlowFrame = null;
 
-            if (state.type === 'keypad') {
-                this.renderKeypadPuzzle(state);
-            } else if (state.type === 'dial') {
-                this.renderDialPuzzle(state, game);
-            } else {
+            {
                 this.renderPipesPuzzle(state);
             }
             if (
-                game.gameState === 'puzzle' &&
-                state.type === 'keypad' &&
-                state.phase === 'input' &&
-                phaseChanged
-            ) {
-                this.focusMenuControl(
-                    this.screens.puzzle.querySelector(
-                        '.puzzle-control--primary'
-                    )
-                );
-            } else if (
                 game.gameState === 'puzzle' &&
                 state.type === 'pipes' &&
                 state.phase === 'active' &&
@@ -1762,9 +1570,7 @@ class GameUI {
             }
         }
 
-        if (state.type === 'dial' && this.dialNeedle) {
-            this.dialNeedle.style.transform = `rotate(${state.angle}deg)`;
-        } else if (state.type === 'pipes') {
+        if (state.type === 'pipes') {
             this.syncPipesFlow(state);
         }
     }
@@ -2466,13 +2272,6 @@ class Game {
             }
             this.updateEffects(deltaTime * 0.25);
             const puzzleState = this.safePuzzle.state;
-            if (
-                puzzleState?.type === 'dial' &&
-                puzzleState.manual !== this.reducedMotion
-            ) {
-                puzzleState.manual = this.reducedMotion;
-                this.safePuzzle.touch();
-            }
             const previousPipeFill =
                 puzzleState?.type === 'pipes' ?
                     puzzleState.filled.size :
@@ -3100,9 +2899,6 @@ class Game {
             this.safe.difficulty,
             this.currentLevel.id
         );
-        if (this.safePuzzle.state?.type === 'dial') {
-            this.safePuzzle.state.manual = this.reducedMotion;
-        }
         this.gameState = 'puzzle';
         this.sound.playTone(260, 430, 0.12, 0.035, 'square');
         return true;
@@ -3120,7 +2916,7 @@ class Game {
     startStandalonePuzzle(type, difficulty) {
         const puzzleType = String(type || '');
         const puzzleDifficulty = Number(difficulty);
-        const maximumDifficulty = puzzleType === 'pipes' ? 6 : 3;
+        const maximumDifficulty = MAX_PIPE_DIFFICULTY;
         if (
             this.gameState !== 'puzzle-select' ||
             !Object.prototype.hasOwnProperty.call(
@@ -3142,9 +2938,6 @@ class Game {
                 this.standalonePuzzleRun
             }`
         );
-        if (this.safePuzzle.state?.type === 'dial') {
-            this.safePuzzle.state.manual = this.reducedMotion;
-        }
         this.gameState = 'puzzle';
         this.lastRenderedState = null;
         this.sound.playTone(260, 430, 0.12, 0.035, 'square');
@@ -3159,8 +2952,6 @@ class Game {
         const state = this.safePuzzle.state;
         if (state?.solved) {
             this.sound.playTone(520, 880, 0.18, 0.04, 'square');
-        } else if (action === 'puzzle-dial-hit') {
-            this.sound.playTone(310, 460, 0.08, 0.025, 'square');
         } else {
             this.sound.playTone(420, 560, 0.055, 0.018, 'square');
         }

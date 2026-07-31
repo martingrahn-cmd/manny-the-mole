@@ -1,14 +1,6 @@
+const MAX_PIPE_DIFFICULTY = 6;
+
 const SAFE_PUZZLE_META = Object.freeze({
-    keypad: {
-        eyebrow: 'Minneslås',
-        title: 'Återskapa koden',
-        copy: 'Studera sifferföljden och slå sedan in samma kod.',
-    },
-    dial: {
-        eyebrow: 'Mekaniskt lås',
-        title: 'Fånga stiften',
-        copy: 'Stoppa visaren i den gröna zonen för varje låsstift.',
-    },
     pipes: {
         eyebrow: 'Säkringscentral',
         title: 'Återställ kretsen',
@@ -96,12 +88,6 @@ const PIPE_FLOW_BALANCE = Object.freeze({
     }),
 });
 
-const DIAL_BALANCE = Object.freeze({
-    1: Object.freeze({ baseSpeed: 124, speedStep: 30, targetWidth: 32 }),
-    2: Object.freeze({ baseSpeed: 148, speedStep: 36, targetWidth: 26 }),
-    3: Object.freeze({ baseSpeed: 150, speedStep: 24, targetWidth: 24 }),
-});
-
 class SafePuzzleEngine {
     constructor() {
         this.state = null;
@@ -113,19 +99,12 @@ class SafePuzzleEngine {
             throw new Error(`Unknown safe puzzle type: ${type}`);
         }
 
-        const maximumDifficulty = type === 'pipes' ? 6 : 3;
         const safeDifficulty = Math.max(
             1,
-            Math.min(maximumDifficulty, Math.floor(difficulty))
+            Math.min(MAX_PIPE_DIFFICULTY, Math.floor(difficulty))
         );
         const seed = this.hashSeed(`${seedText}:${type}:${safeDifficulty}`);
-        if (type === 'keypad') {
-            this.state = this.createKeypadState(safeDifficulty, seed);
-        } else if (type === 'dial') {
-            this.state = this.createDialState(safeDifficulty, seed);
-        } else {
-            this.state = this.createPipesState(safeDifficulty, seed);
-        }
+        this.state = this.createPipesState(safeDifficulty, seed);
         this.touch();
         return this.state;
     }
@@ -166,173 +145,6 @@ class SafePuzzleEngine {
             completionTimer: 0,
             completionReported: false,
         };
-    }
-
-    createKeypadState(difficulty, seed) {
-        const random = this.createRandom(seed);
-        const length = 2 + difficulty;
-        const code = [];
-        while (code.length < length) {
-            const digit = Math.floor(random() * 10);
-            if (digit !== code[code.length - 1]) code.push(digit);
-        }
-
-        return {
-            ...this.createBaseState('keypad', difficulty),
-            status: `Minns ${length} siffror. Tryck ”Visa koden” när du är redo.`,
-            code,
-            input: [],
-            shownDigit: null,
-            playbackIndex: 0,
-            playbackLit: false,
-            playbackTimer: 0,
-            misses: 0,
-        };
-    }
-
-    beginKeypadPlayback() {
-        const state = this.state;
-        if (!state || state.type !== 'keypad' || state.solved) return false;
-
-        state.phase = 'watch';
-        state.input = [];
-        state.playbackIndex = 0;
-        state.playbackLit = true;
-        state.shownDigit = state.code[0];
-        state.playbackTimer = 0.62;
-        state.status = 'Titta noga …';
-        this.touch();
-        return true;
-    }
-
-    pressKeypadDigit(value) {
-        const state = this.state;
-        const digit = Number(value);
-        if (
-            !state ||
-            state.type !== 'keypad' ||
-            state.phase !== 'input' ||
-            !Number.isInteger(digit) ||
-            digit < 0 ||
-            digit > 9
-        ) return false;
-
-        const expected = state.code[state.input.length];
-        if (digit !== expected) {
-            state.misses++;
-            state.input = [];
-            state.phase = 'ready';
-            state.status = 'Fel siffra. Koden är oförändrad — visa den igen.';
-            this.touch();
-            return true;
-        }
-
-        state.input.push(digit);
-        if (state.input.length === state.code.length) {
-            this.markSolved('Koden godkänd. Låskolvarna släpper!');
-        } else {
-            const remaining = state.code.length - state.input.length;
-            state.status = `Rätt · ${remaining} ${
-                remaining === 1 ? 'siffra' : 'siffror'
-            } kvar.`;
-            this.touch();
-        }
-        return true;
-    }
-
-    createDialState(difficulty, seed) {
-        const random = this.createRandom(seed);
-        const targetCount = 1 + difficulty;
-        const { baseSpeed, speedStep, targetWidth } =
-            DIAL_BALANCE[difficulty];
-        const targets = [];
-        let attempts = 0;
-        while (targets.length < targetCount && attempts < 200) {
-            attempts++;
-            const candidate = 36 + Math.floor(random() * 288);
-            if (targets.every(target => Math.abs(target - candidate) >= 44)) {
-                targets.push(candidate);
-            }
-        }
-        while (targets.length < targetCount) {
-            targets.push(45 + targets.length * (270 / targetCount));
-        }
-
-        return {
-            ...this.createBaseState('dial', difficulty),
-            status: `Tryck ”Starta ratt” för att fånga ${targetCount} stift.`,
-            targets,
-            lockIndex: 0,
-            angle: 8,
-            direction: 1,
-            baseSpeed,
-            speedStep,
-            speed: baseSpeed,
-            targetWidth,
-            misses: 0,
-        };
-    }
-
-    startDial() {
-        const state = this.state;
-        if (!state || state.type !== 'dial' || state.solved) return false;
-        state.phase = 'active';
-        state.status =
-            `Stift ${state.lockIndex + 1} av ${state.targets.length} · ` +
-            `ratten går i ${Math.round(state.speed)}°/s. Tryck i grönt.`;
-        this.touch();
-        return true;
-    }
-
-    hitDial() {
-        const state = this.state;
-        if (!state || state.type !== 'dial' || state.phase !== 'active') {
-            return false;
-        }
-
-        const target = state.targets[state.lockIndex];
-        const rawDelta = Math.abs(state.angle - target);
-        const delta = Math.min(rawDelta, 360 - rawDelta);
-        if (delta <= state.targetWidth / 2) {
-            state.lockIndex++;
-            if (state.lockIndex >= state.targets.length) {
-                this.markSolved('Alla stift sitter. Ratten låser upp!');
-            } else {
-                state.direction *= -1;
-                state.speed =
-                    state.baseSpeed + state.lockIndex * state.speedStep;
-                state.status =
-                    `Stift ${state.lockIndex} satt · ratten accelererar till ` +
-                    `${Math.round(state.speed)}°/s. Nästa är ${
-                        state.lockIndex + 1
-                    } av ${state.targets.length}.`;
-                this.touch();
-            }
-        } else {
-            state.misses++;
-            state.lockIndex = 0;
-            state.direction *= -1;
-            state.speed = state.baseSpeed;
-            state.status =
-                `Miss! Stiften återställdes och ratten går åter i ` +
-                `${Math.round(state.speed)}°/s.`;
-            this.touch();
-        }
-        return true;
-    }
-
-    nudgeDial(value) {
-        const state = this.state;
-        const amount = Number(value);
-        if (
-            !state ||
-            state.type !== 'dial' ||
-            state.phase !== 'active' ||
-            !Number.isFinite(amount)
-        ) return false;
-        state.angle = (state.angle + amount + 360) % 360;
-        this.touch();
-        return true;
     }
 
     rotateConnections(connections, rotation) {
@@ -1137,21 +949,8 @@ class SafePuzzleEngine {
 
     action(action, value) {
         if (!this.state || this.state.solved) return false;
-        if (action === 'puzzle-begin') {
-            if (this.state.type === 'keypad') {
-                return this.beginKeypadPlayback();
-            }
-            if (this.state.type === 'dial') return this.startDial();
-            return false;
-        }
-        if (action === 'puzzle-key') return this.pressKeypadDigit(value);
-        if (action === 'puzzle-dial-hit') return this.hitDial();
-        if (action === 'puzzle-dial-nudge') return this.nudgeDial(value);
         if (action === 'puzzle-pipe') return this.interactPipe(value);
-        if (action === 'puzzle-reset') {
-            if (this.state.type === 'keypad') return this.beginKeypadPlayback();
-            if (this.state.type === 'pipes') return this.resetPipes();
-        }
+        if (action === 'puzzle-reset') return this.resetPipes();
         return false;
     }
 
@@ -1172,49 +971,7 @@ class SafePuzzleEngine {
             Math.max(0, deltaTime) :
             0;
 
-        if (state.type === 'keypad' && state.phase === 'watch') {
-            state.playbackTimer -= elapsed;
-            if (state.playbackTimer <= 0) {
-                if (state.playbackLit) {
-                    state.playbackLit = false;
-                    state.shownDigit = null;
-                    state.playbackTimer = 0.17;
-                } else {
-                    state.playbackIndex++;
-                    if (state.playbackIndex >= state.code.length) {
-                        state.phase = 'input';
-                        state.status = 'Din tur — slå in koden.';
-                    } else {
-                        state.playbackLit = true;
-                        state.shownDigit = state.code[state.playbackIndex];
-                        state.playbackTimer = 0.62;
-                    }
-                }
-                this.touch();
-            }
-        } else if (
-            state.type === 'dial' &&
-            state.phase === 'active' &&
-            !state.manual
-        ) {
-            let nextAngle = state.angle +
-                state.direction * state.speed * elapsed;
-            let reflections = 0;
-            while (
-                (nextAngle > 356 || nextAngle < 4) &&
-                reflections < 8
-            ) {
-                if (nextAngle > 356) {
-                    nextAngle = 356 - (nextAngle - 356);
-                    state.direction = -1;
-                } else {
-                    nextAngle = 4 + (4 - nextAngle);
-                    state.direction = 1;
-                }
-                reflections++;
-            }
-            state.angle = Math.max(4, Math.min(356, nextAngle));
-        } else if (
+        if (
             state.type === 'pipes' &&
             state.phase === 'active' &&
             !state.solved
@@ -1247,3 +1004,4 @@ class SafePuzzleEngine {
 
 globalThis.SafePuzzleEngine = SafePuzzleEngine;
 globalThis.SAFE_PUZZLE_META = SAFE_PUZZLE_META;
+globalThis.MAX_PIPE_DIFFICULTY = MAX_PIPE_DIFFICULTY;
