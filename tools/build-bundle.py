@@ -54,7 +54,7 @@ def inline_assets(text):
 
 
 scripts = []
-for name in ('levels.js', 'puzzles.js', 'game.js'):
+for name in ('sounds.js', 'levels.js', 'puzzles.js', 'game.js'):
     js = (ROOT / name).read_text(encoding='utf-8')
     if '</script' in js:
         raise SystemExit(f'{name} contains </script> and cannot be inlined')

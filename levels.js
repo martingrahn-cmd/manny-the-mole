@@ -5,7 +5,7 @@ const CAMPAIGN_LEVELS = Object.freeze([
         title: 'First Bite',
         completeTitle: 'First bite taken',
         summary: 'Learn to dig down and top up your air in a safe side pocket.',
-        start: { x: 3, y: 2, facing: 'down', oxygen: 100 },
+        start: { x: 3, y: 2, facing: 'down', oxygen: 50 },
         par: 12,
         reward: {
             image: 'assets/vault-dentures.png',
@@ -57,7 +57,7 @@ const CAMPAIGN_LEVELS = Object.freeze([
         title: 'Core Sample',
         completeTitle: 'Core sampled',
         summary: 'Bedrock pinches the shaft — drill sideways to get past it.',
-        start: { x: 3, y: 2, facing: 'down', oxygen: 100 },
+        start: { x: 3, y: 2, facing: 'down', oxygen: 60 },
         par: 12,
         reward: {
             image: 'assets/vault-apple.png',
@@ -114,7 +114,7 @@ const CAMPAIGN_LEVELS = Object.freeze([
         title: 'Side Pockets',
         completeTitle: 'Pockets emptied',
         summary: 'Follow the openings in the rock and dare to double back for air.',
-        start: { x: 3, y: 2, facing: 'down', oxygen: 100 },
+        start: { x: 3, y: 2, facing: 'down', oxygen: 75 },
         par: 22,
         reward: {
             image: 'assets/vault-sock.png',
@@ -178,7 +178,7 @@ const CAMPAIGN_LEVELS = Object.freeze([
         title: 'Final Notice',
         completeTitle: 'Notice served',
         summary: 'Long stretches between tanks. Plan where you top up before digging on.',
-        start: { x: 3, y: 2, facing: 'down', oxygen: 100 },
+        start: { x: 3, y: 2, facing: 'down', oxygen: 70 },
         par: 18,
         reward: {
             image: 'assets/vault-bills.png',
@@ -244,7 +244,7 @@ const CAMPAIGN_LEVELS = Object.freeze([
         title: 'Signed and Buried',
         completeTitle: 'Deed recovered',
         summary: 'Read the tremor, leave the fall zone, and drill through your first X-block.',
-        start: { x: 3, y: 2, facing: 'down', oxygen: 100 },
+        start: { x: 3, y: 2, facing: 'down', oxygen: 75 },
         par: 20,
         reward: {
             image: 'assets/vault-deed.png',
@@ -313,7 +313,7 @@ const CAMPAIGN_LEVELS = Object.freeze([
         title: 'Rainy Day',
         completeTitle: 'Rainy day covered',
         summary: 'Two X-blocks in one shaft. Keep air in hand before you start drilling.',
-        start: { x: 3, y: 2, facing: 'down', oxygen: 100 },
+        start: { x: 3, y: 2, facing: 'down', oxygen: 70 },
         par: 16,
         reward: {
             image: 'assets/vault-umbrella.png',
@@ -383,7 +383,7 @@ const CAMPAIGN_LEVELS = Object.freeze([
         title: 'Framed',
         completeTitle: 'Portrait lifted',
         summary: 'Switch sides between the supports, wait out the collapse, force the blocked middle.',
-        start: { x: 3, y: 2, facing: 'down', oxygen: 100 },
+        start: { x: 3, y: 2, facing: 'down', oxygen: 80 },
         par: 26,
         reward: {
             image: 'assets/vault-portrait.png',
@@ -456,7 +456,7 @@ const CAMPAIGN_LEVELS = Object.freeze([
         title: 'Hindsight',
         completeTitle: 'Hindsight acquired',
         summary: 'The support roofs will not hold. Read the shake and do not be under it.',
-        start: { x: 3, y: 2, facing: 'down', oxygen: 100 },
+        start: { x: 3, y: 2, facing: 'down', oxygen: 85 },
         par: 24,
         reward: {
             image: 'assets/vault-glasses.png',
@@ -529,7 +529,7 @@ const CAMPAIGN_LEVELS = Object.freeze([
         title: 'Best Before',
         completeTitle: 'Jar recovered',
         summary: 'Plan the side switches, take air under cover, and open two X-gates.',
-        start: { x: 3, y: 2, facing: 'down', oxygen: 100 },
+        start: { x: 3, y: 2, facing: 'down', oxygen: 85 },
         par: 29,
         reward: {
             image: 'assets/vault-jar.png',
@@ -605,7 +605,7 @@ const CAMPAIGN_LEVELS = Object.freeze([
         title: 'Negative Space',
         completeTitle: 'Space developed',
         summary: 'Rock, supports and X all the way down. No stretch comes free.',
-        start: { x: 3, y: 2, facing: 'down', oxygen: 100 },
+        start: { x: 3, y: 2, facing: 'down', oxygen: 90 },
         par: 23,
         reward: {
             image: 'assets/vault-photo.png',
@@ -681,7 +681,7 @@ const CAMPAIGN_LEVELS = Object.freeze([
         title: 'Long Service',
         completeTitle: 'Service recognised',
         summary: 'The last shaft before the deep. Least air, most blocks, no margin.',
-        start: { x: 3, y: 2, facing: 'down', oxygen: 100 },
+        start: { x: 3, y: 2, facing: 'down', oxygen: 85 },
         par: 22,
         reward: {
             image: 'assets/vault-medal.png',

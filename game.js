@@ -545,6 +545,85 @@ class ArcadeSound {
         this.lastLandTime = -1;
         this.lastFallWarningTime = -1;
         this.muted = this.loadMuted();
+        this.samples = new Map();
+        this.samplesRequested = false;
+        this.drillVariation = 0;
+    }
+
+    /**
+     * Decodes the packed sound effects once, on the first unlock. Until
+     * they land — and if they never do, because the browser cannot
+     * decode mp3 or sounds.js was not built — every call falls through
+     * to the procedural tone it was written against, so the game is
+     * never silent while it waits.
+     */
+    loadSamples() {
+        if (this.samplesRequested || typeof SFX_DATA === 'undefined') return;
+        const context = this.context;
+        if (!context) return;
+        this.samplesRequested = true;
+
+        Object.entries(SFX_DATA).forEach(([name, base64]) => {
+            let bytes;
+            try {
+                const binary = atob(base64);
+                bytes = new Uint8Array(binary.length);
+                for (let i = 0; i < binary.length; i++) {
+                    bytes[i] = binary.charCodeAt(i);
+                }
+            } catch {
+                return;
+            }
+            context.decodeAudioData(
+                bytes.buffer,
+                buffer => this.samples.set(name, {
+                    buffer,
+                    gain: this.levellingGain(buffer),
+                }),
+                () => {}
+            );
+        });
+    }
+
+    /**
+     * Generated one-shots come back at wildly different levels — some
+     * peak at full scale, some at a fifth of it. This evens them out on
+     * the way in, with a ceiling on the boost so a near-silent take
+     * turns up quiet rather than turning into amplified hiss.
+     */
+    levellingGain(buffer, target = 0.7, maxBoost = 6) {
+        let peak = 0;
+        for (let channel = 0; channel < buffer.numberOfChannels; channel++) {
+            const samples = buffer.getChannelData(channel);
+            for (let i = 0; i < samples.length; i++) {
+                const value = Math.abs(samples[i]);
+                if (value > peak) peak = value;
+            }
+        }
+        if (peak < 0.0001) return 0;
+        return Math.min(maxBoost, target / peak);
+    }
+
+    /**
+     * Plays a generated sound. Returns false when it is not available,
+     * which is the caller's cue to play its own tone instead.
+     */
+    playSample(name, { volume = 1, rate = 1, delay = 0 } = {}) {
+        if (this.muted) return true;   // muted is handled, not un-played
+        const context = this.unlock();
+        if (!context) return true;
+        const entry = this.samples.get(name);
+        if (!entry || entry.gain === 0) return false;
+
+        const source = context.createBufferSource();
+        const gain = context.createGain();
+        source.buffer = entry.buffer;
+        source.playbackRate.value = rate;
+        gain.gain.value = entry.gain * volume;
+        source.connect(gain);
+        gain.connect(context.destination);
+        source.start(context.currentTime + delay);
+        return true;
     }
 
     loadMuted() {
@@ -594,6 +673,7 @@ class ArcadeSound {
         if (this.context.state === 'suspended') {
             this.context.resume().catch(() => {});
         }
+        this.loadSamples();
         return this.context;
     }
 
@@ -641,6 +721,18 @@ class ArcadeSound {
 
     playDrill(strength, isHardBlock = false) {
         const weight = Math.min(4, Math.max(1, strength));
+        // The drill fires many times a second, so an identical sample on
+        // every hit turns into a machine gun. Four pitches in rotation
+        // give it the texture the procedural version had for free.
+        this.drillVariation = (this.drillVariation + 1) % 4;
+        const rate = (isHardBlock ? 0.82 : 1.06) +
+            this.drillVariation * 0.045;
+        const played = this.playSample('drill-hit', {
+            volume: isHardBlock ? 0.85 : 0.5 + weight * 0.06,
+            rate,
+        });
+        if (played) return;
+
         if (isHardBlock) {
             this.playTone(165, 58, 0.085, 0.07, 'square');
             this.playNoise(0.075, 0.07, 420);
@@ -650,11 +742,21 @@ class ArcadeSound {
         }
     }
 
+    playBlockBreak() {
+        if (this.playSample('block-break', { volume: 0.5 })) return;
+        this.playNoise(0.09, 0.05, 560);
+    }
+
     playLand(strength = 1) {
         const context = this.unlock();
         if (!context || context.currentTime - this.lastLandTime < 0.045) return;
         this.lastLandTime = context.currentTime;
         const weight = Math.min(4, Math.max(1, strength));
+        if (this.playSample('land', {
+            volume: 0.35 + weight * 0.1,
+            rate: 1.15 - weight * 0.05,
+        })) return;
+
         this.playTone(82, 32, 0.07, 0.025 + weight * 0.012, 'triangle');
         this.playNoise(0.045, 0.015 + weight * 0.007, 190);
     }
@@ -666,34 +768,60 @@ class ArcadeSound {
             context.currentTime - this.lastFallWarningTime < 0.12
         ) return;
         this.lastFallWarningTime = context.currentTime;
+        // The rumble is long next to the 0.12s gate, so it plays only on
+        // the first warning of a collapse and ticks after that.
+        if (this.playSample('cave-in', { volume: 0.42 })) return;
         this.playTone(118, 62, 0.13, 0.026, 'triangle');
         this.playNoise(0.09, 0.018, 145);
     }
 
     playCrush() {
+        if (this.playSample('crush', { volume: 0.8 })) return;
         this.playTone(92, 28, 0.24, 0.085, 'sawtooth');
         this.playNoise(0.18, 0.085, 125);
         this.playTone(52, 24, 0.2, 0.045, 'triangle', 0.06);
     }
 
     playAirOut() {
+        if (this.playAirOutSample()) return;
         this.playTone(360, 145, 0.3, 0.045, 'sine');
         this.playTone(240, 82, 0.32, 0.032, 'triangle', 0.12);
         this.playNoise(0.28, 0.024, 920);
     }
 
+    playAirOutSample() {
+        return this.playSample('suffocate', { volume: 0.6 });
+    }
+
     playClear(size) {
         const lift = Math.min(5, Math.max(0, size - MATCH_CLEAR_SIZE));
+        if (this.playSample('circuit-solved', {
+            volume: 0.55,
+            rate: 0.94 + lift * 0.02,
+        })) return;
         this.playTone(330 + lift * 25, 510 + lift * 35, 0.11, 0.045, 'square');
         this.playTone(495 + lift * 25, 720 + lift * 35, 0.1, 0.03, 'square', 0.045);
     }
 
+    /** One relay throw as the current moves to the next conductor. */
+    playCircuitStep() {
+        if (this.playSample('circuit-step', { volume: 0.3, rate: 1.25 })) return;
+        this.playTone(240, 180, 0.05, 0.022, 'square');
+    }
+
+    playCircuitFail() {
+        if (this.playSample('circuit-fail', { volume: 0.55 })) return;
+        this.playTone(180, 60, 0.28, 0.05, 'sawtooth');
+        this.playNoise(0.22, 0.03, 320);
+    }
+
     /**
      * The flourish over the win screen. Delayed to land with the
-     * animation: the low note as the light comes up, the rising figure
-     * as the find lifts out, the shimmer as it settles.
+     * animation: the door as the light comes up, the rising figure as
+     * the find lifts out, the shimmer as it settles.
      */
     playVaultFind() {
+        this.playSample('vault-open', { volume: 0.65, delay: 0.12 });
         this.playTone(196, 262, 0.17, 0.032, 'triangle', 0.3);
         this.playTone(392, 523, 0.13, 0.038, 'square', 0.42);
         this.playTone(523, 659, 0.12, 0.034, 'square', 0.53);
@@ -701,7 +829,17 @@ class ArcadeSound {
         this.playTone(1047, 1175, 0.3, 0.016, 'sine', 0.72);
     }
 
+    playMenuConfirm() {
+        if (this.playSample('menu-confirm', { volume: 0.32 })) return;
+        this.playTone(420, 640, 0.07, 0.03, 'square');
+    }
+
     playPickup(isOxygen = false) {
+        if (this.playSample(
+            isOxygen ? 'pickup-air' : 'pickup-loot',
+            { volume: isOxygen ? 0.45 : 0.6 }
+        )) return;
+
         if (isOxygen) {
             this.playTone(390, 690, 0.11, 0.035, 'square');
             this.playTone(585, 880, 0.09, 0.024, 'square', 0.045);
@@ -804,7 +942,10 @@ class GameUI {
             const action = button.dataset.action;
             // Unlocking audio is what every other button press is for; the
             // mute button is the one that must not do it.
-            if (action !== 'mute') this.game.sound.unlock();
+            if (action !== 'mute') {
+                this.game.sound.unlock();
+                this.game.sound.playMenuConfirm();
+            }
             this.game.clearKeyboardInput();
             if (action === 'mute') this.game.toggleMute();
             else if (action === 'start') this.game.startRun();
@@ -2608,27 +2749,13 @@ class Game {
                 this.completeSafePuzzle();
             } else if (puzzleState?.type === 'pipes') {
                 if (puzzleState.filled.size > previousPipeFill) {
-                    const pressure =
-                        Math.min(5, puzzleState.filled.size) * 18;
-                    this.sound.playTone(
-                        150 + pressure,
-                        92 + pressure,
-                        0.1,
-                        0.022,
-                        'triangle'
-                    );
+                    this.sound.playCircuitStep();
                 }
                 if (
                     previousPipePhase !== 'failed' &&
                     puzzleState.flowPhase === 'failed'
                 ) {
-                    this.sound.playTone(
-                        180,
-                        48,
-                        0.28,
-                        0.05,
-                        'sawtooth'
-                    );
+                    this.sound.playCircuitFail();
                 }
             }
             this.keysJustPressed = {};
@@ -3694,6 +3821,9 @@ class Game {
             
             this.lastDigStrength = piece.length;
             this.score += DIG_SCORE * piece.length;
+            // A piece of three or more coming away is a different event
+            // from chipping one block, and deserves its own crunch.
+            if (piece.length >= 3) this.sound.playBlockBreak();
             return true;
         }
         return false;
@@ -4824,12 +4954,19 @@ class Game {
         if (!SAFE_TYPES.has(level.safe?.type)) {
             throw new Error(`${level.id} has an invalid safe type`);
         }
+        // The ceiling comes from the puzzle engine rather than a literal.
+        // It was pinned at 3 while the circuit lock grew to six grades,
+        // which made every level from 7 down throw on load.
+        const maxDifficulty = globalThis.MAX_PIPE_DIFFICULTY ?? 6;
         if (
             !Number.isInteger(level.safe?.difficulty) ||
             level.safe.difficulty < 1 ||
-            level.safe.difficulty > 3
+            level.safe.difficulty > maxDifficulty
         ) {
-            throw new Error(`${level.id} has an invalid safe difficulty`);
+            throw new Error(
+                `${level.id} has an invalid safe difficulty ` +
+                `(${level.safe?.difficulty}, expected 1-${maxDifficulty})`
+            );
         }
         if (
             !isIntegerInRange(level.safe?.x, 0, GRID_WIDTH) ||
@@ -5094,6 +5231,10 @@ class Game {
             this.renderSafe(this.safe.x, safeScreenY);
         }
         
+        // The lamp goes over the terrain but under the mole, the debris
+        // and the speed lines, so the things you need to read stay lit.
+        this.renderHeadlamp();
+
         this.renderFallSpeedLines();
         this.renderDebris();
 
@@ -5217,27 +5358,30 @@ class Game {
         const snappedCameraY = this.pixelSnap(this.cameraY);
         const firstWorldRow = Math.floor(snappedCameraY / GRID_SIZE) - 1;
         const rowOffset = -(snappedCameraY % GRID_SIZE) - GRID_SIZE;
+        // Four bands per biome rather than two, and lifted a few steps:
+        // the excavated shaft used to be a single flat tone with detail
+        // too dark to see, so it read as empty screen rather than ground.
         const biomes = {
             earth: {
-                base: ['#211725', '#1d1724'],
-                seam: '#332238',
-                fleck: '#3b293d',
-                shadow: '#120f18',
-                accent: '#6a3c45',
+                base: ['#31212f', '#2a1c29', '#352433', '#271a26'],
+                seam: '#4d3247',
+                fleck: '#553a4c',
+                shadow: '#1a1220',
+                accent: '#8d5058',
             },
             slate: {
-                base: ['#101723', '#0e1521'],
-                seam: '#19263a',
-                fleck: '#203149',
-                shadow: '#080d16',
-                accent: '#2c6675',
+                base: ['#1a2536', '#16202f', '#1e2a3d', '#141d2b'],
+                seam: '#2b405d',
+                fleck: '#35496a',
+                shadow: '#0d1420',
+                accent: '#3f8899',
             },
             vault: {
-                base: ['#10151c', '#0d1219'],
-                seam: '#242b34',
-                fleck: '#303844',
-                shadow: '#070b10',
-                accent: '#765738',
+                base: ['#1b222c', '#171d26', '#1f2732', '#151a23'],
+                seam: '#374252',
+                fleck: '#44515f',
+                shadow: '#0d1219',
+                accent: '#9a7148',
             },
         };
 
@@ -5321,31 +5465,13 @@ class Game {
             0,
             Math.floor((this.cameraY + CANVAS_HEIGHT / 2) / GRID_SIZE)
         );
-        const parallaxColor = centerDepth < 15 ?
-            'rgba(105, 58, 69, 0.12)' :
-            centerDepth < 35 ?
-                'rgba(54, 112, 132, 0.10)' :
-                'rgba(145, 105, 65, 0.08)';
+        // Two layers of scenery: the silhouettes below sit far back and
+        // barely move, the structures above are nearer and drift faster.
+        // Between them the shaft reads as having somewhere behind it.
         const parallaxSpan = CANVAS_HEIGHT + 180;
-        ctx.fillStyle = parallaxColor;
 
-        for (let index = 0; index < 7; index++) {
-            const x = Math.floor(this.hashCell(index, 4, 22) * CANVAS_WIDTH);
-            const baseY = this.hashCell(index, 9, 31) * parallaxSpan;
-            const y = (
-                (baseY - this.cameraY * (0.12 + index * 0.012)) %
-                parallaxSpan +
-                parallaxSpan
-            ) % parallaxSpan - 80;
-            const height = 44 + Math.floor(this.hashCell(index, 11, 18) * 72);
-            ctx.fillRect(this.pixelSnap(x), this.pixelSnap(y), index % 2 ? 2 : 3, height);
-            ctx.fillRect(this.pixelSnap(x - 4), this.pixelSnap(y + height - 8), 8, 2);
-        }
-
-        // Larger, low-contrast silhouettes make each depth band feel like a
-        // distinct place instead of only a palette swap.
         if (centerDepth < 15) {
-            ctx.fillStyle = 'rgba(88, 48, 55, 0.16)';
+            ctx.fillStyle = 'rgba(112, 62, 70, 0.24)';
             for (let index = 0; index < 4; index++) {
                 const x = this.pixelSnap(24 + this.hashCell(index, 8, 105) * (CANVAS_WIDTH - 48));
                 const y = this.pixelSnap(
@@ -5359,7 +5485,7 @@ class Game {
                 ctx.fillRect(x + 2, y + 43 + index * 4, 10, 3);
             }
         } else if (centerDepth < 35) {
-            ctx.fillStyle = 'rgba(48, 112, 133, 0.12)';
+            ctx.fillStyle = 'rgba(58, 132, 156, 0.2)';
             for (let index = 0; index < 5; index++) {
                 const x = this.pixelSnap(18 + this.hashCell(index, 12, 112) * (CANVAS_WIDTH - 50));
                 const y = this.pixelSnap(
@@ -5370,12 +5496,12 @@ class Game {
                 for (let step = 0; step < 5; step++) {
                     ctx.fillRect(x + step * 5, y + 26 - step * 7, 7, 35 + step * 5);
                 }
-                ctx.fillStyle = 'rgba(95, 175, 189, 0.08)';
+                ctx.fillStyle = 'rgba(108, 196, 211, 0.14)';
                 ctx.fillRect(x + 10, y + 12, 4, 40);
-                ctx.fillStyle = 'rgba(48, 112, 133, 0.12)';
+                ctx.fillStyle = 'rgba(58, 132, 156, 0.2)';
             }
         } else {
-            ctx.fillStyle = 'rgba(128, 105, 72, 0.11)';
+            ctx.fillStyle = 'rgba(150, 124, 86, 0.19)';
             for (let index = 0; index < 4; index++) {
                 const x = this.pixelSnap(28 + this.hashCell(index, 16, 124) * (CANVAS_WIDTH - 56));
                 const y = this.pixelSnap(
@@ -5386,11 +5512,76 @@ class Game {
                 ctx.fillRect(x, y, 4, 150);
                 ctx.fillRect(x - 5, y + 32, 14, 5);
                 ctx.fillRect(x - 7, y + 96, 18, 5);
-                ctx.fillStyle = 'rgba(185, 138, 78, 0.08)';
+                ctx.fillStyle = 'rgba(205, 156, 92, 0.14)';
                 ctx.fillRect(x + 1, y + 4, 1, 142);
-                ctx.fillStyle = 'rgba(128, 105, 72, 0.11)';
+                ctx.fillStyle = 'rgba(150, 124, 86, 0.19)';
             }
         }
+
+        this.renderBuriedStructures(centerDepth);
+    }
+
+    /**
+     * Things somebody else left down here, drifting past behind the dig
+     * at a slower rate than the shaft itself. They replace a row of thin
+     * vertical strips that were drawn at an opacity nobody could see:
+     * timber frames near the surface, pipe runs through the slate, and
+     * riveted ducting once the vault level starts.
+     */
+    renderBuriedStructures(centerDepth) {
+        const ctx = this.ctx;
+        const span = CANVAS_HEIGHT + 260;
+        const kind = centerDepth < 15 ?
+            'timber' :
+            centerDepth < 35 ? 'pipes' : 'duct';
+        const ink = {
+            timber: ['rgba(112, 74, 56, 0.30)', 'rgba(146, 100, 74, 0.22)'],
+            pipes: ['rgba(58, 104, 124, 0.28)', 'rgba(86, 143, 166, 0.20)'],
+            duct: ['rgba(112, 92, 64, 0.24)', 'rgba(150, 124, 84, 0.17)'],
+        }[kind];
+
+        ctx.save();
+        for (let index = 0; index < 6; index++) {
+            const x = Math.floor(this.hashCell(index, 4, 22) * (CANVAS_WIDTH - 96));
+            const parallax = 0.24 + index * 0.03;
+            const y = (
+                this.hashCell(index, 9, 31) * span -
+                this.cameraY * parallax +
+                span * 2
+            ) % span - 120;
+            const wide = 60 + Math.floor(this.hashCell(index, 11, 18) * 90);
+            const tall = 54 + Math.floor(this.hashCell(index, 15, 27) * 80);
+            const px = this.pixelSnap(x);
+            const py = this.pixelSnap(y);
+
+            ctx.fillStyle = ink[0];
+            if (kind === 'timber') {
+                // two posts under a lintel, the way a shaft used to be held up
+                ctx.fillRect(px, py, 7, tall);
+                ctx.fillRect(px + wide - 7, py, 7, tall);
+                ctx.fillRect(px - 6, py, wide + 12, 8);
+                ctx.fillStyle = ink[1];
+                ctx.fillRect(px - 6, py + 8, wide + 12, 3);
+                ctx.fillRect(px + 7, py + Math.floor(tall * 0.6), wide - 14, 4);
+            } else if (kind === 'pipes') {
+                // a run of pipe with a joint collar and a bracket
+                ctx.fillRect(px, py, wide, 10);
+                ctx.fillRect(px + wide - 10, py, 10, tall);
+                ctx.fillStyle = ink[1];
+                ctx.fillRect(px + Math.floor(wide * 0.4), py - 4, 12, 18);
+                ctx.fillRect(px + wide - 14, py + Math.floor(tall * 0.7), 18, 5);
+            } else {
+                // riveted ducting: a plate with a bolt line down each edge
+                ctx.fillRect(px, py, wide, tall);
+                ctx.fillStyle = ink[1];
+                for (let bolt = 0; bolt < Math.floor(tall / 14); bolt++) {
+                    ctx.fillRect(px + 5, py + 8 + bolt * 14, 4, 4);
+                    ctx.fillRect(px + wide - 9, py + 8 + bolt * 14, 4, 4);
+                }
+                ctx.fillRect(px, py + Math.floor(tall / 2) - 2, wide, 4);
+            }
+        }
+        ctx.restore();
     }
 
     renderAmbientDust() {
@@ -5398,12 +5589,12 @@ class Game {
         const depth = Math.max(0, Math.floor(this.cameraY / GRID_SIZE));
         ctx.save();
 
-        for (let index = 0; index < 24; index++) {
-            const speed = 3 + this.hashCell(index, 3, 44) * 7;
+        for (let index = 0; index < 40; index++) {
+            const speed = 3 + this.hashCell(index, 3, 44) * 9;
             const drift = this.visualTime * speed;
             const x = (
                 this.hashCell(index, 7, 12) * CANVAS_WIDTH +
-                Math.sin(this.visualTime * 0.35 + index) * 12 +
+                Math.sin(this.visualTime * 0.35 + index) * 14 +
                 CANVAS_WIDTH
             ) % CANVAS_WIDTH;
             const y = (
@@ -5413,14 +5604,48 @@ class Game {
                 CANVAS_HEIGHT +
                 40
             ) % (CANVAS_HEIGHT + 40) - 20;
-            const alpha = 0.045 + this.hashCell(index, 5, 28) * 0.08;
+            // Nearer motes are bigger, brighter and fall faster, which is
+            // the whole trick: the shaft reads as a space with air in it
+            // rather than a flat backdrop.
+            const near = this.hashCell(index, 5, 28);
+            const alpha = 0.1 + near * 0.26;
             ctx.fillStyle = depth > 28 ?
-                `rgba(162, 181, 198, ${alpha})` :
-                `rgba(210, 189, 178, ${alpha})`;
-            const size = index % 5 === 0 ? 2 : 1;
+                `rgba(178, 198, 216, ${alpha})` :
+                `rgba(226, 203, 188, ${alpha})`;
+            const size = near > 0.82 ? 3 : near > 0.5 ? 2 : 1;
             ctx.fillRect(this.pixelSnap(x), this.pixelSnap(y), size, size);
         }
 
+        ctx.restore();
+    }
+
+    /**
+     * Manny's lamp. A warm pool around him and a fall-off toward the
+     * frame edge, so the dug-out shaft has somewhere to be dark. Kept
+     * gentle on purpose — the blocks below still have to be readable
+     * far enough ahead to plan a route.
+     */
+    renderHeadlamp() {
+        const ctx = this.ctx;
+        const x = this.player.visualX + GRID_SIZE / 2;
+        const y = this.player.visualY - this.cameraY + GRID_SIZE / 2;
+        const reach = GRID_SIZE * 4.4;
+
+        const shade = ctx.createRadialGradient(x, y, reach * 0.3, x, y, reach * 2.5);
+        shade.addColorStop(0, 'rgba(4, 6, 12, 0)');
+        shade.addColorStop(0.6, 'rgba(4, 6, 12, 0.15)');
+        shade.addColorStop(1, 'rgba(3, 4, 9, 0.38)');
+        ctx.fillStyle = shade;
+        ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        const lamp = ctx.createRadialGradient(x, y, 0, x, y, reach);
+        lamp.addColorStop(0, 'rgba(255, 214, 152, 0.3)');
+        lamp.addColorStop(0.45, 'rgba(255, 194, 118, 0.13)');
+        lamp.addColorStop(1, 'rgba(255, 190, 110, 0)');
+        ctx.fillStyle = lamp;
+        ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
         ctx.restore();
     }
 

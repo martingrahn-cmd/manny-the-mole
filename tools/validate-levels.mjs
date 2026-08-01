@@ -195,8 +195,26 @@ function inspect(level) {
     }
 
     let air = null;
+    let bareAir = null;
     if (reachedSafeCells.length > 0) {
         air = airMargin(rows, level);
+        // The margin that matters once the tanks stop being decoration:
+        // what is left on arrival for a player who never detours for one.
+        const direct = cheapestRoute(rows, level.start, safeCells(level));
+        if (direct !== null) {
+            const start = level.start.oxygen ?? AIR_MAX;
+            bareAir = {
+                seconds: direct,
+                onArrival: start - direct * AIR_PER_SECOND,
+                fumbling: start - direct * FUMBLE_FACTOR * AIR_PER_SECOND,
+            };
+            if (bareAir.onArrival <= 0) {
+                warnings.push(
+                    'the safe cannot be reached without taking a tank ' +
+                    `(${bareAir.onArrival.toFixed(0)}% on arrival)`
+                );
+            }
+        }
         if (air.airLeft <= 0) {
             errors.push(
                 'air runs out before the safe even with perfect play ' +
@@ -265,7 +283,7 @@ function inspect(level) {
         warnings.push(`${sealed} cells are sealed behind rock`);
     }
 
-    return { errors, warnings, air, reachable: reachable.size, open };
+    return { errors, warnings, air, bareAir, reachable: reachable.size, open };
 }
 
 export { inspect };
@@ -285,9 +303,14 @@ if (runDirect) {
             'FAIL' :
             r.warnings.length ? 'WARN' : ' OK ';
         const depth = level.safe.y - level.start.y;
+        // "with tanks" is the safety net; "no tanks" is the actual squeeze
         const airText = r.air ?
             `air ${r.air.airLeft.toFixed(0)}%/` +
-            `${Math.max(0, r.air.airLeftFumbling).toFixed(0)}%` :
+            `${Math.max(0, r.air.airLeftFumbling).toFixed(0)}%` +
+            (r.bareAir ?
+                ` · no tanks ${r.bareAir.onArrival.toFixed(0)}%/` +
+                `${Math.max(0, r.bareAir.fumbling).toFixed(0)}%` :
+                '') :
             'air not measured';
         const parText = r.air && Number.isFinite(level.par) ?
             ` · optimal ${
