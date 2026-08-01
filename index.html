@@ -1190,6 +1190,138 @@
             }
         }
 
+
+        /* The cabinet: a shelf per group, each trophy the same object
+           whether you have it or not — earned ones in their own metal,
+           the rest struck in dead grey. */
+        .trophy-shelf {
+            margin-top: calc(14px * var(--game-scale));
+            text-align: left;
+        }
+
+        .trophy-shelf__label {
+            margin-bottom: calc(6px * var(--game-scale));
+            color: rgba(222, 230, 244, 0.5);
+            font-size: max(8px, calc(9px * var(--game-scale)));
+            font-weight: 780;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+        }
+
+        .trophy-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(calc(112px * var(--game-scale)), 1fr));
+            gap: calc(7px * var(--game-scale));
+        }
+
+        .trophy-item {
+            display: grid;
+            grid-template-columns: auto minmax(0, 1fr);
+            gap: calc(8px * var(--game-scale));
+            align-items: center;
+            padding: calc(7px * var(--game-scale));
+            border: max(1px, calc(1px * var(--game-scale))) solid rgba(255, 255, 255, 0.09);
+            border-radius: calc(11px * var(--game-scale));
+            background: linear-gradient(180deg, rgba(31, 37, 55, 0.9), rgba(12, 14, 27, 0.95));
+        }
+
+        .trophy-item.is-earned {
+            border-color: rgba(255, 211, 99, 0.32);
+        }
+
+        .trophy-item canvas {
+            display: block;
+            width: calc(34px * var(--game-scale));
+            min-width: 28px;
+            height: auto;
+            image-rendering: pixelated;
+        }
+
+        .trophy-item.is-locked canvas {
+            opacity: 0.62;
+        }
+
+        .trophy-item__copy {
+            min-width: 0;
+        }
+
+        .trophy-item__copy strong,
+        .trophy-item__copy small {
+            display: block;
+        }
+
+        .trophy-item__copy strong {
+            color: rgba(248, 250, 255, 0.94);
+            font-size: max(9px, calc(10px * var(--game-scale)));
+            line-height: 1.14;
+        }
+
+        .trophy-item.is-locked .trophy-item__copy strong {
+            color: rgba(226, 233, 245, 0.5);
+        }
+
+        .trophy-item__copy small {
+            margin-top: calc(2px * var(--game-scale));
+            color: rgba(220, 228, 241, 0.58);
+            font-size: max(8px, calc(8px * var(--game-scale)));
+            line-height: 1.25;
+        }
+
+        /* Announced one at a time, so a run that earns three does not
+           stack them on top of each other. */
+        .trophy-toast {
+            position: absolute;
+            top: calc(58px * var(--game-scale));
+            left: 50%;
+            z-index: 8;
+            display: flex;
+            gap: calc(9px * var(--game-scale));
+            align-items: center;
+            padding: calc(8px * var(--game-scale)) calc(13px * var(--game-scale));
+            transform: translateX(-50%);
+            border: max(1px, calc(1px * var(--game-scale))) solid rgba(255, 211, 99, 0.42);
+            border-radius: 999px;
+            background: rgba(9, 11, 22, 0.93);
+            box-shadow: 0 calc(8px * var(--game-scale)) calc(26px * var(--game-scale)) rgba(0, 0, 0, 0.44);
+            pointer-events: none;
+            animation: trophy-toast-in 260ms ease-out both;
+            backdrop-filter: blur(calc(10px * var(--game-scale)));
+        }
+
+        .trophy-toast canvas {
+            display: block;
+            width: calc(26px * var(--game-scale));
+            min-width: 22px;
+            height: auto;
+            image-rendering: pixelated;
+        }
+
+        .trophy-toast__copy small {
+            display: block;
+            color: #ffd76a;
+            font-size: max(7px, calc(8px * var(--game-scale)));
+            font-weight: 800;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+        }
+
+        .trophy-toast__copy strong {
+            display: block;
+            margin-top: calc(2px * var(--game-scale));
+            color: #f8fbff;
+            font-size: max(10px, calc(11px * var(--game-scale)));
+            white-space: nowrap;
+        }
+
+        @keyframes trophy-toast-in {
+            from { opacity: 0; transform: translateX(-50%) translateY(calc(-8px * var(--game-scale))); }
+            to { opacity: 1; transform: translateX(-50%) translateY(0); }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .trophy-toast { animation: none; }
+        }
+
         .gallery-grid {
             display: grid;
             gap: calc(7px * var(--game-scale));
@@ -3113,6 +3245,14 @@
             </div>
             <div id="countdownDisplay" class="countdown" aria-live="assertive" hidden>3</div>
             <div id="gameToast" class="toast" role="status" hidden></div>
+            <div id="trophyToast" class="trophy-toast" role="status" hidden>
+                <span id="trophyToastArt" class="trophy-toast__art"></span>
+                <span class="trophy-toast__copy">
+                    <small>Trophy</small>
+                    <strong id="trophyToastName"></strong>
+                </span>
+            </div>
+
 
             <section id="screenTitle" class="screen screen--title" aria-label="Title screen">
                 <div class="title-stage">
@@ -3183,6 +3323,19 @@
                             <span class="puzzle-mode-entry__copy">
                                 <strong>The Gallery</strong>
                                 <small id="galleryEntryCount">What you have pulled out of the safes</small>
+                            </span>
+                            <span class="puzzle-mode-entry__arrow" aria-hidden="true">→</span>
+                        </button>
+                        <button
+                            class="menu-button menu-button--puzzle-mode"
+                            type="button"
+                            data-action="trophies"
+                            aria-label="Open the trophy cabinet"
+                        >
+                            <span class="puzzle-mode-entry__icon" aria-hidden="true">★</span>
+                            <span class="puzzle-mode-entry__copy">
+                                <strong>Trophies</strong>
+                                <small id="trophyEntryCount">Struck for the things worth doing twice</small>
                             </span>
                             <span class="puzzle-mode-entry__arrow" aria-hidden="true">→</span>
                         </button>
@@ -3294,6 +3447,30 @@
                         Everything the safes were holding. One safe, one thing.
                     </p>
                     <div id="galleryGrid" class="gallery-grid"></div>
+                    <button class="menu-button gallery-back" type="button" data-action="menu">
+                        Back to the levels
+                    </button>
+                </div>
+            </section>
+
+
+            <section
+                id="screenTrophies"
+                class="screen screen--gallery"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="trophiesTitle"
+                aria-describedby="trophiesCopy"
+                hidden
+            >
+                <div class="screen-panel screen-panel--gallery">
+                    <p class="eyebrow">The cabinet</p>
+                    <h2 id="trophiesTitle">Trophies</h2>
+                    <p id="trophiesCopy" class="screen-copy">
+                        Struck for the things worth doing twice.
+                    </p>
+                    <p id="trophyCount" class="campaign-progress"></p>
+                    <div id="trophyShelves"></div>
                     <button class="menu-button gallery-back" type="button" data-action="menu">
                         Back to the levels
                     </button>
@@ -3449,6 +3626,7 @@
     <script src="sounds.js?v=15"></script>
     <script src="levels.js?v=15"></script>
     <script src="puzzles.js?v=15"></script>
+    <script src="trophies.js?v=15"></script>
     <script src="game.js?v=15"></script>
 </body>
 </html>

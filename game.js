@@ -927,6 +927,7 @@ class GameUI {
             title: document.getElementById('screenTitle'),
             'puzzle-select': document.getElementById('screenPuzzleSelect'),
             gallery: document.getElementById('screenGallery'),
+            trophies: document.getElementById('screenTrophies'),
             finale: document.getElementById('screenFinale'),
             paused: document.getElementById('screenPaused'),
             puzzle: document.getElementById('screenPuzzle'),
@@ -934,8 +935,16 @@ class GameUI {
             won: document.getElementById('screenWon'),
         };
 
+        this.trophyShelves = document.getElementById('trophyShelves');
+        this.trophyCount = document.getElementById('trophyCount');
+        this.trophyToast = document.getElementById('trophyToast');
+        this.trophyToastArt = document.getElementById('trophyToastArt');
+        this.trophyToastName = document.getElementById('trophyToastName');
+        this.trophyToastTimer = 0;
+
         this.refreshLevelSelect();
         this.refreshGallery();
+        this.refreshTrophies();
         this.refreshFinale();
         this.syncMute();
 
@@ -964,6 +973,7 @@ class GameUI {
                 this.game.showPuzzleSelect();
             }
             else if (action === 'gallery') this.game.showGallery();
+            else if (action === 'trophies') this.game.showTrophies();
             else if (action === 'finale') this.game.showFinale();
             else if (action === 'title-start') this.game.leaveTitle();
             else if (action === 'start-puzzle') {
@@ -1298,6 +1308,84 @@ class GameUI {
         if (this.muteState) {
             this.muteState.textContent = muted ? 'Off' : 'On';
         }
+    }
+
+    /** The cabinet: one shelf per group, in the order they are defined. */
+    refreshTrophies() {
+        if (!this.trophyShelves) return;
+        const cabinet = this.game.trophies;
+        if (!cabinet) return;
+
+        const entry = document.getElementById('trophyEntryCount');
+        if (entry) {
+            entry.textContent =
+                `${cabinet.earnedCount()} of ${TROPHY_DEFINITIONS.length} struck`;
+        }
+        if (this.trophyCount) {
+            this.trophyCount.textContent =
+                `${cabinet.earnedCount()} of ${TROPHY_DEFINITIONS.length} struck`;
+        }
+
+        this.trophyShelves.replaceChildren();
+        TROPHY_GROUPS.forEach(group => {
+            const members = TROPHY_DEFINITIONS.filter(t => t.group === group.id);
+            if (!members.length) return;
+
+            const shelf = document.createElement('div');
+            shelf.className = 'trophy-shelf';
+            const label = document.createElement('p');
+            label.className = 'trophy-shelf__label';
+            const held = members.filter(t => cabinet.has(t.id)).length;
+            label.textContent = `${group.label} · ${held}/${members.length}`;
+
+            const row = document.createElement('div');
+            row.className = 'trophy-row';
+            members.forEach(definition => {
+                const earned = cabinet.has(definition.id);
+                const item = document.createElement('div');
+                item.className = 'trophy-item';
+                item.classList.toggle('is-earned', earned);
+                item.classList.toggle('is-locked', !earned);
+
+                const copy = document.createElement('span');
+                copy.className = 'trophy-item__copy';
+                const name = document.createElement('strong');
+                name.textContent = definition.name;
+                const blurb = document.createElement('small');
+                // a locked trophy still says what it is for; hiding that
+                // makes a cabinet you cannot plan against
+                blurb.textContent = definition.blurb;
+                copy.append(name, blurb);
+
+                item.append(createTrophyCanvas(definition, 64, earned), copy);
+                row.append(item);
+            });
+
+            shelf.append(label, row);
+            this.trophyShelves.append(shelf);
+        });
+    }
+
+    /**
+     * Shows one newly struck trophy at a time. Anything earned while a
+     * toast is up waits its turn rather than replacing it.
+     */
+    updateTrophyToast(deltaTime) {
+        if (!this.trophyToast) return;
+        if (this.trophyToastTimer > 0) {
+            this.trophyToastTimer -= deltaTime;
+            if (this.trophyToastTimer > 0) return;
+            this.trophyToast.hidden = true;
+        }
+
+        const next = this.game.trophies?.takePending();
+        if (!next) return;
+
+        this.trophyToastArt.replaceChildren(createTrophyCanvas(next, 52, true));
+        this.trophyToastName.textContent = next.name;
+        this.trophyToast.hidden = false;
+        this.trophyToastTimer = 2.6;
+        this.game.sound?.playVaultFind?.();
     }
 
     refreshGallery() {
@@ -2109,6 +2197,7 @@ class GameUI {
             game.gameState === 'title' ||
             game.gameState === 'menu' ||
             game.gameState === 'gallery' ||
+            game.gameState === 'trophies' ||
             game.gameState === 'puzzle-select' ||
             (
                 game.gameState === 'puzzle' &&
@@ -2306,6 +2395,10 @@ class Game {
         this.gamepadMessage = null;
         this.gamepadMessageTime = 0;
         this.progress = this.loadProgress();
+        this.trophies = new TrophyCabinet(this);
+        // set on the first air pocket of a run, so a level finished on the
+        // air it started with can be told from one that was topped up
+        this.toppedUpThisLevel = false;
         this.lastLevelScore = 0;
         this.newlyUnlockedLevelIndex = null;
         this.safePuzzle = new SafePuzzleEngine();
@@ -2698,6 +2791,11 @@ class Game {
     }
     
     update(deltaTime) {
+        // Pumped here rather than in updateEffects: that runs at a
+        // fraction of real time on the menus and not at all on the win
+        // screen, which is exactly where a level's trophies land.
+        this.ui?.updateTrophyToast(deltaTime);
+
         const input = this.getInput();
         const pausePressed =
             this.keysJustPressed['Escape'] ||
@@ -3112,6 +3210,7 @@ class Game {
 
             if (landingRow !== null) {
                 const landedDistance = Math.max(0, ((landingRow - 1) * GRID_SIZE - p.fallStartY) / GRID_SIZE);
+                this.trophies?.onFall(landedDistance);
                 p.visualY = (landingRow - 1) * GRID_SIZE;
                 p.gridX = fallGridX;
                 p.gridY = landingRow - 1;
@@ -3414,6 +3513,7 @@ class Game {
 
     toggleMute() {
         const muted = this.sound.toggleMuted();
+        this.game?.trophies?.onMuted(muted);
         // Turning it back on is itself a user gesture, so the audio
         // context can be unlocked right here, and a short note confirms
         // that sound is actually working.
@@ -3435,7 +3535,17 @@ class Game {
         return this.showMainMenu();
     }
 
+    showTrophies() {
+        this.clearKeyboardInput();
+        this.safePuzzle.clear();
+        this.puzzleContext = null;
+        this.gameState = 'trophies';
+        this.lastRenderedState = null;
+        return true;
+    }
+
     showGallery() {
+        this.trophies?.onGalleryOpened();
         this.clearKeyboardInput();
         this.safePuzzle.clear();
         this.puzzleContext = null;
@@ -3445,6 +3555,7 @@ class Game {
     }
 
     showFinale() {
+        this.trophies?.onEndingSeen();
         this.clearKeyboardInput();
         this.safePuzzle.clear();
         this.puzzleContext = null;
@@ -3532,6 +3643,10 @@ class Game {
             this.gameState !== 'puzzle' ||
             !this.safePuzzle.state?.solved
         ) return false;
+
+        // a grade is a grade whether it was reached down a shaft or picked
+        // straight off the puzzle menu
+        this.trophies?.onLockOpened(this.safePuzzle.state.difficulty);
 
         if (this.puzzleContext === 'standalone') {
             const difficulty = this.safePuzzle.state.difficulty;
@@ -3765,6 +3880,7 @@ class Game {
         if (this.gameState !== 'playing') return;
 
         this.deathCause = cause;
+        this.trophies?.onDeath(cause);
         this.deathTimer = DEATH_BEAT_DURATION;
         this.deathImpact = impact;
         this.warningMessage = null;
@@ -3966,6 +4082,7 @@ class Game {
             });
             
             this.lastDigStrength = piece.length;
+            this.trophies?.onBlocksDug(piece.length);
             this.score += DIG_SCORE * piece.length;
             // A piece of three or more coming away is a different event
             // from chipping one block, and deserves its own crunch and a
@@ -4654,6 +4771,7 @@ class Game {
                 );
                 if (dist < GRID_SIZE * 0.5) {
                     tube.collected = true;
+                    this.toppedUpThisLevel = true;
                     this.oxygen = Math.min(this.maxOxygen, this.oxygen + 20);
                     this.score += 100;
                     this.spawnPickupSparkles(tube, '#69f3ff');
@@ -4946,6 +5064,18 @@ class Game {
         }
 
         if (changed) this.saveProgress();
+
+        // after the save, so the counts a trophy reads are the ones that
+        // will still be there on the next load
+        this.trophies?.onLevelComplete({
+            completedCount: this.getCompletedLevelCount(),
+            medal: this.lastLevelMedal,
+            medals: this.getMedalCounts(),
+            air: airLeft,
+            toppedUp: this.toppedUpThisLevel,
+            beatRecord: this.beatOwnRecord && this.previousLevelMedal !== null,
+        });
+
         this.ui?.refreshLevelSelect();
         this.ui?.refreshGallery();
         this.ui?.refreshFinale();
@@ -5156,6 +5286,7 @@ class Game {
         this.player = this.createPlayer(level.start);
 
         this.oxygen = level.start.oxygen ?? 100;
+        this.toppedUpThisLevel = false;
         this.score = score;
         this.depth = 0;
         this.levelElapsed = 0;
