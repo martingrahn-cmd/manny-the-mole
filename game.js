@@ -622,6 +622,19 @@ class ArcadeSound {
         this.playTone(495 + lift * 25, 720 + lift * 35, 0.1, 0.03, 'square', 0.045);
     }
 
+    /**
+     * The flourish over the win screen. Delayed to land with the
+     * animation: the low note as the light comes up, the rising figure
+     * as the find lifts out, the shimmer as it settles.
+     */
+    playVaultFind() {
+        this.playTone(196, 262, 0.17, 0.032, 'triangle', 0.3);
+        this.playTone(392, 523, 0.13, 0.038, 'square', 0.42);
+        this.playTone(523, 659, 0.12, 0.034, 'square', 0.53);
+        this.playTone(659, 784, 0.24, 0.04, 'square', 0.64);
+        this.playTone(1047, 1175, 0.3, 0.016, 'sine', 0.72);
+    }
+
     playPickup(isOxygen = false) {
         if (isOxygen) {
             this.playTone(390, 690, 0.11, 0.035, 'square');
@@ -3117,6 +3130,7 @@ class Game {
             200 + this.safePuzzle.state.difficulty * 100;
         this.score += this.puzzleBonus;
         this.sound.playClear(6 + this.safePuzzle.state.difficulty);
+        this.sound.playVaultFind();
         this.recordCurrentLevelCompletion();
         this.puzzleContext = null;
         this.gameState = 'won';

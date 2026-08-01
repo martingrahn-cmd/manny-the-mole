@@ -657,6 +657,22 @@
             margin-top: calc(21px * var(--game-scale));
         }
 
+        /* The find takes the height it deserves, so the two ways out that
+           are not "keep going" share a row. */
+        .menu-actions--won {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            margin-top: calc(14px * var(--game-scale));
+        }
+
+        .menu-actions--won .menu-button--primary {
+            grid-column: 1 / -1;
+        }
+
+        .menu-actions--won .menu-button:not(.menu-button--primary) {
+            min-height: calc(38px * var(--game-scale));
+            font-size: max(10px, calc(11px * var(--game-scale)));
+        }
+
         .level-select-heading {
             display: flex;
             gap: calc(10px * var(--game-scale));
@@ -1049,20 +1065,73 @@
             }
         }
 
+        /* The find is lifted out of the safe: the light comes up first,
+           then the item rises into it, then its name. */
+        @keyframes vault-find-lift {
+            0% {
+                opacity: 0;
+                transform: translateY(calc(26px * var(--game-scale))) scale(0.7);
+            }
+
+            62% {
+                opacity: 1;
+                transform: translateY(calc(-6px * var(--game-scale))) scale(1.06);
+            }
+
+            100% {
+                opacity: 1;
+                transform: none;
+            }
+        }
+
+        @keyframes vault-find-beam {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes vault-find-rise {
+            from {
+                opacity: 0;
+                transform: translateY(calc(8px * var(--game-scale)));
+            }
+
+            to {
+                opacity: 1;
+                transform: none;
+            }
+        }
+
         #screenWon:not([hidden]) .vault-find {
             animation: vault-find-drop 460ms
-                cubic-bezier(0.2, 1.3, 0.4, 1) 160ms both;
+                cubic-bezier(0.2, 1.3, 0.4, 1) 100ms both;
+        }
+
+        #screenWon:not([hidden]) .vault-find__plinth::before,
+        #screenWon:not([hidden]) .vault-find__plinth::after {
+            animation: vault-find-beam 420ms ease-out 300ms both;
         }
 
         #screenWon:not([hidden]) .vault-find__icon {
-            animation: vault-find-drop 520ms
-                cubic-bezier(0.2, 1.5, 0.4, 1) 320ms both;
+            animation: vault-find-lift 760ms
+                cubic-bezier(0.22, 1.02, 0.36, 1) 380ms both;
+        }
+
+        #screenWon:not([hidden]) .vault-find__name {
+            animation: vault-find-rise 420ms ease-out 760ms both;
+        }
+
+        #screenWon:not([hidden]) .vault-find__blurb {
+            animation: vault-find-rise 420ms ease-out 860ms both;
         }
 
         @media (prefers-reduced-motion: reduce) {
             #screenPuzzle:not([hidden]) .screen-panel,
             #screenWon:not([hidden]) .vault-find,
-            #screenWon:not([hidden]) .vault-find__icon {
+            #screenWon:not([hidden]) .vault-find__plinth::before,
+            #screenWon:not([hidden]) .vault-find__plinth::after,
+            #screenWon:not([hidden]) .vault-find__icon,
+            #screenWon:not([hidden]) .vault-find__name,
+            #screenWon:not([hidden]) .vault-find__blurb {
                 animation: none;
             }
         }
@@ -1300,59 +1369,134 @@
             color: rgba(125, 216, 255, 0.8);
         }
 
+        /* Cracking the safe is the whole job, so what was inside it is the
+           hero of the win screen: lit from below on a plinth, at eight
+           times its sprite size, with the name under it. */
         .vault-find {
-            display: flex;
-            gap: calc(11px * var(--game-scale));
-            align-items: center;
-            margin-top: calc(10px * var(--game-scale));
-            padding: calc(10px * var(--game-scale)) calc(12px * var(--game-scale));
+            display: grid;
+            justify-items: center;
+            margin-top: calc(13px * var(--game-scale));
+            padding: calc(15px * var(--game-scale)) calc(14px * var(--game-scale))
+                calc(17px * var(--game-scale));
             border: max(1px, calc(1px * var(--game-scale))) solid
-                rgba(240, 200, 130, 0.34);
-            border-radius: calc(11px * var(--game-scale));
+                rgba(240, 200, 130, 0.3);
+            border-radius: calc(15px * var(--game-scale));
             background:
+                radial-gradient(
+                    ellipse 62% 46% at 50% 62%,
+                    rgba(255, 205, 120, 0.17),
+                    transparent 70%
+                ),
                 linear-gradient(
-                    135deg,
-                    rgba(240, 200, 130, 0.11),
-                    rgba(10, 14, 22, 0.6) 62%
+                    180deg,
+                    rgba(240, 200, 130, 0.08),
+                    rgba(9, 12, 20, 0.72) 58%
                 );
-            text-align: left;
         }
 
-        .vault-find__icon {
-            width: max(38px, calc(44px * var(--game-scale)));
-            height: auto;
-            flex: none;
-            image-rendering: pixelated;
-            filter: drop-shadow(
-                0 0 calc(10px * var(--game-scale)) rgba(240, 200, 130, 0.45)
-            );
-        }
-
-        .vault-find__copy {
-            display: flex;
-            min-width: 0;
-            flex-direction: column;
-            gap: calc(1px * var(--game-scale));
-        }
-
-        .vault-find__copy small {
-            color: rgba(240, 200, 130, 0.78);
-            font-size: max(9px, calc(9px * var(--game-scale)));
+        .vault-find__label {
+            color: rgba(245, 208, 140, 0.85);
+            font-size: max(9px, calc(10px * var(--game-scale)));
             font-weight: 800;
-            letter-spacing: 0.1em;
+            letter-spacing: 0.24em;
             text-transform: uppercase;
         }
 
-        .vault-find__copy strong {
-            color: #ffe6b8;
-            font-size: max(13px, calc(15px * var(--game-scale)));
+        /* The shaft of light the item stands in. */
+        .vault-find__plinth {
+            position: relative;
+            display: grid;
+            width: calc(112px * var(--game-scale));
+            height: calc(86px * var(--game-scale));
+            place-items: center;
+            margin-top: calc(4px * var(--game-scale));
+        }
+
+        .vault-find__plinth::before {
+            position: absolute;
+            bottom: calc(9px * var(--game-scale));
+            width: 76%;
+            height: 62%;
+            content: "";
+            clip-path: polygon(34% 0, 66% 0, 100% 100%, 0 100%);
+            background: linear-gradient(
+                180deg,
+                rgba(255, 214, 138, 0.24),
+                rgba(255, 200, 110, 0)
+            );
+        }
+
+        /* the pool of light it casts on the floor of the vault */
+        .vault-find__plinth::after {
+            position: absolute;
+            bottom: calc(4px * var(--game-scale));
+            width: 62%;
+            height: calc(9px * var(--game-scale));
+            content: "";
+            border-radius: 50%;
+            background: radial-gradient(
+                ellipse at center,
+                rgba(255, 213, 138, 0.4),
+                transparent 72%
+            );
+        }
+
+        /* Four times the sprite. The art carries its own dark outline, so
+           any bigger and that outline reads as a black slab rather than
+           as an edge — and it needs no drop shadow of its own. */
+        .vault-find__icon {
+            position: relative;
+            z-index: 1;
+            width: calc(64px * var(--game-scale));
+            min-width: 54px;
+            height: auto;
+            image-rendering: pixelated;
+            filter: drop-shadow(
+                0 0 calc(16px * var(--game-scale)) rgba(255, 205, 120, 0.5)
+            );
+        }
+
+        .screen h2.vault-find__name {
+            margin-top: calc(9px * var(--game-scale));
+            background: linear-gradient(180deg, #ffe9bd, #f5c064 68%, #dd9a34);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            font-size: max(17px, calc(21px * var(--game-scale)));
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            line-height: 1.12;
             text-wrap: balance;
         }
 
-        .vault-find__copy em {
-            color: rgba(206, 219, 238, 0.68);
+        .vault-find__blurb {
+            max-width: 30ch;
+            margin-top: calc(5px * var(--game-scale));
+            color: rgba(210, 222, 240, 0.7);
             font-size: max(10px, calc(11px * var(--game-scale)));
             font-style: normal;
+            line-height: 1.4;
+            text-wrap: balance;
+        }
+
+        /* The level's own sign-off, demoted to one quiet line. */
+        .won-line {
+            margin-top: calc(12px * var(--game-scale));
+            color: rgba(214, 223, 238, 0.6);
+            font-size: max(10px, calc(11px * var(--game-scale)));
+            line-height: 1.45;
+            text-wrap: balance;
+        }
+
+        .won-line b {
+            color: rgba(243, 247, 255, 0.9);
+            font-weight: 750;
+        }
+
+        .won-line b::after {
+            margin: 0 0.45em;
+            color: rgba(214, 223, 238, 0.34);
+            content: "·";
         }
 
         .puzzle-grade-list {
@@ -2515,6 +2659,25 @@
             margin-top: calc(20px * var(--game-scale));
         }
 
+        /* Three stats in two columns leaves an orphan on its own row. */
+        .result-stats--three {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: calc(6px * var(--game-scale));
+            margin-top: calc(13px * var(--game-scale));
+        }
+
+        .result-stats--three .result-stat {
+            padding: calc(9px * var(--game-scale)) calc(5px * var(--game-scale));
+        }
+
+        .result-stats--three .result-stat span {
+            letter-spacing: 0.06em;
+        }
+
+        .result-stats--three .result-stat strong {
+            font-size: max(14px, calc(16px * var(--game-scale)));
+        }
+
         .result-stat {
             padding: calc(11px * var(--game-scale));
             border: max(1px, calc(1px * var(--game-scale))) solid rgba(255, 255, 255, 0.08);
@@ -2980,28 +3143,30 @@
                 class="screen"
                 role="dialog"
                 aria-modal="true"
-                aria-labelledby="wonTitle"
-                aria-describedby="wonCopy"
+                aria-labelledby="wonEyebrow wonRewardName"
+                aria-describedby="wonRewardBlurb"
                 hidden
             >
-                <div class="screen-panel">
+                <div class="screen-panel screen-panel--won">
                     <p id="wonEyebrow" class="eyebrow">Level 1 of 12 cleared</p>
-                    <h2 id="wonTitle">First bite taken</h2>
-                    <p id="wonCopy" class="screen-copy">Well dug. The next shaft is waiting.</p>
                     <div class="vault-find">
-                        <img id="wonRewardIcon" class="vault-find__icon" alt="" src="" width="16" height="16">
-                        <span class="vault-find__copy">
-                            <small>In the safe</small>
-                            <strong id="wonRewardName">A set of dentures</strong>
-                            <em id="wonRewardBlurb">Somebody&#39;s teeth.</em>
+                        <p class="vault-find__label">You got</p>
+                        <span class="vault-find__plinth">
+                            <img id="wonRewardIcon" class="vault-find__icon" alt="" src="" width="16" height="16">
                         </span>
+                        <h2 id="wonRewardName" class="vault-find__name">A set of dentures</h2>
+                        <em id="wonRewardBlurb" class="vault-find__blurb">Somebody&#39;s teeth.</em>
                     </div>
-                    <div class="result-stats">
+                    <p class="won-line">
+                        <b id="wonTitle">First bite taken</b>
+                        <span id="wonCopy">Well dug. The next shaft is waiting.</span>
+                    </p>
+                    <div class="result-stats result-stats--three">
                         <div class="result-stat"><span>Loot</span><strong id="wonScore">0</strong></div>
                         <div class="result-stat"><span>Air left</span><strong id="wonAir">0%</strong></div>
                         <div class="result-stat"><span>Best air</span><strong id="wonBestAir">0%</strong></div>
                     </div>
-                    <div class="menu-actions">
+                    <div class="menu-actions menu-actions--won">
                         <button id="wonPrimaryButton" class="menu-button menu-button--primary" type="button" data-action="next-level">Continue to level 2</button>
                         <button id="wonRetryButton" class="menu-button" type="button" data-action="restart">Replay the level</button>
                         <button class="menu-button" type="button" data-action="menu">Level select</button>
