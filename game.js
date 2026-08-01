@@ -689,6 +689,7 @@ class GameUI {
         this.lastPipeFlowFrame = null;
         this.screens = {
             menu: document.getElementById('screenMenu'),
+            title: document.getElementById('screenTitle'),
             'puzzle-select': document.getElementById('screenPuzzleSelect'),
             gallery: document.getElementById('screenGallery'),
             paused: document.getElementById('screenPaused'),
@@ -719,6 +720,7 @@ class GameUI {
                 this.game.showPuzzleSelect();
             }
             else if (action === 'gallery') this.game.showGallery();
+            else if (action === 'title-start') this.game.leaveTitle();
             else if (action === 'start-puzzle') {
                 this.game.startStandalonePuzzle(
                     button.dataset.puzzle,
@@ -1058,7 +1060,7 @@ class GameUI {
             state.textContent = !unlocked ?
                 'Locked' :
                 completed ?
-                    'Klar ✓' :
+                    'Cleared ✓' :
                     levelIndex === continueLevelIndex ? 'Next' : 'Open';
             state.setAttribute('aria-hidden', 'true');
             top.append(number, state);
@@ -1123,7 +1125,7 @@ class GameUI {
         if (this.campaignProgress) {
             const completedCount = this.game.getCompletedLevelCount();
             this.campaignProgress.textContent =
-                `${completedCount} av ${CAMPAIGN_LEVELS.length} klara`;
+                `${completedCount} of ${CAMPAIGN_LEVELS.length} cleared`;
         }
     }
 
@@ -1262,8 +1264,8 @@ class GameUI {
     appendPuzzleCloseButton(state) {
         if (!this.puzzleActions || state.solved) return;
         const label = this.game.puzzleContext === 'standalone' ?
-            'Tillbaka till pusselvalet' :
-            'Tillbaka till gruvan';
+            'Back to the puzzles' :
+            'Back to the dig';
         this.puzzleActions.append(
             this.createPuzzleButton(label, 'puzzle-close')
         );
@@ -1656,17 +1658,17 @@ class GameUI {
         this.airModule.classList.toggle('is-low', airPercent <= 0.25);
 
         const deathPresentation = game.deathCause === 'crushed' ? {
-            eyebrow: 'Rasvarning',
-            title: 'Krossad av raset',
+            eyebrow: 'Cave-in',
+            title: 'The ceiling had other plans',
             copy: 'Move out of the column the moment the blocks start shaking.',
         } : game.deathCause === 'oxygen' ? {
-            eyebrow: 'Luften tog slut',
-            title: 'Out of air',
+            eyebrow: 'Out of air',
+            title: 'Manny ran out of breath',
             copy: 'Plan a route to the next air tank and leave margin for the way back.',
         } : {
-            eyebrow: 'Kuppen misslyckades',
-            title: 'Gruvan vann',
-            copy: 'Try again and get deeper next time.',
+            eyebrow: 'The job went wrong',
+            title: 'The mine won',
+            copy: 'Dust yourself off and go deeper.',
         };
         if (this.gameoverEyebrow) {
             this.gameoverEyebrow.textContent = deathPresentation.eyebrow;
@@ -1723,6 +1725,7 @@ class GameUI {
         }
 
         const hideHud =
+            game.gameState === 'title' ||
             game.gameState === 'menu' ||
             game.gameState === 'gallery' ||
             game.gameState === 'puzzle-select' ||
@@ -1903,7 +1906,7 @@ class Game {
         this.levelStartScore = 0;
         this.levelHeight = GRID_HEIGHT;
         
-        this.gameState = 'menu';
+        this.gameState = 'title';
         this.isWindowActive = !document.hidden;
         this.countdownTimer = 0;
         this.countdownNumber = 3;
@@ -1991,10 +1994,13 @@ class Game {
     }
     
     init() {
+        // The title screen is the first thing anyone sees, and pressing its
+        // button is what unlocks audio. loadLevel() would otherwise drop us
+        // straight into the menu.
         this.loadLevel(0, {
             score: 0,
             checkpoint: 0,
-            state: 'menu',
+            state: 'title',
         });
         
         window.addEventListener('keydown', e => {
@@ -2320,6 +2326,7 @@ class Game {
         }
 
         if (
+            this.gameState === 'title' ||
             this.gameState === 'puzzle-select' ||
             this.gameState === 'gallery'
         ) {
@@ -2997,6 +3004,16 @@ class Game {
         return true;
     }
 
+    // The one press that starts the game is also the gesture browsers want
+    // before audio may play, so unlock here and answer with a tone you can
+    // hear. If it stays silent, the player knows before the first level.
+    leaveTitle() {
+        this.sound.unlock();
+        this.sound.playTone(196, 294, 0.16, 0.05, 'square');
+        this.sound.playTone(294, 392, 0.2, 0.045, 'square', 0.13);
+        return this.showMainMenu();
+    }
+
     showGallery() {
         this.clearKeyboardInput();
         this.safePuzzle.clear();
@@ -3124,7 +3141,7 @@ class Game {
 
         this.hasShownFallWarning = true;
         this.showWarningMessage(
-            'Rasvarning · skakande block faller — flytta dig!',
+            'Cave-in · shaking blocks are about to drop — move!',
             3
         );
     }

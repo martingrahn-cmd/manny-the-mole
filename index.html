@@ -531,7 +531,7 @@
         }
 
         .screen-panel--menu .screen-copy {
-            margin-top: calc(9px * var(--game-scale));
+            margin-top: calc(7px * var(--game-scale));
         }
 
         .screen-panel--menu .controls {
@@ -629,6 +629,18 @@
         .screen h1 span {
             display: block;
             color: #ffd363;
+        }
+
+        /* The title screen already showed the full lockup, so the menu
+           keeps a compact one-line version and gives the room to the
+           level list instead. */
+        .screen h1.menu-wordmark {
+            margin-top: calc(4px * var(--game-scale));
+            font-size: max(21px, calc(26px * var(--game-scale)));
+        }
+
+        .screen h1.menu-wordmark span {
+            display: inline;
         }
 
         .screen-copy {
@@ -1126,6 +1138,166 @@
 
         .gallery-back {
             margin-top: calc(12px * var(--game-scale));
+        }
+
+        /* The title screen carries the game's face: the shaft behind, the
+           wordmark stacked over it, and one deliberate press that also
+           unlocks audio. */
+        .screen--title {
+            padding: 0;
+            /* the backdrop carries its own top fade, so this layer only
+               has to keep the button end readable */
+            background:
+                linear-gradient(
+                    180deg,
+                    rgba(5, 7, 13, 0.5) 0%,
+                    rgba(5, 7, 13, 0.16) 34%,
+                    rgba(4, 6, 11, 0.42) 74%,
+                    rgba(4, 6, 11, 0.88) 100%
+                ),
+                url("assets/title-backdrop.png") center / cover no-repeat;
+            image-rendering: pixelated;
+        }
+
+        .title-stage {
+            display: grid;
+            width: 100%;
+            height: 100%;
+            padding: calc(22px * var(--game-scale));
+            align-content: space-between;
+            justify-items: center;
+        }
+
+        .title-plate {
+            display: grid;
+            justify-items: center;
+            margin-top: calc(14px * var(--game-scale));
+            text-align: center;
+        }
+
+        .title-eyebrow {
+            color: rgba(125, 216, 255, 0.86);
+            font-size: max(9px, calc(10px * var(--game-scale)));
+            font-weight: 800;
+            letter-spacing: 0.24em;
+            text-shadow: 0 0 calc(10px * var(--game-scale)) rgba(4, 6, 11, 0.9);
+            text-transform: uppercase;
+        }
+
+        .title-wordmark {
+            display: grid;
+            margin-top: calc(6px * var(--game-scale));
+            line-height: 0.92;
+            text-wrap: balance;
+        }
+
+        .title-wordmark span {
+            color: #f4f7ff;
+            font-size: max(34px, calc(44px * var(--game-scale)));
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            /* a hard shadow below and a dark halo around, so the logo sits
+               on the dirt instead of floating in front of it */
+            text-shadow:
+                0 calc(3px * var(--game-scale)) 0 rgba(4, 6, 11, 0.95),
+                0 0 calc(16px * var(--game-scale)) rgba(4, 6, 11, 0.8);
+        }
+
+        .title-wordmark b {
+            margin-top: calc(2px * var(--game-scale));
+            background: linear-gradient(180deg, #ffd97a, #f0a52c 62%, #c9761a);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            font-size: max(30px, calc(38px * var(--game-scale)));
+            font-weight: 800;
+            letter-spacing: -0.01em;
+            filter:
+                drop-shadow(0 calc(3px * var(--game-scale)) 0 rgba(4, 6, 11, 0.95))
+                drop-shadow(0 0 calc(14px * var(--game-scale)) rgba(4, 6, 11, 0.75));
+        }
+
+        .title-tagline {
+            max-width: 26ch;
+            margin-top: calc(10px * var(--game-scale));
+            color: rgba(214, 226, 245, 0.9);
+            font-size: max(11px, calc(12px * var(--game-scale)));
+            text-shadow: 0 calc(1px * var(--game-scale)) calc(6px * var(--game-scale))
+                rgba(4, 6, 11, 0.9);
+            text-wrap: balance;
+        }
+
+        /* A conductor rail under the wordmark with a charge running along
+           it — the same current the safes are locked behind, so the title
+           screen is already showing you the mechanic. */
+        .title-rail {
+            position: relative;
+            width: calc(150px * var(--game-scale));
+            height: max(2px, calc(2px * var(--game-scale)));
+            margin-top: calc(14px * var(--game-scale));
+            border-radius: 999px;
+            background: linear-gradient(
+                90deg,
+                rgba(125, 216, 255, 0) 0%,
+                rgba(125, 216, 255, 0.34) 22%,
+                rgba(125, 216, 255, 0.34) 78%,
+                rgba(125, 216, 255, 0) 100%
+            );
+            overflow: hidden;
+        }
+
+        .title-rail::after {
+            content: "";
+            position: absolute;
+            top: 50%;
+            left: 0;
+            width: calc(34px * var(--game-scale));
+            height: max(3px, calc(3px * var(--game-scale)));
+            border-radius: 999px;
+            background: linear-gradient(
+                90deg,
+                rgba(125, 216, 255, 0),
+                #bdefff 55%,
+                rgba(125, 216, 255, 0)
+            );
+            box-shadow: 0 0 calc(9px * var(--game-scale)) rgba(125, 216, 255, 0.75);
+            transform: translate(-100%, -50%);
+            animation: title-charge 3.4s linear infinite;
+        }
+
+        @keyframes title-charge {
+            0% { transform: translate(-100%, -50%); }
+            55%, 100% { transform: translate(calc(150px * var(--game-scale)), -50%); }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .title-rail::after {
+                animation: none;
+                left: 50%;
+                transform: translate(-50%, -50%);
+            }
+        }
+
+        .title-actions {
+            display: grid;
+            width: min(100%, calc(230px * var(--game-scale)));
+            justify-items: center;
+            gap: calc(8px * var(--game-scale));
+            margin-bottom: calc(6px * var(--game-scale));
+        }
+
+        .title-start {
+            width: 100%;
+            pointer-events: auto;
+        }
+
+        .title-note {
+            color: rgba(178, 196, 220, 0.66);
+            font-size: max(9px, calc(10px * var(--game-scale)));
+        }
+
+        .title-note span {
+            color: rgba(125, 216, 255, 0.8);
         }
 
         .vault-find {
@@ -2563,14 +2735,43 @@
             <div id="countdownDisplay" class="countdown" aria-live="assertive" hidden>3</div>
             <div id="gameToast" class="toast" role="status" hidden></div>
 
+            <section id="screenTitle" class="screen screen--title" aria-label="Title screen">
+                <div class="title-stage">
+                    <div class="title-plate">
+                        <p class="title-eyebrow">A heist, from underneath</p>
+                        <h1 class="title-wordmark">
+                            <span>Manny</span><b>the Mole</b>
+                        </h1>
+                        <p class="title-tagline">
+                            A mole. A drill. Somebody else&#39;s safe.
+                        </p>
+                        <div class="title-rail" aria-hidden="true"></div>
+                    </div>
+                    <div class="title-actions">
+                        <button
+                            id="titleStart"
+                            class="menu-button menu-button--primary title-start"
+                            type="button"
+                            data-action="title-start"
+                        >
+                            Start digging
+                        </button>
+                        <p class="title-note">
+                            <span aria-hidden="true">♪</span>
+                            Sound switches on when you start
+                        </p>
+                    </div>
+                </div>
+            </section>
+
             <section id="screenMenu" class="screen" aria-label="Main menu">
                 <div class="screen-panel screen-panel--menu">
                     <p class="eyebrow">Vault Run</p>
-                    <h1>Manny <span>the Mole</span></h1>
+                    <h1 class="menu-wordmark">Manny <span>the Mole</span></h1>
                     <p class="screen-copy">Pick a level and dig your way down to the safe.</p>
                     <div class="level-select-heading">
                         <p id="levelSelectTitle" class="level-select-title">Select level</p>
-                        <p id="campaignProgress" class="campaign-progress" aria-live="polite">0 av 6 klara</p>
+                        <p id="campaignProgress" class="campaign-progress" aria-live="polite">0 of 12 cleared</p>
                     </div>
                     <div id="levelSelect" class="level-select" role="group" aria-labelledby="levelSelectTitle"></div>
                     <div class="puzzle-mode-entry">
@@ -2765,7 +2966,7 @@
                     <p id="gameoverCopy" class="screen-copy">Try again and get deeper next time.</p>
                     <div class="result-stats">
                         <div class="result-stat"><span>Score</span><strong id="gameoverScore">0</strong></div>
-                        <div class="result-stat"><span>Djup</span><strong id="gameoverDepth">0 m</strong></div>
+                        <div class="result-stat"><span>Depth</span><strong id="gameoverDepth">0 m</strong></div>
                     </div>
                     <div class="menu-actions">
                         <button class="menu-button menu-button--primary" type="button" data-action="restart">Try again</button>
