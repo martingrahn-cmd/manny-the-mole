@@ -1354,7 +1354,7 @@ class GameUI {
             } else if (state.sinks.includes(index)) {
                 const port = document.createElement('span');
                 port.className = 'puzzle-pipe-port puzzle-pipe-port--out';
-                port.textContent = 'UT';
+                port.textContent = 'OUT';
                 port.setAttribute('aria-hidden', 'true');
                 button.append(port);
             }
