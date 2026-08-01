@@ -2858,8 +2858,34 @@ class Game {
                 continue;
             }
             particle.life -= deltaTime;
-            particle.x += particle.vx * deltaTime;
-            particle.y += particle.vy * deltaTime;
+            const nextX = particle.x + particle.vx * deltaTime;
+            const nextY = particle.y + particle.vy * deltaTime;
+
+            // Shards are big enough to be caught falling through solid
+            // rock, so they alone are collided. They land in the shaft
+            // and skitter off the walls instead of sinking through them.
+            if (particle.kind === 'shard') {
+                if (this.isSolidAtPixel(nextX, particle.y)) {
+                    particle.vx *= -0.42;
+                    particle.spin = -(particle.spin ?? 0) * 0.6;
+                } else {
+                    particle.x = nextX;
+                }
+                if (this.isSolidAtPixel(particle.x, nextY)) {
+                    // a shard that has stopped bouncing lies where it fell
+                    particle.vy = Math.abs(particle.vy) < 90 ?
+                        0 :
+                        -particle.vy * 0.34;
+                    particle.vx *= 0.6;
+                    particle.spin = (particle.spin ?? 0) * 0.4;
+                } else {
+                    particle.y = nextY;
+                }
+            } else {
+                particle.x = nextX;
+                particle.y = nextY;
+            }
+
             particle.vy += (particle.gravity ?? 760) * deltaTime;
             particle.vx *= Math.pow(particle.drag ?? 0.08, deltaTime);
             if (particle.spin) particle.rotation += particle.spin * deltaTime;
@@ -3621,6 +3647,15 @@ class Game {
      * its own quarters, staggered by how far it sits from the impact, so
      * the piece comes apart outward instead of vanishing at once.
      */
+    /** Is the world solid at this pixel? Used to bounce debris off it. */
+    isSolidAtPixel(pixelX, pixelY) {
+        const x = Math.floor(pixelX / GRID_SIZE);
+        const y = Math.floor(pixelY / GRID_SIZE);
+        if (x < 0 || x >= GRID_WIDTH || y < 0) return true;
+        const value = this.grid[y]?.[x];
+        return value !== undefined && value !== BLOCK_TYPES.EMPTY;
+    }
+
     shatterBlock(gridX, gridY, colorIndex, delay = 0) {
         const palette = BLOCK_COLORS[colorIndex];
         if (!palette) return;
@@ -3912,15 +3947,17 @@ class Game {
                 pieceBlock.clearDuration = DIG_CLEAR_FLASH;
                 pieceBlock.matchEligible = false;
 
-                // The break travels out from the block the drill touched,
-                // one step per cell of separation.
+                // The pieces wait out the fracture before they fly, or
+                // they cover the very thing they are supposed to be the
+                // result of. Past that, the break travels out from the
+                // block the drill touched, one step per cell.
                 const reach = Math.abs(pieceBlock.x - block.x) +
                     Math.abs(pieceBlock.y - block.y);
                 this.shatterBlock(
                     pieceBlock.x,
                     pieceBlock.y,
                     pieceBlock.colorIndex,
-                    Math.min(0.2, reach * 0.035)
+                    DIG_CLEAR_FLASH * 0.8 + Math.min(0.2, reach * 0.035)
                 );
 
                 if (this.grid[pieceBlock.y]?.[pieceBlock.x] === pieceBlock.colorIndex + BLOCK_TYPES.COLORED) {
@@ -3931,8 +3968,15 @@ class Game {
             this.lastDigStrength = piece.length;
             this.score += DIG_SCORE * piece.length;
             // A piece of three or more coming away is a different event
-            // from chipping one block, and deserves its own crunch.
-            if (piece.length >= 3) this.sound.playBlockBreak();
+            // from chipping one block, and deserves its own crunch and a
+            // kick through the frame that scales with how much let go.
+            if (piece.length >= 3) {
+                this.sound.playBlockBreak();
+                this.screenShake = Math.max(
+                    this.screenShake,
+                    Math.min(3.4, 0.7 + piece.length * 0.32)
+                );
+            }
             return true;
         }
         return false;
@@ -6619,6 +6663,50 @@ class Game {
         ctx.restore();
     }
 
+    /**
+     * The last frames of a block, drawn over its own tile: fracture lines
+     * opening from the centre, then a white-out as it lets go. Reads as
+     * one motion at ninety milliseconds, which is all it gets.
+     */
+    renderBlockFracture(block, screenX, screenY) {
+        const ctx = this.ctx;
+        const progress = Math.min(
+            1,
+            block.clearTimer / (block.clearDuration || DIG_CLEAR_FLASH)
+        );
+        const centerX = screenX + GRID_SIZE / 2;
+        const centerY = screenY + GRID_SIZE / 2;
+
+        ctx.save();
+        // the splits, opening outward
+        const reach = GRID_SIZE * 0.5 * Math.min(1, progress * 1.7);
+        const thickness = Math.max(1, Math.round(2 + progress * 3));
+        ctx.fillStyle = BLOCK_COLORS[block.colorIndex]?.deep ?? '#000';
+        ctx.globalAlpha = 0.85;
+        for (let arm = 0; arm < 4; arm++) {
+            const angle = (arm / 4) * Math.PI * 2 +
+                (this.hashCell(block.x, block.y, arm) - 0.5) * 0.7;
+            const endX = centerX + Math.cos(angle) * reach;
+            const endY = centerY + Math.sin(angle) * reach;
+            const steps = Math.max(2, Math.round(reach / 4));
+            for (let step = 0; step <= steps; step++) {
+                const t = step / steps;
+                ctx.fillRect(
+                    this.pixelSnap(centerX + (endX - centerX) * t - thickness / 2),
+                    this.pixelSnap(centerY + (endY - centerY) * t - thickness / 2),
+                    thickness,
+                    thickness
+                );
+            }
+        }
+
+        // and the block letting go
+        ctx.globalAlpha = progress * progress * 0.8;
+        ctx.fillStyle = BLOCK_COLORS[block.colorIndex]?.highlight ?? '#fff';
+        ctx.fillRect(screenX, screenY, GRID_SIZE, GRID_SIZE);
+        ctx.restore();
+    }
+
     renderColoredBlock(block) {
         if (block.destroyed) return;
 
@@ -6647,6 +6735,13 @@ class Game {
         const tile = this.getBlockTile(block.colorIndex, edgeMask, variant);
 
         this.ctx.drawImage(tile, screenX, screenY, GRID_SIZE, GRID_SIZE);
+
+        // A block used to look untouched right up until it vanished. In
+        // the sliver before it goes it now splits along four lines from
+        // the centre and whites out, so the break has a visible cause.
+        if (block.isClearing) {
+            this.renderBlockFracture(block, screenX, screenY);
+        }
 
         if (
             block.isShaking &&
