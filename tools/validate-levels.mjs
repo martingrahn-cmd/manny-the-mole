@@ -224,6 +224,26 @@ function inspect(level) {
         }
     }
 
+    // The gold time has to be beatable. Dijkstra assumes perfect pathing
+    // and no wasted hits, so a par at or below it is unreachable by a
+    // person; a par far above it hands out gold for showing up.
+    if (air && Number.isFinite(level.par)) {
+        const optimal = air.legs.reduce((sum, leg) => sum + leg.seconds, 0);
+        if (level.par <= optimal * 1.1) {
+            errors.push(
+                `par ${level.par}s is not beatable — the optimal route ` +
+                `alone takes ${optimal.toFixed(1)}s`
+            );
+        } else if (level.par > optimal * 3) {
+            warnings.push(
+                `par ${level.par}s is ${(level.par / optimal).toFixed(1)}x ` +
+                'the optimal route, so gold costs nothing'
+            );
+        }
+    } else if (!Number.isFinite(level.par)) {
+        warnings.push('no par time, so the level awards no medals');
+    }
+
     // items behind rock are wasted
     for (const item of level.items) {
         if (!reachable.has(item.y * GRID_WIDTH + item.x)) {
@@ -266,12 +286,17 @@ if (runDirect) {
             r.warnings.length ? 'WARN' : ' OK ';
         const depth = level.safe.y - level.start.y;
         const airText = r.air ?
-            `air left ${r.air.airLeft.toFixed(0)}% optimal, ` +
-            `${Math.max(0, r.air.airLeftFumbling).toFixed(0)}% fumbling` :
+            `air ${r.air.airLeft.toFixed(0)}%/` +
+            `${Math.max(0, r.air.airLeftFumbling).toFixed(0)}%` :
             'air not measured';
+        const parText = r.air && Number.isFinite(level.par) ?
+            ` · optimal ${
+                r.air.legs.reduce((s, leg) => s + leg.seconds, 0).toFixed(0)
+            }s, gold ${level.par}s` :
+            '';
         console.log(
             `[${status}] ${level.number}. ${level.title} — ${depth} m · ` +
-            `grade ${level.safe.difficulty} · ${airText}`
+            `grade ${level.safe.difficulty} · ${airText}${parText}`
         );
         r.errors.forEach(e => console.log(`         error: ${e}`));
         r.warnings.forEach(w => console.log(`         warning: ${w}`));

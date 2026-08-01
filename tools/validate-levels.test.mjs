@@ -74,6 +74,21 @@ const cases = [
         expects: { errors: 1, contains: 'air runs out' },
     },
     {
+        name: 'a par nobody can beat fails',
+        level: variant(l => { l.par = 1; }),
+        expects: { errors: 1, contains: 'not beatable' },
+    },
+    {
+        name: 'a par that hands out gold for free warns',
+        level: variant(l => { l.par = 600; }),
+        expects: { errors: 0, warns: 'gold costs nothing' },
+    },
+    {
+        name: 'a level without a par warns rather than fails',
+        level: variant(l => { delete l.par; }),
+        expects: { errors: 0, warns: 'no par time' },
+    },
+    {
         name: 'an unreachable air tank is reported',
         level: variant(l => {
             l.rows[6] = '#######';
@@ -106,6 +121,14 @@ for (const test of cases) {
         ok = false;
         reason = `missing "${test.expects.contains}" in: ` +
             `${errorText || '(no errors)'}`;
+    }
+    if (test.expects.warns) {
+        const warningText = r.warnings.join(' | ');
+        if (!warningText.includes(test.expects.warns)) {
+            ok = false;
+            reason = `missing warning "${test.expects.warns}" in: ` +
+                `${warningText || '(no warnings)'}`;
+        }
     }
 
     console.log(`${ok ? '  ok  ' : ' FAIL '} ${test.name}`);

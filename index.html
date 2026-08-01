@@ -247,6 +247,60 @@
             transform: translateY(-1px);
         }
 
+        /* A settings row: what it controls on the left, its state on the
+           right, so you can read it without pressing it. */
+        .menu-button--toggle {
+            display: flex;
+            gap: calc(10px * var(--game-scale));
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .menu-button--toggle b {
+            padding: calc(3px * var(--game-scale)) calc(9px * var(--game-scale));
+            border-radius: 999px;
+            background: rgba(105, 240, 177, 0.1);
+            color: #8df0bd;
+            font-size: max(9px, calc(10px * var(--game-scale)));
+            font-weight: 800;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+        }
+
+        .menu-button--toggle[aria-pressed="true"] b {
+            background: rgba(255, 138, 153, 0.1);
+            color: #ff9aa7;
+        }
+
+        .mute-glyph {
+            position: relative;
+            display: inline-block;
+            color: #7ceaf4;
+        }
+
+        /* A bar through the note, so the off state reads at a glance. */
+        .menu-button--toggle[aria-pressed="true"] .mute-glyph {
+            color: rgba(216, 228, 242, 0.42);
+        }
+
+        .menu-button--toggle[aria-pressed="true"] .mute-glyph::after,
+        .title-note--button[aria-pressed="true"] span:first-child::after {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 132%;
+            height: max(1px, calc(1.5px * var(--game-scale)));
+            content: "";
+            transform: translate(-50%, -50%) rotate(-38deg);
+            border-radius: 2px;
+            background: #ff8a99;
+        }
+
+        .title-note--button span:first-child {
+            position: relative;
+            display: inline-block;
+        }
+
         .pause-glyph {
             display: flex;
             gap: calc(3px * var(--game-scale));
@@ -1363,6 +1417,24 @@
         .title-note {
             color: rgba(178, 196, 220, 0.66);
             font-size: max(9px, calc(10px * var(--game-scale)));
+        }
+
+        .title-note--button {
+            display: flex;
+            gap: 0.5em;
+            align-items: center;
+            justify-content: center;
+            padding: calc(5px * var(--game-scale)) calc(9px * var(--game-scale));
+            border-radius: 999px;
+            background: none;
+            cursor: pointer;
+            pointer-events: auto;
+        }
+
+        .title-note--button:hover,
+        .title-note--button:focus-visible {
+            background: rgba(125, 216, 255, 0.09);
+            color: rgba(212, 228, 245, 0.86);
         }
 
         .title-note span {
@@ -2659,6 +2731,149 @@
             margin-top: calc(20px * var(--game-scale));
         }
 
+        /* The finale lays the whole haul out at once — twelve sprites in a
+           row of shelves, which is the only view that shows what the run
+           was actually for. */
+        .screen-panel--finale {
+            width: min(94cqw, calc(410px * var(--game-scale)));
+            max-height: calc(660px * var(--game-scale));
+            margin: auto;
+            padding: calc(18px * var(--game-scale));
+            overflow-y: auto;
+            border-color: rgba(240, 200, 130, 0.28);
+            background:
+                radial-gradient(
+                    ellipse 70% 40% at 50% 0%,
+                    rgba(240, 200, 130, 0.13),
+                    transparent 70%
+                ),
+                linear-gradient(145deg, rgba(31, 35, 53, 0.96), rgba(10, 12, 24, 0.96));
+            scrollbar-color: rgba(240, 200, 130, 0.3) transparent;
+            scrollbar-width: thin;
+        }
+
+        .finale-haul {
+            display: grid;
+            gap: calc(6px * var(--game-scale));
+            margin-top: calc(15px * var(--game-scale));
+            grid-template-columns: repeat(6, minmax(0, 1fr));
+        }
+
+        .finale-haul span {
+            position: relative;
+            display: grid;
+            aspect-ratio: 1;
+            place-items: center;
+            border: max(1px, calc(1px * var(--game-scale))) solid
+                rgba(240, 200, 130, 0.22);
+            border-radius: calc(8px * var(--game-scale));
+            background:
+                radial-gradient(
+                    ellipse 70% 50% at 50% 78%,
+                    rgba(255, 205, 120, 0.14),
+                    transparent 72%
+                ),
+                rgba(6, 10, 17, 0.6);
+        }
+
+        .finale-haul img {
+            width: 72%;
+            height: auto;
+            image-rendering: pixelated;
+        }
+
+        .finale-note {
+            margin-top: calc(10px * var(--game-scale));
+            color: rgba(240, 200, 130, 0.74);
+            font-size: max(10px, calc(11px * var(--game-scale)));
+            text-wrap: balance;
+        }
+
+        /* Each shelf lights up in turn, left to right. */
+        @keyframes finale-shelf {
+            from {
+                opacity: 0;
+                transform: translateY(calc(7px * var(--game-scale))) scale(0.86);
+            }
+
+            to {
+                opacity: 1;
+                transform: none;
+            }
+        }
+
+        #screenFinale:not([hidden]) .finale-haul span {
+            animation: finale-shelf 380ms cubic-bezier(0.2, 1.2, 0.4, 1) both;
+            animation-delay: calc(var(--shelf, 0) * 70ms + 220ms);
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            #screenFinale:not([hidden]) .finale-haul span {
+                animation: none;
+            }
+        }
+
+        /* The medal for this run, and what the next one up would cost. */
+        .won-medal {
+            display: flex;
+            gap: calc(10px * var(--game-scale));
+            align-items: center;
+            justify-content: center;
+            margin-top: calc(12px * var(--game-scale));
+            padding: calc(8px * var(--game-scale)) calc(13px * var(--game-scale));
+            border: max(1px, calc(1px * var(--game-scale))) solid
+                rgba(255, 255, 255, 0.08);
+            border-radius: calc(12px * var(--game-scale));
+            background: rgba(255, 255, 255, 0.04);
+        }
+
+        .won-medal__copy {
+            display: flex;
+            flex-direction: column;
+            gap: calc(1px * var(--game-scale));
+            text-align: left;
+        }
+
+        .won-medal__copy b {
+            color: #f7f9ff;
+            font-size: max(12px, calc(13px * var(--game-scale)));
+            font-weight: 780;
+        }
+
+        .won-medal__copy small {
+            color: rgba(220, 228, 241, 0.6);
+            font-size: max(9px, calc(10px * var(--game-scale)));
+        }
+
+        .medal-strip {
+            display: inline-flex;
+            gap: calc(1px * var(--game-scale));
+            line-height: 1;
+        }
+
+        .medal-strip b {
+            color: rgba(255, 255, 255, 0.13);
+            font-size: max(9px, calc(10px * var(--game-scale)));
+            font-weight: 400;
+        }
+
+        .medal-strip.is-bronze b.is-lit {
+            color: #d99368;
+        }
+
+        .medal-strip.is-silver b.is-lit {
+            color: #cfdcec;
+        }
+
+        .medal-strip.is-gold b.is-lit {
+            color: #ffd363;
+            text-shadow: 0 0 calc(7px * var(--game-scale)) rgba(255, 200, 80, 0.5);
+        }
+
+        .medal-strip--large b {
+            font-size: max(15px, calc(18px * var(--game-scale)));
+        }
+
         /* Three stats in two columns leaves an orphan on its own row. */
         .result-stats--three {
             grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2919,10 +3134,16 @@
                         >
                             Start digging
                         </button>
-                        <p class="title-note">
+                        <button
+                            id="titleMute"
+                            class="title-note title-note--button"
+                            type="button"
+                            data-action="mute"
+                            aria-pressed="false"
+                        >
                             <span aria-hidden="true">♪</span>
-                            Sound switches on when you start
-                        </p>
+                            <span id="titleMuteLabel">Sound switches on when you start</span>
+                        </button>
                     </div>
                 </div>
             </section>
@@ -3078,6 +3299,37 @@
                 </div>
             </section>
 
+            <section
+                id="screenFinale"
+                class="screen screen--finale"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="finaleTitle"
+                aria-describedby="finaleCopy"
+                hidden
+            >
+                <div class="screen-panel screen-panel--finale">
+                    <p class="eyebrow">Twelve safes, twelve holes</p>
+                    <h2 id="finaleTitle">The job is done</h2>
+                    <p id="finaleCopy" class="screen-copy">
+                        Nobody knows how the money is still there. Nobody
+                        knows where the dentures went.
+                    </p>
+                    <div id="finaleHaul" class="finale-haul"></div>
+                    <div class="result-stats result-stats--three">
+                        <div class="result-stat"><span>Safes</span><strong id="finaleSafes">12</strong></div>
+                        <div class="result-stat"><span>Medals</span><strong id="finaleMedals">0/12</strong></div>
+                        <div class="result-stat"><span>Total time</span><strong id="finaleTime">0:00</strong></div>
+                    </div>
+                    <p id="finaleMedalNote" class="finale-note"></p>
+                    <div class="menu-actions menu-actions--won">
+                        <button class="menu-button menu-button--primary" type="button" data-action="gallery">Look at the haul</button>
+                        <button class="menu-button" type="button" data-action="menu">Level select</button>
+                        <button class="menu-button" type="button" data-action="start-level" data-level="0">Play from the start</button>
+                    </div>
+                </div>
+            </section>
+
             <section id="screenPaused" class="screen" aria-label="Pause menu" hidden>
                 <div class="screen-panel">
                     <p class="eyebrow">Game paused</p>
@@ -3085,6 +3337,16 @@
                     <p class="screen-copy">The mine is waiting. Resume when you are ready.</p>
                     <div class="menu-actions">
                         <button class="menu-button menu-button--primary" type="button" data-action="resume">Resume</button>
+                        <button
+                            id="muteButton"
+                            class="menu-button menu-button--toggle"
+                            type="button"
+                            data-action="mute"
+                            aria-pressed="false"
+                        >
+                            <span><span class="mute-glyph" aria-hidden="true">♪</span> Sound</span>
+                            <b id="muteState">On</b>
+                        </button>
                         <button class="menu-button" type="button" data-action="restart">Restart</button>
                         <button class="menu-button" type="button" data-action="menu">Level select</button>
                     </div>
@@ -3161,6 +3423,13 @@
                         <b id="wonTitle">First bite taken</b>
                         <span id="wonCopy">Well dug. The next shaft is waiting.</span>
                     </p>
+                    <div id="wonMedal" class="won-medal">
+                        <span id="wonMedalStrip"></span>
+                        <span class="won-medal__copy">
+                            <b id="wonMedalTitle">Silver</b>
+                            <small id="wonMedalNote">0:14 · gold at 0:12</small>
+                        </span>
+                    </div>
                     <div class="result-stats result-stats--three">
                         <div class="result-stat"><span>Loot</span><strong id="wonScore">0</strong></div>
                         <div class="result-stat"><span>Air left</span><strong id="wonAir">0%</strong></div>

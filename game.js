@@ -37,6 +37,41 @@ const DIG_ANIM_DURATION = 0.18;
 const DRILL_ANIM_SPEED = 24;
 const MAX_DEBRIS_PARTICLES = 44;
 const PROGRESS_STORAGE_KEY = 'manny-the-mole:campaign-progress';
+const MUTE_STORAGE_KEY = 'manny-the-mole:muted';
+
+// Medals rank the descent, not the safe. Air cannot do that job: every
+// level carries roughly ten times the air the route needs, so even a
+// player who dawdles arrives near full. Time separates them — the
+// shafts run five to seventeen seconds on an optimal route and three
+// times that while you are still learning where the rock gives way.
+// Each level's `par` is the gold time in seconds; the rest follow.
+const MEDAL_SILVER_FACTOR = 1.45;
+const MEDAL_BRONZE_FACTOR = 2.1;
+const MEDALS = Object.freeze({
+    gold: Object.freeze({ rank: 3, label: 'Gold', mark: '★' }),
+    silver: Object.freeze({ rank: 2, label: 'Silver', mark: '★' }),
+    bronze: Object.freeze({ rank: 1, label: 'Bronze', mark: '★' }),
+});
+
+/** The medal a run earns, or null if it was slower than bronze. */
+function medalForTime(level, seconds) {
+    if (!level?.par || !Number.isFinite(seconds) || seconds <= 0) return null;
+    if (seconds <= level.par) return 'gold';
+    if (seconds <= level.par * MEDAL_SILVER_FACTOR) return 'silver';
+    if (seconds <= level.par * MEDAL_BRONZE_FACTOR) return 'bronze';
+    return null;
+}
+
+function medalRank(medal) {
+    return medal ? MEDALS[medal].rank : 0;
+}
+
+/** 0:07 rather than 7.4s — a time you can compare at a glance. */
+function formatTime(seconds) {
+    if (!Number.isFinite(seconds) || seconds <= 0) return '—';
+    const whole = Math.floor(seconds);
+    return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`;
+}
 const SAFE_INTRO_DURATION = 0.85;
 
 let CANVAS_WIDTH = GRID_WIDTH * GRID_SIZE;
@@ -509,9 +544,40 @@ class ArcadeSound {
         this.noiseBuffer = null;
         this.lastLandTime = -1;
         this.lastFallWarningTime = -1;
+        this.muted = this.loadMuted();
+    }
+
+    loadMuted() {
+        try {
+            return window.localStorage?.getItem(MUTE_STORAGE_KEY) === '1';
+        } catch {
+            return false;
+        }
+    }
+
+    /**
+     * Muting stops sounds at the source rather than turning the gain
+     * down, so a muted game builds no audio nodes at all.
+     */
+    setMuted(muted) {
+        this.muted = Boolean(muted);
+        try {
+            window.localStorage?.setItem(
+                MUTE_STORAGE_KEY,
+                this.muted ? '1' : '0'
+            );
+        } catch {
+            // a browser with storage blocked still mutes, just not across visits
+        }
+        return this.muted;
+    }
+
+    toggleMuted() {
+        return this.setMuted(!this.muted);
     }
 
     unlock() {
+        if (this.muted) return null;
         const AudioContextClass = window.AudioContext || window.webkitAudioContext;
         if (!AudioContextClass) return null;
 
@@ -663,6 +729,20 @@ class GameUI {
         this.airFill = document.getElementById('hudAirFill');
         this.airModule = document.getElementById('hudAirModule');
         this.pauseButton = document.getElementById('pauseButton');
+        this.muteButtons = [
+            document.getElementById('muteButton'),
+            document.getElementById('titleMute'),
+        ].filter(Boolean);
+        this.titleMuteLabel = document.getElementById('titleMuteLabel');
+        this.muteState = document.getElementById('muteState');
+        this.wonMedalStrip = document.getElementById('wonMedalStrip');
+        this.wonMedalTitle = document.getElementById('wonMedalTitle');
+        this.wonMedalNote = document.getElementById('wonMedalNote');
+        this.finaleHaul = document.getElementById('finaleHaul');
+        this.finaleSafes = document.getElementById('finaleSafes');
+        this.finaleMedals = document.getElementById('finaleMedals');
+        this.finaleTime = document.getElementById('finaleTime');
+        this.finaleMedalNote = document.getElementById('finaleMedalNote');
         this.sideDrillHint = document.getElementById('sideDrillHint');
         this.touchControls = document.getElementById('touchControls');
         this.countdown = document.getElementById('countdownDisplay');
@@ -705,6 +785,7 @@ class GameUI {
             title: document.getElementById('screenTitle'),
             'puzzle-select': document.getElementById('screenPuzzleSelect'),
             gallery: document.getElementById('screenGallery'),
+            finale: document.getElementById('screenFinale'),
             paused: document.getElementById('screenPaused'),
             puzzle: document.getElementById('screenPuzzle'),
             gameover: document.getElementById('screenGameover'),
@@ -713,15 +794,20 @@ class GameUI {
 
         this.refreshLevelSelect();
         this.refreshGallery();
+        this.refreshFinale();
+        this.syncMute();
 
         this.root.addEventListener('click', event => {
             const button = event.target.closest?.('[data-action]');
             if (!button || !this.root.contains(button) || button.disabled) return;
 
-            this.game.sound.unlock();
-            this.game.clearKeyboardInput();
             const action = button.dataset.action;
-            if (action === 'start') this.game.startRun();
+            // Unlocking audio is what every other button press is for; the
+            // mute button is the one that must not do it.
+            if (action !== 'mute') this.game.sound.unlock();
+            this.game.clearKeyboardInput();
+            if (action === 'mute') this.game.toggleMute();
+            else if (action === 'start') this.game.startRun();
             else if (action === 'start-level') {
                 this.game.startLevel(Number(button.dataset.level));
             }
@@ -733,6 +819,7 @@ class GameUI {
                 this.game.showPuzzleSelect();
             }
             else if (action === 'gallery') this.game.showGallery();
+            else if (action === 'finale') this.game.showFinale();
             else if (action === 'title-start') this.game.leaveTitle();
             else if (action === 'start-puzzle') {
                 this.game.startStandalonePuzzle(
@@ -967,6 +1054,107 @@ class GameUI {
         }
     }
 
+    /**
+     * The run's medal, and what the next one up would take. Once gold is
+     * in hand the note switches to the record, since there is nothing
+     * left to chase but your own time.
+     */
+    syncWonMedal(game) {
+        if (!this.wonMedalStrip) return;
+        const level = game.currentLevel;
+        const medal = game.lastLevelMedal;
+        const seconds = game.lastLevelTime ?? 0;
+        const par = level?.par ?? 0;
+
+        this.wonMedalStrip.replaceChildren(
+            this.createMedalStrip(medal, 'medal-strip--large')
+        );
+        this.wonMedalTitle.textContent = medal ?
+            `${MEDALS[medal].label} · ${formatTime(seconds)}` :
+            `No medal · ${formatTime(seconds)}`;
+
+        const target = medal === 'gold' ?
+            null :
+            medal === 'silver' ?
+                par :
+                medal === 'bronze' ?
+                    par * MEDAL_SILVER_FACTOR :
+                    par * MEDAL_BRONZE_FACTOR;
+        const nextLabel = medal === 'silver' ?
+            'Gold' :
+            medal === 'bronze' ? 'Silver' : 'Bronze';
+        this.wonMedalNote.textContent = target === null ?
+            (game.beatOwnRecord ?
+                'A new record, and nothing above gold.' :
+                `Your best is ${formatTime(game.getLevelBestTime(game.currentLevelIndex))}.`) :
+            `${nextLabel} at ${formatTime(target)}` +
+            (game.beatOwnRecord ? ' · new record' : '');
+    }
+
+    /**
+     * The finale: every find on a shelf, the medals as a running tally,
+     * and the sum of the twelve best descents.
+     */
+    refreshFinale() {
+        if (!this.finaleHaul) return;
+
+        this.finaleHaul.replaceChildren();
+        CAMPAIGN_LEVELS.forEach((level, levelIndex) => {
+            const shelf = document.createElement('span');
+            shelf.style.setProperty('--shelf', levelIndex.toString());
+            shelf.title = level.reward.name;
+            const art = document.createElement('img');
+            art.src = level.reward.image;
+            art.alt = level.reward.name;
+            shelf.append(art);
+            this.finaleHaul.append(shelf);
+        });
+
+        const medals = this.game.getMedalCounts();
+        const total = CAMPAIGN_LEVELS.reduce(
+            (sum, _, levelIndex) => sum + this.game.getLevelBestTime(levelIndex),
+            0
+        );
+        if (this.finaleSafes) {
+            this.finaleSafes.textContent =
+                `${this.game.getCompletedLevelCount()}/${CAMPAIGN_LEVELS.length}`;
+        }
+        if (this.finaleMedals) {
+            this.finaleMedals.textContent =
+                `${medals.total}/${CAMPAIGN_LEVELS.length}`;
+        }
+        if (this.finaleTime) {
+            this.finaleTime.textContent = formatTime(total);
+        }
+        if (this.finaleMedalNote) {
+            const missing = CAMPAIGN_LEVELS.length - medals.gold;
+            this.finaleMedalNote.textContent = missing === 0 ?
+                'Gold on every shaft. There is nothing left down there.' :
+                `${medals.gold} gold · ${medals.silver} silver · ` +
+                `${medals.bronze} bronze — ${missing} shaft` +
+                `${missing === 1 ? '' : 's'} still owe you a faster run.`;
+        }
+    }
+
+    syncMute() {
+        const muted = this.game.sound.muted;
+        this.muteButtons.forEach(button => {
+            button.setAttribute('aria-pressed', muted ? 'true' : 'false');
+            button.setAttribute(
+                'aria-label',
+                muted ? 'Turn the sound on' : 'Turn the sound off'
+            );
+        });
+        if (this.titleMuteLabel) {
+            this.titleMuteLabel.textContent = muted ?
+                'Sound is off — press to turn it on' :
+                'Sound switches on when you start';
+        }
+        if (this.muteState) {
+            this.muteState.textContent = muted ? 'Off' : 'On';
+        }
+    }
+
     refreshGallery() {
         if (!this.galleryGrid) return;
         const found = CAMPAIGN_LEVELS.filter(
@@ -1021,6 +1209,25 @@ class GameUI {
         });
     }
 
+    /**
+     * Three stars, lit from the left up to the medal earned. No medal
+     * shows three empty stars, which is a target rather than a blank.
+     */
+    createMedalStrip(medal, extraClass = '') {
+        const strip = document.createElement('span');
+        strip.className = `medal-strip${extraClass ? ` ${extraClass}` : ''}`;
+        if (medal) strip.classList.add(`is-${medal}`);
+        strip.setAttribute('aria-hidden', 'true');
+        const earned = medalRank(medal);
+        for (let i = 1; i <= 3; i++) {
+            const star = document.createElement('b');
+            star.textContent = '★';
+            star.classList.toggle('is-lit', i <= earned);
+            strip.append(star);
+        }
+        return strip;
+    }
+
     refreshLevelSelect() {
         if (!this.levelSelect) return;
 
@@ -1051,7 +1258,13 @@ class GameUI {
                 unlocked ?
                     `Level ${level.number}, ${level.title}. ${
                         completed ?
-                            `Cleared. Best air ${bestAir} per cent. ` +
+                            `Cleared in ${
+                                formatTime(this.game.getLevelBestTime(levelIndex))
+                            }. ${
+                                this.game.getLevelMedal(levelIndex) ?
+                                    `${MEDALS[this.game.getLevelMedal(levelIndex)].label} medal.` :
+                                    'No medal yet.'
+                            } Best air ${bestAir} per cent. ` +
                             `In the safe: ${reward.name}.` :
                             'Unlocked.'
                     } ${safeLabel}.` :
@@ -1077,6 +1290,15 @@ class GameUI {
                     levelIndex === continueLevelIndex ? 'Next' : 'Open';
             state.setAttribute('aria-hidden', 'true');
             top.append(number, state);
+
+            // Three marks, filled up to the medal earned, so the card
+            // shows both what you got and what is still on the table.
+            if (completed) {
+                top.insertBefore(
+                    this.createMedalStrip(this.game.getLevelMedal(levelIndex)),
+                    state
+                );
+            }
 
             const previewFrame = document.createElement('span');
             previewFrame.className = 'level-card__preview';
@@ -1104,8 +1326,10 @@ class GameUI {
 
             const meta = document.createElement('span');
             meta.className = 'level-card__meta';
+            const bestTime = this.game.getLevelBestTime(levelIndex);
             meta.textContent = completed ?
-                `${safeLabel} · best air ${bestAir}%` :
+                `${safeLabel} · best ${formatTime(bestTime)} · ` +
+                `gold ${formatTime(level.par)}` :
                 !unlocked ?
                     'Clear the previous level' :
                     `${safeLabel} · ${
@@ -1712,18 +1936,17 @@ class GameUI {
                     `${CAMPAIGN_LEVELS[game.currentLevelIndex + 1].title} is waiting.`;
         }
         if (this.wonPrimaryButton) {
+            // The twelfth safe hands over to the finale rather than
+            // dumping the player back at level one.
             this.wonPrimaryButton.dataset.action = isFinalLevel ?
-                'start-level' :
+                'finale' :
                 'next-level';
-            if (isFinalLevel) {
-                this.wonPrimaryButton.dataset.level = '0';
-            } else {
-                delete this.wonPrimaryButton.dataset.level;
-            }
+            delete this.wonPrimaryButton.dataset.level;
             this.wonPrimaryButton.textContent = isFinalLevel ?
-                'Play from the start' :
+                'See what you took' :
                 `Continue to level ${game.currentLevelIndex + 2}`;
         }
+        this.syncWonMedal(game);
         this.wonScore.textContent = game.lastLevelScore.toString();
         this.wonAir.textContent = `${Math.floor(game.oxygen)}%`;
         if (this.wonBestAir) {
@@ -1917,6 +2140,7 @@ class Game {
         this.lastRenderedState = null;
         this.currentLevelIndex = 0;
         this.levelStartScore = 0;
+        this.levelElapsed = 0;
         this.levelHeight = GRID_HEIGHT;
         
         this.gameState = 'title';
@@ -2017,6 +2241,13 @@ class Game {
         });
         
         window.addEventListener('keydown', e => {
+            // M works everywhere, including on the title screen before
+            // anything has unlocked audio, so it goes first.
+            if (e.key === 'm' || e.key === 'M') {
+                this.toggleMute();
+                return;
+            }
+
             this.sound.unlock();
             const isUiControl = Boolean(e.target?.closest?.('button'));
             const isPauseShortcut =
@@ -3017,6 +3248,19 @@ class Game {
         return true;
     }
 
+    toggleMute() {
+        const muted = this.sound.toggleMuted();
+        // Turning it back on is itself a user gesture, so the audio
+        // context can be unlocked right here, and a short note confirms
+        // that sound is actually working.
+        if (!muted) {
+            this.sound.unlock();
+            this.sound.playTone(392, 523, 0.12, 0.04, 'square');
+        }
+        this.ui?.syncMute?.();
+        return muted;
+    }
+
     // The one press that starts the game is also the gesture browsers want
     // before audio may play, so unlock here and answer with a tone you can
     // hear. If it stays silent, the player knows before the first level.
@@ -3033,6 +3277,16 @@ class Game {
         this.puzzleContext = null;
         this.gameState = 'gallery';
         this.lastRenderedState = null;
+        return true;
+    }
+
+    showFinale() {
+        this.clearKeyboardInput();
+        this.safePuzzle.clear();
+        this.puzzleContext = null;
+        this.gameState = 'finale';
+        this.lastRenderedState = null;
+        this.sound.playVaultFind();
         return true;
     }
 
@@ -4143,6 +4397,10 @@ class Game {
             }
         });
         
+        // The dig clock. It runs only while the mole is actually digging —
+        // not through the countdown, the pause screen or the safe puzzle —
+        // so the medal measures the descent and nothing else.
+        this.levelElapsed += deltaTime;
         this.oxygen -= deltaTime * 1.2;
         if (this.oxygen <= 0) {
             this.oxygen = 0;
@@ -4227,6 +4485,7 @@ class Game {
                 unlocked: levelIndex === 0,
                 completed: false,
                 bestAir: 0,
+                bestTime: 0,
             };
         });
         return { version: 1, levels };
@@ -4251,6 +4510,11 @@ class Game {
             const bestAir = Number.isFinite(saved.bestAir) ?
                 Math.max(0, Math.min(100, Math.floor(saved.bestAir))) :
                 0;
+            // Saves from before medals existed have no bestTime; they
+            // keep their progress and simply start without a medal.
+            const bestTime = Number.isFinite(saved.bestTime) && saved.bestTime > 0 ?
+                Math.round(saved.bestTime * 100) / 100 :
+                0;
             normalized.levels[level.id] = {
                 unlocked:
                     levelIndex === 0 ||
@@ -4258,6 +4522,7 @@ class Game {
                     saved.unlocked === true,
                 completed,
                 bestAir,
+                bestTime,
             };
         });
 
@@ -4310,6 +4575,28 @@ class Game {
         return this.getLevelProgress(levelIndex)?.bestAir || 0;
     }
 
+    getLevelBestTime(levelIndex) {
+        return this.getLevelProgress(levelIndex)?.bestTime || 0;
+    }
+
+    getLevelMedal(levelIndex) {
+        return medalForTime(
+            CAMPAIGN_LEVELS[levelIndex],
+            this.getLevelBestTime(levelIndex)
+        );
+    }
+
+    getMedalCounts() {
+        const counts = { gold: 0, silver: 0, bronze: 0, total: 0 };
+        CAMPAIGN_LEVELS.forEach((_, levelIndex) => {
+            const medal = this.getLevelMedal(levelIndex);
+            if (!medal) return;
+            counts[medal]++;
+            counts.total++;
+        });
+        return counts;
+    }
+
     getCompletedLevelCount() {
         return CAMPAIGN_LEVELS.reduce(
             (count, level, levelIndex) =>
@@ -4354,6 +4641,17 @@ class Game {
             changed = true;
         }
 
+        const runTime = Math.round(this.levelElapsed * 100) / 100;
+        this.lastLevelTime = runTime;
+        this.lastLevelMedal = medalForTime(level, runTime);
+        this.previousLevelMedal = medalForTime(level, entry.bestTime);
+        this.beatOwnRecord = runTime > 0 &&
+            (entry.bestTime === 0 || runTime < entry.bestTime);
+        if (this.beatOwnRecord) {
+            entry.bestTime = runTime;
+            changed = true;
+        }
+
         const nextLevel = CAMPAIGN_LEVELS[this.currentLevelIndex + 1];
         if (nextLevel) {
             const nextEntry = this.progress.levels[nextLevel.id];
@@ -4367,6 +4665,7 @@ class Game {
         if (changed) this.saveProgress();
         this.ui?.refreshLevelSelect();
         this.ui?.refreshGallery();
+        this.ui?.refreshFinale();
     }
 
     hasNextLevel() {
@@ -4569,6 +4868,7 @@ class Game {
         this.oxygen = level.start.oxygen ?? 100;
         this.score = score;
         this.depth = 0;
+        this.levelElapsed = 0;
         this.cameraY = 0;
         this.debrisParticles = [];
         this.screenShake = 0;
