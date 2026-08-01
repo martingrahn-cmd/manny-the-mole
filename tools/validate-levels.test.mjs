@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * Kontrollerar att validatorn faktiskt fäller trasiga banor.
- * En validator som aldrig underkänner något säger ingenting.
+ * Checks that the validator actually fails broken maps.
+ * A validator that never rejects anything proves nothing.
  *
  *   node tools/validate-levels.test.mjs
  */
@@ -9,108 +9,109 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const ROT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const { granska } = await import('./validate-levels.mjs');
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const { inspect } = await import('./validate-levels.mjs');
 const CAMPAIGN_LEVELS = new Function(
-    `${fs.readFileSync(path.join(ROT, 'levels.js'), 'utf8')}; return CAMPAIGN_LEVELS;`
+    `${fs.readFileSync(path.join(ROOT, 'levels.js'), 'utf8')}; return CAMPAIGN_LEVELS;`
 )();
 
-const frisk = structuredClone(CAMPAIGN_LEVELS[0]);
+const healthy = structuredClone(CAMPAIGN_LEVELS[0]);
 
-function kopia(ändra) {
-    const nivå = structuredClone(frisk);
-    ändra(nivå);
-    return nivå;
+function variant(mutate) {
+    const level = structuredClone(healthy);
+    mutate(level);
+    return level;
 }
 
-const fall = [
+const cases = [
     {
-        namn: 'frisk bana passerar',
-        nivå: frisk,
-        väntar: { fel: 0 },
+        name: 'a healthy map passes',
+        level: healthy,
+        expects: { errors: 0 },
     },
     {
-        namn: 'inmurat skåp fälls',
-        nivå: kopia(n => {
-            // lägg ett heltäckande berglager strax ovanför skåpet
-            n.rows[n.safe.y - 1] = '#######';
-            n.rows[n.safe.y - 2] = '#######';
+        name: 'a walled-off safe fails',
+        level: variant(l => {
+            // a solid rock layer just above the safe
+            l.rows[l.safe.y - 1] = '#######';
+            l.rows[l.safe.y - 2] = '#######';
         }),
-        väntar: { fel: 1, innehåller: 'inmurat' },
+        expects: { errors: 1, contains: 'walled off' },
     },
     {
-        namn: 'start i berget fälls',
-        nivå: kopia(n => {
-            const rad = [...n.rows[n.start.y]];
-            rad[n.start.x] = '#';
-            n.rows[n.start.y] = rad.join('');
+        name: 'a start in rock fails',
+        level: variant(l => {
+            const row = [...l.rows[l.start.y]];
+            row[l.start.x] = '#';
+            l.rows[l.start.y] = row.join('');
         }),
-        väntar: { fel: 1, innehåller: 'inte tom luft' },
+        expects: { errors: 1, contains: 'not open air' },
     },
     {
-        namn: 'skåp i berget fälls',
-        nivå: kopia(n => {
-            const rad = [...n.rows[n.safe.y]];
-            rad[n.safe.x] = '0';
-            n.rows[n.safe.y] = rad.join('');
+        name: 'a safe in rock fails',
+        level: variant(l => {
+            const row = [...l.rows[l.safe.y]];
+            row[l.safe.x] = '0';
+            l.rows[l.safe.y] = row.join('');
         }),
-        väntar: { fel: 1, innehåller: 'inte tom luft' },
+        expects: { errors: 1, contains: 'not open air' },
     },
     {
-        namn: 'skåp utanför banan fälls',
-        nivå: kopia(n => { n.safe.y = n.rows.length + 3; }),
-        väntar: { fel: 1, innehåller: 'utanför banan' },
+        name: 'a safe off the map fails',
+        level: variant(l => { l.safe.y = l.rows.length + 3; }),
+        expects: { errors: 1, contains: 'outside the map' },
     },
     {
-        namn: 'för långt utan syre fälls',
-        nivå: kopia(n => {
-            n.items = n.items.filter(i => i.kind !== 'oxygen');
-            // gör vägen lång nog att optimalt spel inte räcker
-            const djup = [];
-            for (let i = 0; i < 400; i++) djup.push('X123X01');
-            n.rows = [...n.rows.slice(0, 4), ...djup, '##..0##', '##..###'];
-            n.safe.y = n.rows.length - 2;
+        name: 'a shaft too long to breathe through fails',
+        level: variant(l => {
+            l.items = l.items.filter(i => i.kind !== 'oxygen');
+            // long enough that even optimal play runs out
+            const deep = [];
+            for (let i = 0; i < 400; i++) deep.push('X123X01');
+            l.rows = [...l.rows.slice(0, 4), ...deep, '##..0##', '##..###'];
+            l.safe.y = l.rows.length - 2;
         }),
-        väntar: { fel: 1, innehåller: 'syret tar slut' },
+        expects: { errors: 1, contains: 'air runs out' },
     },
     {
-        namn: 'onåbar syretub varnar',
-        nivå: kopia(n => {
-            n.rows[6] = '#######';
-            n.rows[7] = '#######';
-            n.items = [{ kind: 'oxygen', x: 3, y: 5 }];
-            // skåpet nås fortfarande inte -> både fel och varning väntas
+        name: 'an unreachable air tank is reported',
+        level: variant(l => {
+            l.rows[6] = '#######';
+            l.rows[7] = '#######';
+            l.items = [{ kind: 'oxygen', x: 3, y: 5 }];
+            // the safe is unreachable too, so an error is expected
         }),
-        väntar: { minstEttFel: true },
+        expects: { atLeastOneError: true },
     },
 ];
 
-let godkända = 0;
-let misslyckade = 0;
-for (const test of fall) {
-    const r = granska(test.nivå);
-    const felText = r.fel.join(' | ');
+let passed = 0;
+let failed = 0;
+for (const test of cases) {
+    const r = inspect(test.level);
+    const errorText = r.errors.join(' | ');
     let ok = true;
-    let orsak = '';
+    let reason = '';
 
-    if (test.väntar.fel === 0 && r.fel.length !== 0) {
-        ok = false; orsak = `väntade inga fel, fick: ${felText}`;
+    if (test.expects.errors === 0 && r.errors.length !== 0) {
+        ok = false; reason = `expected no errors, got: ${errorText}`;
     }
-    if (test.väntar.fel >= 1 && r.fel.length === 0) {
-        ok = false; orsak = 'väntade minst ett fel, fick inga';
+    if (test.expects.errors >= 1 && r.errors.length === 0) {
+        ok = false; reason = 'expected at least one error, got none';
     }
-    if (test.väntar.minstEttFel && r.fel.length === 0) {
-        ok = false; orsak = 'väntade minst ett fel, fick inga';
+    if (test.expects.atLeastOneError && r.errors.length === 0) {
+        ok = false; reason = 'expected at least one error, got none';
     }
-    if (test.väntar.innehåller && !felText.includes(test.väntar.innehåller)) {
+    if (test.expects.contains && !errorText.includes(test.expects.contains)) {
         ok = false;
-        orsak = `saknade "${test.väntar.innehåller}" i: ${felText || '(inga fel)'}`;
+        reason = `missing "${test.expects.contains}" in: ` +
+            `${errorText || '(no errors)'}`;
     }
 
-    console.log(`${ok ? '  ok  ' : ' FEL  '} ${test.namn}`);
-    if (!ok) console.log(`        ${orsak}`);
-    if (ok) godkända++; else misslyckade++;
+    console.log(`${ok ? '  ok  ' : ' FAIL '} ${test.name}`);
+    if (!ok) console.log(`        ${reason}`);
+    if (ok) passed++; else failed++;
 }
 
-console.log(`\n${godkända} godkända · ${misslyckade} misslyckade`);
-process.exit(misslyckade > 0 ? 1 : 0);
+console.log(`\n${passed} passed · ${failed} failed`);
+process.exit(failed > 0 ? 1 : 0);

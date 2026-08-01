@@ -1,288 +1,288 @@
 #!/usr/bin/env python3
-"""Bygger de sex nya banorna och väver in dem i levels.js.
+"""Builds the six new maps and weaves them into levels.js.
 
-Kroppen till varje bana är handskriven rad för rad. Skriptet lägger på
-huvudet (fyra tomma rader) och foten (skåpsfickan), fyller ut till exakt
-det djup banan ska ha, och placerar syretuber i de fickor kroppen har.
+The body of each map is written by hand, row by row. The script adds the
+header (four empty rows) and the footer (the safe pocket), pads to the
+exact depth the map should have, and drops air tanks into its pockets.
 """
 import pathlib
 import re
 
-FYLL = ['0123012', '1230123', '2301230', '3012301']
+FILLER = ['0123012', '1230123', '2301230', '3012301']
 
 
 def F(i):
-    return FYLL[i % 4]
+    return FILLER[i % 4]
 
 
-def fyll(n, start=0):
+def filler(n, start=0):
     return [F(start + i) for i in range(n)]
 
 
-# ---------------------------------------------------------------- banorna
+# ------------------------------------------------------------------- maps
 
-# 2. Trånga passagen — grad 1. Trattar som tvingar fram sidoborrning.
-KROPP_A = (
-    fyll(3)
+# 2. Core Sample - grade 1. Funnels that force sideways drilling.
+BODY_A = (
+    filler(3)
     + ['###0###']
-    + fyll(2, 1)
+    + filler(2, 1)
     + ['#1#####', '0.12301']
-    + fyll(2, 3)
+    + filler(2, 3)
     + ['===2301']
-    + fyll(2, 1)
+    + filler(2, 1)
     + ['#####1#', '23012.0']
-    + fyll(2, 3)
+    + filler(2, 3)
     + ['###2###']
 )
 
-# 4. Luftfickan — grad 2. Långa sträckor mellan tuberna.
-KROPP_B = (
-    fyll(4)
+# 4. Final Notice - grade 2. Long stretches between the tanks.
+BODY_B = (
+    filler(4)
     + ['0123===', '12301.3']
-    + fyll(4, 2)
+    + filler(4, 2)
     + ['###1###']
-    + fyll(4, 1)
+    + filler(4, 1)
     + ['#0#####', '.230123']
-    + fyll(4, 3)
+    + filler(4, 3)
     + ['===0123']
-    + fyll(3, 2)
+    + filler(3, 2)
     + ['#####2#', '30120.1']
-    + fyll(2, 1)
+    + filler(2, 1)
 )
 
-# 6. Dubbla spärren — grad 3. Två X-block i rad.
-KROPP_C = (
-    fyll(3)
+# 6. Rainy Day - grade 3. Two X-blocks in one shaft.
+BODY_C = (
+    filler(3)
     + ['###1###']
-    + fyll(3, 1)
+    + filler(3, 1)
     + ['0123X12', '1230.23']
-    + fyll(3, 2)
+    + filler(3, 2)
     + ['===2301']
-    + fyll(3, 1)
+    + filler(3, 1)
     + ['X123012', '2301.30']
-    + fyll(3, 3)
+    + filler(3, 3)
     + ['##1####']
-    + fyll(3, 2)
+    + filler(3, 2)
     + ['0123X12']
-    + fyll(3, 1)
+    + filler(3, 1)
     + ['#####0#', '12301.3']
-    + fyll(1, 2)
+    + filler(1, 2)
 )
 
-# 8. Långa fallet — grad 4. Stödtak och fall att läsa av.
-KROPP_D = (
-    fyll(3)
+# 8. Hindsight - grade 4. Support roofs and drops to read.
+BODY_D = (
+    filler(3)
     + ['===0123', '.230123']
-    + fyll(3, 2)
+    + filler(3, 2)
     + ['###X###']
-    + fyll(3, 1)
+    + filler(3, 1)
     + ['0123===', '12301.3']
-    + fyll(3, 2)
+    + filler(3, 2)
     + ['#2#####']
-    + fyll(3, 1)
+    + filler(3, 1)
     + ['X1230X2', '2301.30']
-    + fyll(4, 3)
+    + filler(4, 3)
     + ['===1230']
-    + fyll(3, 2)
+    + filler(3, 2)
     + ['#####1#', '30120.1']
-    + fyll(1, 1)
+    + filler(1, 1)
 )
 
-# 10. Silen — grad 5. Tät växling mellan berg, stöd och X.
-KROPP_E = (
-    fyll(2)
+# 10. Negative Space - grade 5. Rock, supports and X alternating.
+BODY_E = (
+    filler(2)
     + ['#1#####', '.123012']
-    + fyll(2, 2)
+    + filler(2, 2)
     + ['===X123']
-    + fyll(3, 1)
+    + filler(3, 1)
     + ['###0###']
-    + fyll(2, 2)
+    + filler(2, 2)
     + ['0X23012', '1230.23']
-    + fyll(3, 3)
+    + filler(3, 3)
     + ['#####2#']
-    + fyll(2, 1)
+    + filler(2, 1)
     + ['===0X23', '2301.30']
-    + fyll(3, 2)
+    + filler(3, 2)
     + ['##3####']
-    + fyll(3, 1)
+    + filler(3, 1)
     + ['012X012', '.230123']
-    + fyll(3, 3)
+    + filler(3, 3)
     + ['#####1#']
 )
 
-# 11. Nålsögat — grad 6. Allt på en gång, minst luft.
-KROPP_F = (
-    fyll(2)
+# 11. Long Service - grade 6. Everything at once, least air.
+BODY_F = (
+    filler(2)
     + ['###2###']
-    + fyll(2, 1)
+    + filler(2, 1)
     + ['0X23X12', '1230.23']
-    + fyll(2, 3)
+    + filler(2, 3)
     + ['===1230']
-    + fyll(2, 2)
+    + filler(2, 2)
     + ['#0#####', '.123012']
-    + fyll(2, 1)
+    + filler(2, 1)
     + ['X123X12']
-    + fyll(2, 3)
+    + filler(2, 3)
     + ['###1###']
-    + fyll(2, 2)
+    + filler(2, 2)
     + ['012X0X2', '3012.01']
-    + fyll(2, 1)
+    + filler(2, 1)
     + ['===2301']
-    + fyll(2, 3)
+    + filler(2, 3)
     + ['#####0#', '12301.3']
-    + fyll(2, 2)
+    + filler(2, 2)
     + ['0X23012']
-    + fyll(2, 1)
+    + filler(2, 1)
     + ['##2####']
 )
 
-FOT = ['####1##', '##..0##', '##..###', '#######']
+FOOTER = ['####1##', '##..0##', '##..###', '#######']
 
-NYA = [
-    dict(kropp=KROPP_A, djup=24, grad=1, plats=1,
-         id='narrow-passage', titel='Trånga passagen',
-         klart='Trånga passagen forcerad',
-         sammanfattning='Berget stryper schaktet — borra åt sidan för att komma förbi.',
-         bild='vault-apple', namn='Ett halvätet äpple',
-         text='Någon blev avbruten. Bettet är färskt.'),
-    dict(kropp=KROPP_B, djup=32, grad=2, plats=3,
-         id='air-pocket', titel='Luftfickan',
-         klart='Luftfickan hittad',
-         sammanfattning='Långt mellan tuberna. Planera var du fyller på innan du gräver vidare.',
-         bild='vault-bills', namn='En bunt obetalda räkningar',
-         text='Samtliga förfallna. Adressaten okänd.'),
-    dict(kropp=KROPP_C, djup=36, grad=3, plats=5,
-         id='double-lock', titel='Dubbla spärren',
-         klart='Dubbla spärren bruten',
-         sammanfattning='Två X-block i samma schakt. Ha luft kvar när du börjar borra.',
-         bild='vault-umbrella', namn='Ett paraply',
-         text='Hopfällt. Ovanligt långt från väder.'),
-    dict(kropp=KROPP_D, djup=38, grad=4, plats=7,
-         id='long-drop', titel='Långa fallet',
-         klart='Långa fallet överlevt',
-         sammanfattning='Stödtaken håller inte länge. Läs skakningen och var inte kvar under.',
-         bild='vault-glasses', namn='En glasögonbåge utan glas',
-         text='Bågen är hel. Glasen är ett annat kapitel.'),
-    dict(kropp=KROPP_E, djup=41, grad=5, plats=9,
-         id='the-sieve', titel='Silen',
-         klart='Silen genomborrad',
-         sammanfattning='Berg, stöd och X om vartannat hela vägen ned. Ingen sträcka är gratis.',
-         bild='vault-photo', namn='Ett fotografi av ett hål',
-         text='Odaterat. Motivet är svårbedömt.'),
-    dict(kropp=KROPP_F, djup=42, grad=6, plats=10,
-         id='the-needle', titel='Nålsögat',
-         klart='Nålsögat passerat',
-         sammanfattning='Sista schaktet före djupet. Minst luft, flest spärrar, ingen marginal.',
-         bild='vault-medal', namn='En medalj för lång och trogen tjänst',
-         text='Graverad åt någon annan. Bandet är slitet.'),
+NEW_MAPS = [
+    dict(body=BODY_A, depth=24, grade=1, slot=1,
+         id='narrow-passage', title='Core Sample',
+         done='Core sampled',
+         summary='Bedrock pinches the shaft - drill sideways to get past it.',
+         artwork='vault-apple', label='A half-eaten apple',
+         blurb='Someone was interrupted. The bite is fresh.'),
+    dict(body=BODY_B, depth=32, grade=2, slot=3,
+         id='air-pocket', title='Final Notice',
+         done='Notice served',
+         summary='Long stretches between tanks. Plan where you top up before digging on.',
+         artwork='vault-bills', label='A bundle of overdue bills',
+         blurb='All past due. Addressee unknown.'),
+    dict(body=BODY_C, depth=36, grade=3, slot=5,
+         id='double-lock', title='Rainy Day',
+         done='Rainy day covered',
+         summary='Two X-blocks in one shaft. Keep air in hand before you start drilling.',
+         artwork='vault-umbrella', label='An umbrella',
+         blurb='Folded. Unusually far from any weather.'),
+    dict(body=BODY_D, depth=38, grade=4, slot=7,
+         id='long-drop', title='Hindsight',
+         done='Hindsight acquired',
+         summary='The support roofs will not hold. Read the shake and do not be under it.',
+         artwork='vault-glasses', label='Spectacle frames, no lenses',
+         blurb='The frame is intact. The lenses are another matter.'),
+    dict(body=BODY_E, depth=41, grade=5, slot=9,
+         id='the-sieve', title='Negative Space',
+         done='Space developed',
+         summary='Rock, supports and X all the way down. No stretch comes free.',
+         artwork='vault-photo', label='A photograph of a hole',
+         blurb='Undated. The subject is hard to make out.'),
+    dict(body=BODY_F, depth=42, grade=6, slot=10,
+         id='the-needle', title='Long Service',
+         done='Service recognised',
+         summary='The last shaft before the deep. Least air, most blocks, no margin.',
+         artwork='vault-medal', label='A medal for long service',
+         blurb='Engraved for somebody else. The ribbon is worn.'),
 ]
 
 
-def bygg(spec):
-    """Sätter ihop en bana och placerar tuber i kroppens fickor."""
-    skåp_y = spec['djup'] + 2
-    total = skåp_y + 3
-    kropp = list(spec['kropp'])
-    behövs = total - 4 - len(FOT)
-    # De två raderna närmast foten är alltid vanliga block. Annars kan ett
-    # bergmotiv hamna vägg i vägg med foten med gluggarna i olika kolumner,
-    # och skåpet muras in.
-    MARGINAL = 2
-    plats = behövs - MARGINAL
-    while len(kropp) > plats and kropp[-1] in FYLL:
-        kropp.pop()
-    if len(kropp) > plats:
+def build(spec):
+    """Assembles a map and places tanks in the body's pockets."""
+    safe_y = spec['depth'] + 2
+    total = safe_y + 3
+    body = list(spec['body'])
+    space = total - 4 - len(FOOTER)
+    # The two rows closest to the footer are always ordinary blocks.
+    # Otherwise a rock motif can end up against the footer with their gaps
+    # in different columns, and the safe gets walled off.
+    MARGIN = 2
+    slot = space - MARGIN
+    while len(body) > slot and body[-1] in FILLER:
+        body.pop()
+    if len(body) > slot:
         raise SystemExit(
-            f"{spec['id']}: {len(kropp)} rader ryms inte i {plats} "
-            f"och sista raden '{kropp[-1]}' är ett motiv"
+            f"{spec['id']}: {len(body)} rows do not fit in {slot} "
+            f"and the last row '{body[-1]}' is a motif"
         )
-    while len(kropp) < plats:
-        kropp.append(F(len(kropp)))
-    for i in range(MARGINAL):
-        kropp.append(F(len(kropp)))
+    while len(body) < slot:
+        body.append(F(len(body)))
+    for i in range(MARGIN):
+        body.append(F(len(body)))
 
-    rader = ['.......'] * 4 + kropp + FOT
-    assert len(rader) == total, (spec['id'], len(rader), total)
+    rows = ['.......'] * 4 + body + FOOTER
+    assert len(rows) == total, (spec['id'], len(rows), total)
 
-    # fickor i kroppen blir syre; var tredje blir skatt i stället
-    fickor = []
-    for y in range(4, 4 + len(kropp)):
-        for x, tecken in enumerate(rader[y]):
+    # pockets in the body become air; every third becomes treasure instead
+    pockets = []
+    for y in range(4, 4 + len(body)):
+        for x, tecken in enumerate(rows[y]):
             if tecken == '.':
-                fickor.append((x, y))
-    poster = []
-    for i, (x, y) in enumerate(fickor):
+                pockets.append((x, y))
+    entries = []
+    for i, (x, y) in enumerate(pockets):
         if i % 3 == 2:
-            värde = 200 if i % 2 else 50
-            typ = 'bag' if i % 2 else 'coin'
-            poster.append(
-                f"            {{ kind: 'treasure', type: '{typ}', "
-                f"value: {värde}, x: {x}, y: {y} }},"
+            value = 200 if i % 2 else 50
+            kind = 'bag' if i % 2 else 'coin'
+            entries.append(
+                f"            {{ kind: 'treasure', type: '{kind}', "
+                f"value: {value}, x: {x}, y: {y} }},"
             )
         else:
-            poster.append(f"            {{ kind: 'oxygen', x: {x}, y: {y} }},")
+            entries.append(f"            {{ kind: 'oxygen', x: {x}, y: {y} }},")
 
-    radtext = '\n'.join(f"            '{r}'," for r in rader)
-    postext = '\n'.join(poster)
+    row_text = '\n'.join(f"            '{r}'," for r in rows)
+    entry_text = '\n'.join(entries)
     return f"""    {{
         id: '{spec['id']}',
         number: 0,
-        title: '{spec['titel']}',
-        completeTitle: '{spec['klart']}',
-        summary: '{spec['sammanfattning']}',
+        title: '{spec['title']}',
+        completeTitle: '{spec['done']}',
+        summary: '{spec['summary']}',
         start: {{ x: 3, y: 2, facing: 'down', oxygen: 100 }},
         reward: {{
-            image: 'assets/{spec['bild']}.png',
-            name: '{spec['namn']}',
-            blurb: '{spec['text']}',
+            image: 'assets/{spec['artwork']}.png',
+            name: '{spec['label']}',
+            blurb: '{spec['blurb']}',
         }},
         safe: {{
             type: 'pipes',
-            difficulty: {spec['grad']},
+            difficulty: {spec['grade']},
             x: 2,
-            y: {skåp_y},
+            y: {safe_y},
             width: 2,
             height: 2,
         }},
         rows: [
-{radtext}
+{row_text}
         ],
         items: [
-{postext}
+{entry_text}
         ],
     }},
 """
 
 
-ROT = pathlib.Path('/home/user/manny-the-mole')
-källa = (ROT / 'levels.js').read_text(encoding='utf-8')
+ROOT = pathlib.Path('/home/user/manny-the-mole')
+source = (ROOT / 'levels.js').read_text(encoding='utf-8')
 
-# dela upp befintliga banor
-inre = källa[källa.index('[') + 1:källa.rindex(']')]
-befintliga = re.findall(r'    \{\n.*?\n    \},\n', inre, re.S)
-if len(befintliga) != 6:
-    raise SystemExit(f'väntade 6 befintliga banor, hittade {len(befintliga)}')
+# split out the existing maps
+inner = source[source.index('[') + 1:source.rindex(']')]
+existing = re.findall(r'    \{\n.*?\n    \},\n', inner, re.S)
+if len(existing) != 6:
+    raise SystemExit(f'expected 6 existing maps, found {len(existing)}')
 
-ordning = []
-nya_i = 0
-for i, bana in enumerate(befintliga):
-    ordning.append(bana)
-    if nya_i < len(NYA) and NYA[nya_i]['plats'] == len(ordning):
-        ordning.append(bygg(NYA[nya_i]))
-        nya_i += 1
-while nya_i < len(NYA):
-    ordning.insert(NYA[nya_i]['plats'], bygg(NYA[nya_i]))
-    nya_i += 1
+ordered = []
+new_i = 0
+for i, level in enumerate(existing):
+    ordered.append(level)
+    if new_i < len(NEW_MAPS) and NEW_MAPS[new_i]['slot'] == len(ordered):
+        ordered.append(build(NEW_MAPS[new_i]))
+        new_i += 1
+while new_i < len(NEW_MAPS):
+    ordered.insert(NEW_MAPS[new_i]['slot'], build(NEW_MAPS[new_i]))
+    new_i += 1
 
-# numrera om och sätt kretsgraden enligt 1,1,2,2,3,3,4,4,5,5,6,6
-GRADER = [1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6]
-for i, bana in enumerate(ordning):
-    bana = re.sub(r'        number: \d+,', f'        number: {i + 1},', bana)
-    bana = re.sub(r"(type: 'pipes',\n            difficulty: )\d+",
-                  rf'\g<1>{GRADER[i]}', bana)
-    ordning[i] = bana
+# renumber and set the circuit grade to 1,1,2,2,3,3,4,4,5,5,6,6
+GRADES = [1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6]
+for i, level in enumerate(ordered):
+    level = re.sub(r'        number: \d+,', f'        number: {i + 1},', level)
+    level = re.sub(r"(type: 'pipes',\n            difficulty: )\d+",
+                  rf'\g<1>{GRADES[i]}', level)
+    ordered[i] = level
 
-ut = 'const CAMPAIGN_LEVELS = Object.freeze([\n' + ''.join(ordning) + ']);\n'
-svans = källa[källa.rindex(']') + 1:].lstrip(');').lstrip('\n')
-(ROT / 'levels.js').write_text(ut + ('\n' + svans if svans.strip() else ''), encoding='utf-8')
-print(f'{len(ordning)} banor skrivna')
+out = 'const CAMPAIGN_LEVELS = Object.freeze([\n' + ''.join(ordered) + ']);\n'
+tail = source[source.rindex(']') + 1:].lstrip(');').lstrip('\n')
+(ROOT / 'levels.js').write_text(out + ('\n' + tail if tail.strip() else ''), encoding='utf-8')
+print(f'{len(ordered)} maps written')

@@ -2,9 +2,9 @@ const MAX_PIPE_DIFFICULTY = 6;
 
 const SAFE_PUZZLE_META = Object.freeze({
     pipes: {
-        eyebrow: 'Säkringscentral',
-        title: 'Återställ kretsen',
-        copy: 'Avtäck och byt ledare innan strömmen hinner ikapp dig.',
+        eyebrow: 'Fuse box',
+        title: 'Restore the circuit',
+        copy: 'Uncover and swap conductors before the current catches you.',
     },
 });
 
@@ -15,13 +15,13 @@ const PIPE_BASE_CONNECTIONS = Object.freeze({
     cross: Object.freeze([true, true, true, true]),
 });
 
-const PIPE_DIRECTION_NAMES = Object.freeze(['upp', 'höger', 'ned', 'vänster']);
+const PIPE_DIRECTION_NAMES = Object.freeze(['up', 'right', 'down', 'left']);
 
 const PIPE_DIRECTION_SOURCES = Object.freeze([
-    'uppifrån',
-    'från höger',
-    'nedifrån',
-    'från vänster',
+    'from above',
+    'from the right',
+    'from below',
+    'from the left',
 ]);
 
 const PIPE_FLOW_BALANCE = Object.freeze({
@@ -257,8 +257,8 @@ class SafePuzzleEngine {
         };
     }
 
-    // Två utgångar som matas av ett T-kors: strömmen delar sig i stammen och
-    // grenarna hålls i var sin halva så de aldrig kan korsa varandra.
+    // Two outlets fed by a tee: the current splits in the trunk and each
+    // branch is held to its own half so they can never cross.
     buildBranchingLayout(balance, random) {
         const size = balance.size;
         const sourceY = 2 + Math.floor(random() * 2);
@@ -282,7 +282,7 @@ class SafePuzzleEngine {
             );
         }
 
-        // Grenen kröker en gång på vägen ut, annars blir den en lång raksträcka.
+        // Each branch jogs once on the way out, or it is one long straight run.
         const branch = (row, step) => {
             this.connectRequired(
                 required, size,
@@ -298,12 +298,12 @@ class SafePuzzleEngine {
             push(splitX, row);
 
             const jogRow = row + step;
-            const kanKröka =
+            const canJog =
                 jogRow >= 0 &&
                 jogRow < size &&
                 (step < 0 ? jogRow < sourceY : jogRow > sourceY) &&
                 size - 1 - splitX >= 3;
-            const jogX = kanKröka ?
+            const jogX = canJog ?
                 splitX + 1 + Math.floor(random() * (size - 2 - splitX)) :
                 -1;
 
@@ -396,8 +396,8 @@ class SafePuzzleEngine {
             placeCorrectPipe(position.y * size + position.x);
         });
 
-        // Fastsvetsade ledare sitter rätt men går inte att flytta, så banan
-        // byggs mellan givna ankare i stället för från ingenting.
+        // Welded conductors sit correct but cannot be moved, so the route is
+        // built between given anchors instead of from nothing.
         const weldCount = Math.min(
             balance.welded || 0,
             Math.max(0, path.length - safeLead - 1)
@@ -435,7 +435,7 @@ class SafePuzzleEngine {
             cells[index].revealed = true;
             cells[index].initialRevealed = true;
         });
-        // En fastsvetsad ledare är ett ankare bara om man ser den.
+        // A welded conductor is only an anchor if you can see it.
         cells.forEach(cell => {
             if (!cell.welded) return;
             cell.revealed = true;
@@ -483,29 +483,29 @@ class SafePuzzleEngine {
     }
 
     getPipeProgressStatus(state) {
-        const kvar = state.anchors.filter(
+        const remaining = state.anchors.filter(
             anchor => !state.filled.has(anchor)
         ).length;
-        const utKvar = state.sinks.length - state.poweredSinks.size;
-        if (state.sinks.length > 1 && kvar === 0) {
-            return `${state.filled.size} ledare strömsatta · ` +
-                `${utKvar} av ${state.sinks.length} utgångar kvar att mata.`;
+        const outletsLeft = state.sinks.length - state.poweredSinks.size;
+        if (state.sinks.length > 1 && remaining === 0) {
+            return `${state.filled.size} conductors live · ` +
+                `${outletsLeft} of ${state.sinks.length} outlets still to feed.`;
         }
-        if (kvar > 0) {
-            return `${state.filled.size} ledare strömsatta · ` +
-                `${kvar} fastsvetsad${kvar === 1 ? '' : 'e'} punkt` +
-                `${kvar === 1 ? '' : 'er'} kvar att passera.`;
+        if (remaining > 0) {
+            return `${state.filled.size} conductors live · ` +
+                `${remaining} welded point${remaining === 1 ? '' : 's'} ` +
+                'still to pass.';
         }
-        return `Strömmen rör sig · ${state.filled.size} ledare ` +
-            `${state.filled.size === 1 ? 'strömsatt' : 'strömsatta'}. ` +
-            'Bygg vidare framför den!';
+        return `Current moving · ${state.filled.size} conductor` +
+            `${state.filled.size === 1 ? '' : 's'} live. ` +
+            'Keep building ahead of it!';
     }
 
     getPipeOpeningStatus(state) {
         return state.flowFastForward ?
-            'Vägen till UT är redan klar — strömmen spolas igenom!' :
-            'Strömmen dröjer kvar i första ledaren — ' +
-            'avtäck några brickor innan den rör sig.';
+            'The route to OUT is already open — the current races through!' :
+            'The current is holding in the first conductor — ' +
+            'uncover a few tiles before it moves.';
     }
 
     getActivePipeStep(state = this.state) {
@@ -524,18 +524,18 @@ class SafePuzzleEngine {
             { x: 0, y: 1 },
             { x: -1, y: 0 },
         ];
-        let huvuden = [{
+        let heads = [{
             index: state.sourceY * state.size,
             incoming: 3,
         }];
-        const besökta = new Set();
-        const nådda = new Set();
+        const visited = new Set();
+        const reached = new Set();
 
-        for (let varv = 0; varv < state.cells.length && huvuden.length; varv++) {
-            const nästa = [];
-            for (const head of huvuden) {
-                if (besökta.has(head.index)) return false;
-                besökta.add(head.index);
+        for (let pass = 0; pass < state.cells.length && heads.length; pass++) {
+            const next = [];
+            for (const head of heads) {
+                if (visited.has(head.index)) return false;
+                visited.add(head.index);
                 const connections = this.getPipeConnections(
                     state.cells[head.index]
                 );
@@ -558,7 +558,7 @@ class SafePuzzleEngine {
                         outgoing === 1 &&
                         state.sinks.includes(head.index)
                     ) {
-                        nådda.add(head.index);
+                        reached.add(head.index);
                         continue;
                     }
                     const nextX = x + steps[outgoing].x;
@@ -569,18 +569,18 @@ class SafePuzzleEngine {
                         nextY < 0 ||
                         nextY >= state.size
                     ) return false;
-                    nästa.push({
+                    next.push({
                         index: nextY * state.size + nextX,
                         incoming: (outgoing + 2) % 4,
                     });
                 }
             }
-            huvuden = nästa;
+            heads = next;
         }
 
-        if (huvuden.length > 0) return false;
-        if (nådda.size !== state.sinks.length) return false;
-        return state.anchors.every(anchor => besökta.has(anchor));
+        if (heads.length > 0) return false;
+        if (reached.size !== state.sinks.length) return false;
+        return state.anchors.every(anchor => visited.has(anchor));
     }
 
     refreshPipeFastForward(state = this.state) {
@@ -631,8 +631,8 @@ class SafePuzzleEngine {
             { x: -1, y: 0 },
         ];
         const trail = [];
-        const nästaHuvuden = [];
-        const besökta = new Set();
+        const nextHeads = [];
+        const visited = new Set();
 
         for (const head of state.heads) {
             const index = head.index;
@@ -641,15 +641,15 @@ class SafePuzzleEngine {
                 index < 0 ||
                 index >= state.cells.length ||
                 state.filled.has(index) ||
-                besökta.has(index)
+                visited.has(index)
             ) {
                 return this.failPipeFlow(
                     state,
-                    'Strömmen gick i en slinga och kretsen överbelastades.',
+                    'The current looped back and the circuit overloaded.',
                     index
                 );
             }
-            besökta.add(index);
+            visited.add(index);
 
             const cell = state.cells[index];
             cell.revealed = true;
@@ -657,7 +657,7 @@ class SafePuzzleEngine {
             if (!connections[head.incoming]) {
                 return this.failPipeFlow(
                     state,
-                    'Strömmen nådde en bruten ledare. Kretsen slog ifrån.',
+                    'The current hit a broken conductor. The circuit tripped.',
                     index
                 );
             }
@@ -672,14 +672,14 @@ class SafePuzzleEngine {
             if (exits.length === 0) {
                 return this.failPipeFlow(
                     state,
-                    'Strömmen nådde en återvändsgränd. Kretsen slog ifrån.',
+                    'The current hit a dead end. The circuit tripped.',
                     index
                 );
             }
             if (exits.length > 1 && !state.branching) {
                 return this.failPipeFlow(
                     state,
-                    'Strömmen nådde en återvändsgränd. Kretsen slog ifrån.',
+                    'The current hit a dead end. The circuit tripped.',
                     index
                 );
             }
@@ -709,11 +709,11 @@ class SafePuzzleEngine {
                 ) {
                     return this.failPipeFlow(
                         state,
-                        'Strömmen lämnade kretskortet. Kretsen slog ifrån.',
+                        'The current left the board. The circuit tripped.',
                         index
                     );
                 }
-                nästaHuvuden.push({
+                nextHeads.push({
                     index: nextY * state.size + nextX,
                     incoming: (outgoing + 2) % 4,
                 });
@@ -722,47 +722,47 @@ class SafePuzzleEngine {
 
         state.connected = new Set(state.filled);
         state.trail = trail;
-        state.heads = nästaHuvuden;
+        state.heads = nextHeads;
         state.flowBlockedIndex = null;
         state.flowVersion++;
 
-        if (nästaHuvuden.length === 0) {
-            const saknade = state.sinks.filter(
+        if (nextHeads.length === 0) {
+            const unfed = state.sinks.filter(
                 sink => !state.poweredSinks.has(sink)
             );
-            if (saknade.length > 0) {
+            if (unfed.length > 0) {
                 return this.failPipeFlow(
                     state,
-                    `Strömmen nådde bara ${state.poweredSinks.size} av ` +
-                    `${state.sinks.length} utgångar. Kretsen underkändes.`,
-                    saknade[0],
+                    `The current fed only ${state.poweredSinks.size} of ` +
+                    `${state.sinks.length} outlets. The circuit failed.`,
+                    unfed[0],
                     'sink'
                 );
             }
-            const missade = state.anchors.filter(
+            const missed = state.anchors.filter(
                 anchor => !state.filled.has(anchor)
             );
-            if (missade.length > 0) {
+            if (missed.length > 0) {
                 return this.failPipeFlow(
                     state,
-                    `Strömmen nådde UT men gick förbi ${missade.length} ` +
-                    `${missade.length === 1 ?
-                        'fastsvetsad punkt' :
-                        'fastsvetsade punkter'}. Kretsen underkändes.`,
-                    missade[0],
+                    `The current reached OUT but skipped ${missed.length} ` +
+                    `${missed.length === 1 ?
+                        'welded point' :
+                        'welded points'}. The circuit failed.`,
+                    missed[0],
                     'anchor'
                 );
             }
             this.markSolved(
-                `Strömmen nådde ${state.sinks.length > 1 ? 'båda UT' : 'UT'} ` +
-                `efter ${state.moves} byten och ` +
-                `${state.reveals} avtäckta ledare!`
+                `The current reached ${state.sinks.length > 1 ? 'both outlets' : 'OUT'} ` +
+                `after ${state.moves} swaps and ` +
+                `${state.reveals} conductors uncovered!`
             );
             return true;
         }
 
         state.status = state.flowFastForward ?
-            'Vägen till UT är klar — strömmen snabbspolas genom kretsen!' :
+            'The route to OUT is open — the current races through the circuit!' :
             this.getPipeProgressStatus(state);
         this.touch();
         return true;
@@ -820,7 +820,7 @@ class SafePuzzleEngine {
 
         if (state.filled.has(index)) {
             state.status =
-                'Ledaren är redan strömsatt och går inte längre att flytta.';
+                'That conductor is already live and can no longer be moved.';
             this.touch();
             return true;
         }
@@ -828,7 +828,7 @@ class SafePuzzleEngine {
         const cell = state.cells[index];
         if (cell.welded) {
             state.status =
-                'Den ledaren är fastsvetsad. Bygg vidare från den i stället.';
+                'That conductor is welded down. Build on from it instead.';
             this.touch();
             return true;
         }
@@ -837,8 +837,8 @@ class SafePuzzleEngine {
             cell.revealed = true;
             state.reveals++;
             state.status =
-                `Ledare avtäckta: ${state.reveals}/${state.cells.length}. ` +
-                'Markera två avtäckta ledare för att byta plats.';
+                `Uncovered: ${state.reveals}/${state.cells.length}. ` +
+                'Mark two uncovered conductors to swap them.';
             this.touch();
             return true;
         }
@@ -846,14 +846,14 @@ class SafePuzzleEngine {
         if (state.selectedIndex === null) {
             state.selectedIndex = index;
             state.status =
-                'Ledaren är markerad. Välj en annan avtäckt ledare för att byta.';
+                'Conductor marked. Pick another uncovered one to swap with.';
             this.touch();
             return true;
         }
 
         if (state.selectedIndex === index) {
             state.selectedIndex = null;
-            state.status = 'Markeringen togs bort.';
+            state.status = 'Selection cleared.';
             this.touch();
             return true;
         }
@@ -861,7 +861,7 @@ class SafePuzzleEngine {
         if (state.filled.has(state.selectedIndex)) {
             state.selectedIndex = null;
             state.status =
-                'Den markerade ledaren hann strömsättas. Välj en annan.';
+                'The marked conductor went live first. Pick another.';
             this.touch();
             return true;
         }
@@ -877,9 +877,9 @@ class SafePuzzleEngine {
         state.selectedIndex = null;
         const routeComplete = this.refreshPipeFastForward(state);
         state.status = routeComplete ?
-            'Kretsen är kopplad till UT! Strömmen snabbspolas genom ledarna.' :
-            `${state.moves} ${state.moves === 1 ? 'byte' : 'byten'} · ` +
-            'fortsätt bygga framför den framryckande strömmen.';
+            'The circuit reaches OUT! The current races through it.' :
+            `${state.moves} swap${state.moves === 1 ? '' : 's'} · ` +
+            'keep building ahead of the advancing current.';
         this.touch();
         return true;
     }
@@ -918,33 +918,33 @@ class SafePuzzleEngine {
 
     getPipeLabel(index) {
         const state = this.state;
-        if (!state || state.type !== 'pipes') return 'Ledare';
+        if (!state || state.type !== 'pipes') return 'Conductor';
         const cell = state.cells[index];
         const row = Math.floor(index / state.size) + 1;
         const column = index % state.size + 1;
         if (!cell.revealed && !state.filled.has(index)) {
-            return `Dold ledarplatta, rad ${row}, kolumn ${column}. Avtäck.`;
+            return `Hidden plate, row ${row}, column ${column}. Uncover.`;
         }
         const connections = this.getPipeConnections(cell)
             .map((connected, direction) =>
                 connected ? PIPE_DIRECTION_NAMES[direction] : null
             )
             .filter(Boolean)
-            .join(' och ');
+            .join(' and ');
         const stateLabel = state.flowBlockedIndex === index ?
             (state.flowBlockedReason === 'anchor' ?
-                'Missad säkring — strömmen gick aldrig här.' :
-                'Här bröts kretsen — strömmen kom in ' +
+                'Missed weld — the current never came through here.' :
+                'The circuit broke here — the current came in ' +
                 `${PIPE_DIRECTION_SOURCES[state.flowIncoming]}.`) :
             cell.welded ?
-                'Fastsvetsad — sitter fast.' :
+                'Welded — fixed in place.' :
             state.filled.has(index) ?
-                'Strömsatt och låst.' :
+                'Live and locked.' :
                 state.selectedIndex === index ?
-                    'Markerad för byte.' :
-                    'Välj för att byta.';
-        return `Fast ledare rad ${row}, kolumn ${column}. ` +
-            `Öppet ${connections}. ${stateLabel}`;
+                    'Marked for swapping.' :
+                    'Select to swap.';
+        return `Conductor row ${row}, column ${column}. ` +
+            `Open ${connections}. ${stateLabel}`;
     }
 
     action(action, value) {

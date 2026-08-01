@@ -129,7 +129,7 @@ const SAFE_ASSET_KEYS = Object.freeze({
     pipes: 'safe_pipes',
 });
 const SAFE_TYPE_LABELS = Object.freeze({
-    pipes: 'Kretslås',
+    pipes: 'Circuit lock',
 });
 
 function isColoredBlockValue(value) {
@@ -377,17 +377,17 @@ class TouchControls {
     }
 
     capture(element, pointerId) {
-        // Kan kasta om pekaren redan släppts; fångsten är en bonus, inte ett krav.
+        // Can throw if the pointer is already gone; capture is a bonus, not a must.
         try {
             element.setPointerCapture?.(pointerId);
         } catch {
-            /* pekaren finns inte längre */
+            /* the pointer is gone */
         }
     }
 
     beginStick(event) {
         event.preventDefault();
-        // Spaken föds under tummen istället för på en fast plats.
+        // The stick is born under the thumb rather than at a fixed spot.
         const zone = this.zone.getBoundingClientRect();
         this.origin = { x: event.clientX, y: event.clientY };
         this.radius = Math.max(1, this.stick.offsetWidth / 2);
@@ -449,7 +449,7 @@ class TouchControls {
             return;
         }
 
-        // Fyrvägs: rutnätet mår bättre av en dominant axel än av diagonaler.
+        // Four-way: a grid reads better with a dominant axis than with diagonals.
         const horizontal = Math.abs(dx) >= Math.abs(dy);
         this.setDirection({
             left: horizontal && dx < 0,
@@ -954,29 +954,29 @@ class GameUI {
 
     refreshGallery() {
         if (!this.galleryGrid) return;
-        const hittade = CAMPAIGN_LEVELS.filter(
+        const found = CAMPAIGN_LEVELS.filter(
             (_, index) => this.game.isLevelCompleted(index)
         ).length;
         if (this.galleryEntryCount) {
             this.galleryEntryCount.textContent =
-                `Prylarna du hittat i skåpen · ${hittade} av ` +
+                `What you have pulled out of the safes · ${found} of ` +
                 `${CAMPAIGN_LEVELS.length}`;
         }
 
         this.galleryGrid.replaceChildren();
         CAMPAIGN_LEVELS.forEach((level, levelIndex) => {
-            const hittad = this.game.isLevelCompleted(levelIndex);
+            const isFound = this.game.isLevelCompleted(levelIndex);
             const item = document.createElement('div');
             item.className = 'gallery-item';
-            item.classList.toggle('is-locked', !hittad);
+            item.classList.toggle('is-locked', !isFound);
 
             const art = document.createElement('span');
             art.className = 'gallery-item__art';
-            if (hittad) {
-                const bild = document.createElement('img');
-                bild.src = level.reward.image;
-                bild.alt = '';
-                art.append(bild);
+            if (isFound) {
+                const artwork = document.createElement('img');
+                artwork.src = level.reward.image;
+                artwork.alt = '';
+                art.append(artwork);
             } else {
                 art.textContent = '?';
                 art.setAttribute('aria-hidden', 'true');
@@ -984,23 +984,23 @@ class GameUI {
 
             const copy = document.createElement('span');
             copy.className = 'gallery-item__copy';
-            const namn = document.createElement('strong');
-            namn.textContent = hittad ?
+            const label = document.createElement('strong');
+            label.textContent = isFound ?
                 level.reward.name :
-                `Skåp ${level.number}`;
+                `Safe ${level.number}`;
             const text = document.createElement('small');
-            text.textContent = hittad ?
+            text.textContent = isFound ?
                 level.reward.blurb :
-                'Ännu inte öppnat.';
-            copy.append(namn, text);
+                'Not opened yet.';
+            copy.append(label, text);
 
             item.append(art, copy);
             item.setAttribute(
                 'aria-label',
-                hittad ?
+                isFound ?
                     `${level.reward.name}. ${level.reward.blurb} ` +
-                    `Hittad i nivå ${level.number}.` :
-                    `Skåp ${level.number} är ännu inte öppnat.`
+                    `Found in level ${level.number}.` :
+                    `Safe ${level.number} has not been opened yet.`
             );
             this.galleryGrid.append(item);
         });
@@ -1034,15 +1034,15 @@ class GameUI {
             card.setAttribute(
                 'aria-label',
                 unlocked ?
-                    `Nivå ${level.number}, ${level.title}. ${
+                    `Level ${level.number}, ${level.title}. ${
                         completed ?
-                            `Klar. Bästa luft ${bestAir} procent. ` +
-                            `I skåpet: ${reward.name}.` :
-                            'Upplåst.'
+                            `Cleared. Best air ${bestAir} per cent. ` +
+                            `In the safe: ${reward.name}.` :
+                            'Unlocked.'
                     } ${safeLabel}.` :
-                    `Nivå ${level.number}, ${level.title}. Låst. Klara nivå ${
+                    `Level ${level.number}, ${level.title}. Locked. Clear level ${
                         CAMPAIGN_LEVELS[levelIndex - 1]?.number
-                    } för att låsa upp.`
+                    } to unlock.`
             );
 
             const top = document.createElement('span');
@@ -1056,10 +1056,10 @@ class GameUI {
             const state = document.createElement('span');
             state.className = 'level-card__state';
             state.textContent = !unlocked ?
-                'Låst' :
+                'Locked' :
                 completed ?
                     'Klar ✓' :
-                    levelIndex === continueLevelIndex ? 'Nästa' : 'Öppen';
+                    levelIndex === continueLevelIndex ? 'Next' : 'Open';
             state.setAttribute('aria-hidden', 'true');
             top.append(number, state);
 
@@ -1090,18 +1090,18 @@ class GameUI {
             const meta = document.createElement('span');
             meta.className = 'level-card__meta';
             meta.textContent = completed ?
-                `${safeLabel} · bästa luft ${bestAir}%` :
+                `${safeLabel} · best air ${bestAir}%` :
                 !unlocked ?
-                    'Klara föregående nivå' :
+                    'Clear the previous level' :
                     `${safeLabel} · ${
                         Math.max(0, level.safe.y - level.start.y)
-                    } m djup`;
+                    } m deep`;
 
             const content = document.createElement('span');
             content.className = 'level-card__content';
             content.append(top, title, summary, meta);
 
-            // Bytet från skåpet stannar kvar på kortet som ett kvitto.
+            // The find from the safe stays on the card as a receipt.
             if (completed && reward) {
                 const find = document.createElement('span');
                 find.className = 'level-card__find';
@@ -1286,12 +1286,12 @@ class GameUI {
             anchor => state.filled.has(anchor)
         ).length;
         labels.innerHTML =
-            '<strong><i aria-hidden="true"></i> INMATNING</strong>' +
+            '<strong><i aria-hidden="true"></i> INPUT</strong>' +
             (anchorTotal > 0 ?
-                '<span class="puzzle-pipes__anchors">SÄKRINGAR ' +
+                '<span class="puzzle-pipes__anchors">WELDS ' +
                 `${anchorsPassed}/${anchorTotal}</span>` :
-                '<span>STRÖMFLÖDE</span>') +
-            '<strong>UTGÅNG <i aria-hidden="true"></i></strong>';
+                '<span>CURRENT</span>') +
+            '<strong>OUT <i aria-hidden="true"></i></strong>';
         shell.append(labels);
 
         const board = document.createElement('div');
@@ -1388,7 +1388,7 @@ class GameUI {
                 trace.classList.add('puzzle-pipe-flow-trace');
                 trace.setAttribute('viewBox', '0 0 100 100');
                 trace.setAttribute('aria-hidden', 'true');
-                // Ett T-kors får en linje per gren, alla ritade i takt.
+                // A tee gets one line per branch, all drawn in step.
                 trailEntry.outgoings.forEach(direction => {
                     const outgoing = edgePoints[direction];
                     const tracePath = document.createElementNS(
@@ -1427,7 +1427,7 @@ class GameUI {
         inTerminal.style.setProperty('--terminal-row', state.sourceY);
         inTerminal.setAttribute('aria-hidden', 'true');
         board.append(grid, inTerminal);
-        // En pil per utgång, så två utgångar syns som två uttag.
+        // One arrow per outlet, so two outlets read as two sockets.
         state.sinks.forEach(sinkIndex => {
             const outTerminal = document.createElement('span');
             outTerminal.className =
@@ -1451,17 +1451,17 @@ class GameUI {
             failureIcon.setAttribute('aria-hidden', 'true');
             const failureCopy = document.createElement('span');
             const failureTitle = document.createElement('strong');
-            const missadSäkring = state.flowBlockedReason === 'anchor';
-            failureTitle.textContent = missadSäkring ?
-                'SÄKRING FÖRBIGÅNGEN' :
-                'KRETSEN BRÖTS';
+            const missedWeld = state.flowBlockedReason === 'anchor';
+            failureTitle.textContent = missedWeld ?
+                'WELD BYPASSED' :
+                'CIRCUIT BROKEN';
             const failureHint = document.createElement('small');
             failureHint.textContent = Number.isInteger(state.flowBlockedIndex) ?
-                (missadSäkring ? 'Säkringen är markerad på rad ' : 'Brottet är markerat på rad ') +
+                (missedWeld ? 'The weld is marked at row ' : 'The break is marked at row ') +
                 `${Math.floor(state.flowBlockedIndex / state.size) + 1}` +
-                ', kolumn ' +
+                ', column ' +
                 `${state.flowBlockedIndex % state.size + 1}.` :
-                'Se hur ledarna sitter innan du försöker igen.';
+                'Study how the conductors sit before trying again.';
             failureCopy.append(failureTitle, failureHint);
             failure.append(failureIcon, failureCopy);
             failureBanner = failure;
@@ -1470,27 +1470,27 @@ class GameUI {
         const legend = document.createElement('div');
         legend.className = 'puzzle-pipes__legend';
         legend.innerHTML = anchorTotal > 0 ?
-            '<span><b>1</b> Avtäck</span>' +
-            '<span><b>2</b> Byt plats</span>' +
+            '<span><b>1</b> Uncover</span>' +
+            '<span><b>2</b> Swap</span>' +
             '<span class="puzzle-pipes__anchors"><b>!</b> ' +
-            'Dra strömmen genom de gula</span>' :
-            '<span><b>1</b> Avtäck</span>' +
-            '<span><b>2</b> Markera</span>' +
-            '<span><b>3</b> Byt plats</span>';
+            'Route through the gold</span>' :
+            '<span><b>1</b> Uncover</span>' +
+            '<span><b>2</b> Mark</span>' +
+            '<span><b>3</b> Swap</span>';
         shell.append(failureBanner || legend, board);
         this.puzzleBody.append(shell);
 
         if (failed) {
             this.puzzleActions.append(
                 this.createPuzzleButton(
-                    'Försök igen',
+                    'Try again',
                     'puzzle-reset',
                     { primary: true }
                 )
             );
         } else if (!state.solved) {
             this.puzzleActions.append(
-                this.createPuzzleButton('Starta om krets', 'puzzle-reset')
+                this.createPuzzleButton('Restart circuit', 'puzzle-reset')
             );
         }
         this.appendPuzzleCloseButton(state);
@@ -1601,7 +1601,7 @@ class GameUI {
             this.puzzleEyebrow.textContent = meta.eyebrow;
             this.puzzleTitle.textContent = meta.title;
             this.puzzleCopy.textContent = meta.copy;
-            this.puzzleDifficulty.textContent = `Låsgrad ${state.difficulty}`;
+            this.puzzleDifficulty.textContent = `Lock grade ${state.difficulty}`;
             this.puzzleStatus.textContent = state.status;
             this.puzzleStatus.classList.toggle('is-success', state.solved);
             this.puzzleStatus.classList.toggle('is-critical', false);
@@ -1658,15 +1658,15 @@ class GameUI {
         const deathPresentation = game.deathCause === 'crushed' ? {
             eyebrow: 'Rasvarning',
             title: 'Krossad av raset',
-            copy: 'Flytta dig ur kolumnen så fort blocken börjar skaka.',
+            copy: 'Move out of the column the moment the blocks start shaking.',
         } : game.deathCause === 'oxygen' ? {
             eyebrow: 'Luften tog slut',
-            title: 'Slut på syre',
-            copy: 'Planera en väg till nästa syretub och lämna marginal för returen.',
+            title: 'Out of air',
+            copy: 'Plan a route to the next air tank and leave margin for the way back.',
         } : {
             eyebrow: 'Kuppen misslyckades',
             title: 'Gruvan vann',
-            copy: 'Försök igen och ta dig djupare nästa gång.',
+            copy: 'Try again and get deeper next time.',
         };
         if (this.gameoverEyebrow) {
             this.gameoverEyebrow.textContent = deathPresentation.eyebrow;
@@ -1684,17 +1684,17 @@ class GameUI {
             game.currentLevelIndex === CAMPAIGN_LEVELS.length - 1;
         if (this.wonEyebrow) {
             this.wonEyebrow.textContent =
-                `Nivå ${game.currentLevelIndex + 1} av ${CAMPAIGN_LEVELS.length} klar`;
+                `Level ${game.currentLevelIndex + 1} of ${CAMPAIGN_LEVELS.length} cleared`;
         }
         if (this.wonTitle) {
             this.wonTitle.textContent = game.currentLevel.completeTitle;
         }
         if (this.wonCopy) {
             this.wonCopy.textContent = isFinalLevel ?
-                'Det sista kassaskåpet är öppet. Kuppen är klar.' :
+                'The last safe is open. The job is done.' :
                 game.newlyUnlockedLevelIndex === game.currentLevelIndex + 1 ?
-                    `${CAMPAIGN_LEVELS[game.currentLevelIndex + 1].title} är nu upplåst.` :
-                    `${CAMPAIGN_LEVELS[game.currentLevelIndex + 1].title} väntar.`;
+                    `${CAMPAIGN_LEVELS[game.currentLevelIndex + 1].title} is now unlocked.` :
+                    `${CAMPAIGN_LEVELS[game.currentLevelIndex + 1].title} is waiting.`;
         }
         if (this.wonPrimaryButton) {
             this.wonPrimaryButton.dataset.action = isFinalLevel ?
@@ -1706,8 +1706,8 @@ class GameUI {
                 delete this.wonPrimaryButton.dataset.level;
             }
             this.wonPrimaryButton.textContent = isFinalLevel ?
-                'Spela från början' :
-                `Fortsätt till nivå ${game.currentLevelIndex + 2}`;
+                'Play from the start' :
+                `Continue to level ${game.currentLevelIndex + 2}`;
         }
         this.wonScore.textContent = game.lastLevelScore.toString();
         this.wonAir.textContent = `${Math.floor(game.oxygen)}%`;
@@ -1957,7 +1957,7 @@ class Game {
             SCALE = windowWidth / (GRID_WIDTH * GRID_SIZE);
         }
         
-        // Ramens luftmarginal kostar mer än den ger på en liten skärm.
+        // The frame's breathing margin costs more than it gives on a small screen.
         const coarsePointer =
             window.matchMedia?.('(pointer: coarse)')?.matches === true;
         SCALE *= coarsePointer ? 0.995 : 0.95;
@@ -2435,8 +2435,8 @@ class Game {
         }
         
         this.updatePlayer(deltaTime, input);
-        // Under beaten vid skåpet fryser grävningen: ingen fysik, inget syre,
-        // ingen ny träffkontroll. Spelkänslan i övrigt är orörd.
+        // During the beat at the safe the dig freezes: no physics, no oxygen,
+        // no fresh contact check. Nothing else about the feel is touched.
         if (this.safeIntroTimer > 0) {
             this.safeIntroTimer = Math.max(0, this.safeIntroTimer - deltaTime);
             if (this.safeIntroTimer === 0) this.openSafePuzzle();
@@ -2976,7 +2976,7 @@ class Game {
         this.safeContactArmed = false;
         this.safeIntroTimer = 0;
         this.clearKeyboardInput();
-        // En kort beat vid skåpet innan panelen tar över skärmen.
+        // A short beat at the safe before the panel takes over the screen.
         this.safeIntroTimer = SAFE_INTRO_DURATION;
         this.sound.playTone(190, 300, 0.22, 0.04, 'square');
         this.sound.playTone(120, 96, 0.5, 0.03, 'triangle', 0.12);
@@ -3349,8 +3349,8 @@ class Game {
         this.releaseItemCell(item);
         this.showWarningMessage(
             item.type === 'oxygen' ?
-                'Syretuben borrades sönder · ingen luft!' :
-                'Guldmyntet borrades sönder · inga poäng!',
+                'The air tank was drilled apart · no air!' :
+                'The gold coin was drilled apart · no points!',
             2.2
         );
         return true;
@@ -5401,38 +5401,38 @@ class Game {
         ctx.restore();
     }
 
-    // Ljuset växer ur skåpet under beaten och sveper ut över rutan.
+    // The glow grows out of the safe during the beat and sweeps the screen.
     renderSafeIntro(screenX, screenY, width, height) {
         if (this.safeIntroTimer <= 0) return;
         const ctx = this.ctx;
-        const framsteg = 1 - this.safeIntroTimer / SAFE_INTRO_DURATION;
-        const mittX = screenX + width / 2;
-        const mittY = screenY + height / 2;
-        const puls = this.reducedMotion ?
-            framsteg :
-            framsteg * (0.82 + 0.18 * Math.sin(framsteg * 22));
+        const progress = 1 - this.safeIntroTimer / SAFE_INTRO_DURATION;
+        const centreX = screenX + width / 2;
+        const centreY = screenY + height / 2;
+        const pulse = this.reducedMotion ?
+            progress :
+            progress * (0.82 + 0.18 * Math.sin(progress * 22));
 
         ctx.save();
         ctx.globalCompositeOperation = 'lighter';
-        const radie = Math.max(width, height) * (0.45 + framsteg * 1.5);
-        const sken = ctx.createRadialGradient(
-            mittX, mittY, 0, mittX, mittY, radie
+        const radius = Math.max(width, height) * (0.45 + progress * 1.5);
+        const glow = ctx.createRadialGradient(
+            centreX, centreY, 0, centreX, centreY, radius
         );
-        sken.addColorStop(0, `rgba(150, 240, 210, ${0.5 * puls})`);
-        sken.addColorStop(0.45, `rgba(80, 200, 190, ${0.24 * puls})`);
-        sken.addColorStop(1, 'rgba(40, 120, 140, 0)');
-        ctx.fillStyle = sken;
+        glow.addColorStop(0, `rgba(150, 240, 210, ${0.5 * pulse})`);
+        glow.addColorStop(0.45, `rgba(80, 200, 190, ${0.24 * pulse})`);
+        glow.addColorStop(1, 'rgba(40, 120, 140, 0)');
+        ctx.fillStyle = glow;
         ctx.beginPath();
-        ctx.arc(mittX, mittY, radie, 0, Math.PI * 2);
+        ctx.arc(centreX, centreY, radius, 0, Math.PI * 2);
         ctx.fill();
 
-        // en ring som expanderar som en tryckvåg
-        const ring = Math.max(width, height) * (0.3 + framsteg * 1.8);
+        // a ring expanding like a shockwave
+        const ring = Math.max(width, height) * (0.3 + progress * 1.8);
         ctx.globalCompositeOperation = 'source-over';
-        ctx.strokeStyle = `rgba(170, 250, 225, ${0.55 * (1 - framsteg)})`;
-        ctx.lineWidth = Math.max(1, 3 * (1 - framsteg));
+        ctx.strokeStyle = `rgba(170, 250, 225, ${0.55 * (1 - progress)})`;
+        ctx.lineWidth = Math.max(1, 3 * (1 - progress));
         ctx.beginPath();
-        ctx.arc(mittX, mittY, ring, 0, Math.PI * 2);
+        ctx.arc(centreX, centreY, ring, 0, Math.PI * 2);
         ctx.stroke();
         ctx.restore();
     }

@@ -2,14 +2,14 @@ const CAMPAIGN_LEVELS = Object.freeze([
     {
         id: 'first-shaft',
         number: 1,
-        title: 'Första schaktet',
-        completeTitle: 'Första schaktet klart',
-        summary: 'Lär dig gräva nedåt och hämta luft i en trygg sidoficka.',
+        title: 'First Bite',
+        completeTitle: 'First bite taken',
+        summary: 'Learn to dig down and top up your air in a safe side pocket.',
         start: { x: 3, y: 2, facing: 'down', oxygen: 100 },
         reward: {
             image: 'assets/vault-dentures.png',
-            name: 'Ett gebiss',
-            blurb: 'Någons löständer. Fortfarande fuktiga.',
+            name: 'A set of dentures',
+            blurb: 'Somebody\'s teeth. Still damp.',
         },
         safe: {
             type: 'pipes',
@@ -53,14 +53,14 @@ const CAMPAIGN_LEVELS = Object.freeze([
     {
         id: 'narrow-passage',
         number: 2,
-        title: 'Trånga passagen',
-        completeTitle: 'Trånga passagen forcerad',
-        summary: 'Berget stryper schaktet — borra åt sidan för att komma förbi.',
+        title: 'Core Sample',
+        completeTitle: 'Core sampled',
+        summary: 'Bedrock pinches the shaft — drill sideways to get past it.',
         start: { x: 3, y: 2, facing: 'down', oxygen: 100 },
         reward: {
             image: 'assets/vault-apple.png',
-            name: 'Ett halvätet äpple',
-            blurb: 'Någon blev avbruten. Bettet är färskt.',
+            name: 'A half-eaten apple',
+            blurb: 'Someone was interrupted. The bite is fresh.',
         },
         safe: {
             type: 'pipes',
@@ -109,14 +109,14 @@ const CAMPAIGN_LEVELS = Object.freeze([
     {
         id: 'side-passages',
         number: 3,
-        title: 'Sidogångarna',
-        completeTitle: 'Sidogångarna klara',
-        summary: 'Följ öppningarna i berget och våga vända tillbaka efter luft.',
+        title: 'Side Pockets',
+        completeTitle: 'Pockets emptied',
+        summary: 'Follow the openings in the rock and dare to double back for air.',
         start: { x: 3, y: 2, facing: 'down', oxygen: 100 },
         reward: {
             image: 'assets/vault-sock.png',
-            name: 'En ensam strumpa',
-            blurb: 'Storlek 43. Den andra är inte här.',
+            name: 'One lone sock',
+            blurb: 'Size 43. The other one is not here.',
         },
         safe: {
             type: 'pipes',
@@ -172,14 +172,14 @@ const CAMPAIGN_LEVELS = Object.freeze([
     {
         id: 'air-pocket',
         number: 4,
-        title: 'Luftfickan',
-        completeTitle: 'Luftfickan hittad',
-        summary: 'Långt mellan tuberna. Planera var du fyller på innan du gräver vidare.',
+        title: 'Final Notice',
+        completeTitle: 'Notice served',
+        summary: 'Long stretches between tanks. Plan where you top up before digging on.',
         start: { x: 3, y: 2, facing: 'down', oxygen: 100 },
         reward: {
             image: 'assets/vault-bills.png',
-            name: 'En bunt obetalda räkningar',
-            blurb: 'Samtliga förfallna. Adressaten okänd.',
+            name: 'A bundle of overdue bills',
+            blurb: 'All past due. Addressee unknown.',
         },
         safe: {
             type: 'pipes',
@@ -237,14 +237,14 @@ const CAMPAIGN_LEVELS = Object.freeze([
     {
         id: 'first-cave-in',
         number: 5,
-        title: 'Första raset',
-        completeTitle: 'Första raset avklarat',
-        summary: 'Läs skakningen, lämna fallzonen och borra igenom ditt första X-block.',
+        title: 'Signed and Buried',
+        completeTitle: 'Deed recovered',
+        summary: 'Read the tremor, leave the fall zone, and drill through your first X-block.',
         start: { x: 3, y: 2, facing: 'down', oxygen: 100 },
         reward: {
             image: 'assets/vault-deed.png',
-            name: 'Lagfarten på ett hål',
-            blurb: 'Undertecknad av en mullvad. Juridiskt tveksam.',
+            name: 'The deed to a hole',
+            blurb: 'Signed by a mole. Legally doubtful.',
         },
         safe: {
             type: 'pipes',
@@ -305,14 +305,14 @@ const CAMPAIGN_LEVELS = Object.freeze([
     {
         id: 'double-lock',
         number: 6,
-        title: 'Dubbla spärren',
-        completeTitle: 'Dubbla spärren bruten',
-        summary: 'Två X-block i samma schakt. Ha luft kvar när du börjar borra.',
+        title: 'Rainy Day',
+        completeTitle: 'Rainy day covered',
+        summary: 'Two X-blocks in one shaft. Keep air in hand before you start drilling.',
         start: { x: 3, y: 2, facing: 'down', oxygen: 100 },
         reward: {
             image: 'assets/vault-umbrella.png',
-            name: 'Ett paraply',
-            blurb: 'Hopfällt. Ovanligt långt från väder.',
+            name: 'An umbrella',
+            blurb: 'Folded. Unusually far from any weather.',
         },
         safe: {
             type: 'pipes',
@@ -374,14 +374,14 @@ const CAMPAIGN_LEVELS = Object.freeze([
     {
         id: 'shifting-supports',
         number: 7,
-        title: 'Skiftande stöd',
-        completeTitle: 'Stöden säkrade',
-        summary: 'Byt sida mellan stöden, vänta ut raset och forcera en spärrad mittgång.',
+        title: 'Framed',
+        completeTitle: 'Portrait lifted',
+        summary: 'Switch sides between the supports, wait out the collapse, force the blocked middle.',
         start: { x: 3, y: 2, facing: 'down', oxygen: 100 },
         reward: {
             image: 'assets/vault-portrait.png',
-            name: 'Ett inramat porträtt',
-            blurb: 'En rivaliserande mullvad. Signerat, dessvärre.',
+            name: 'A framed portrait',
+            blurb: 'A rival mole. Signed, unfortunately.',
         },
         safe: {
             type: 'pipes',
@@ -446,14 +446,14 @@ const CAMPAIGN_LEVELS = Object.freeze([
     {
         id: 'long-drop',
         number: 8,
-        title: 'Långa fallet',
-        completeTitle: 'Långa fallet överlevt',
-        summary: 'Stödtaken håller inte länge. Läs skakningen och var inte kvar under.',
+        title: 'Hindsight',
+        completeTitle: 'Hindsight acquired',
+        summary: 'The support roofs will not hold. Read the shake and do not be under it.',
         start: { x: 3, y: 2, facing: 'down', oxygen: 100 },
         reward: {
             image: 'assets/vault-glasses.png',
-            name: 'En glasögonbåge utan glas',
-            blurb: 'Bågen är hel. Glasen är ett annat kapitel.',
+            name: 'Spectacle frames, no lenses',
+            blurb: 'The frame is intact. The lenses are another matter.',
         },
         safe: {
             type: 'pipes',
@@ -518,14 +518,14 @@ const CAMPAIGN_LEVELS = Object.freeze([
     {
         id: 'crossed-galleries',
         number: 9,
-        title: 'Korsande gångar',
-        completeTitle: 'Gångarna kartlagda',
-        summary: 'Planera sidbytena, hämta luft under skyddstak och öppna två X-portar.',
+        title: 'Best Before',
+        completeTitle: 'Jar recovered',
+        summary: 'Plan the side switches, take air under cover, and open two X-gates.',
         start: { x: 3, y: 2, facing: 'down', oxygen: 100 },
         reward: {
             image: 'assets/vault-jar.png',
-            name: 'Burk med maskgelé',
-            blurb: 'Bäst före 1974. Oöppnad.',
+            name: 'A jar of worm jelly',
+            blurb: 'Best before 1974. Unopened.',
         },
         safe: {
             type: 'pipes',
@@ -593,14 +593,14 @@ const CAMPAIGN_LEVELS = Object.freeze([
     {
         id: 'the-sieve',
         number: 10,
-        title: 'Silen',
-        completeTitle: 'Silen genomborrad',
-        summary: 'Berg, stöd och X om vartannat hela vägen ned. Ingen sträcka är gratis.',
+        title: 'Negative Space',
+        completeTitle: 'Space developed',
+        summary: 'Rock, supports and X all the way down. No stretch comes free.',
         start: { x: 3, y: 2, facing: 'down', oxygen: 100 },
         reward: {
             image: 'assets/vault-photo.png',
-            name: 'Ett fotografi av ett hål',
-            blurb: 'Odaterat. Motivet är svårbedömt.',
+            name: 'A photograph of a hole',
+            blurb: 'Undated. The subject is hard to make out.',
         },
         safe: {
             type: 'pipes',
@@ -668,14 +668,14 @@ const CAMPAIGN_LEVELS = Object.freeze([
     {
         id: 'the-needle',
         number: 11,
-        title: 'Nålsögat',
-        completeTitle: 'Nålsögat passerat',
-        summary: 'Sista schaktet före djupet. Minst luft, flest spärrar, ingen marginal.',
+        title: 'Long Service',
+        completeTitle: 'Service recognised',
+        summary: 'The last shaft before the deep. Least air, most blocks, no margin.',
         start: { x: 3, y: 2, facing: 'down', oxygen: 100 },
         reward: {
             image: 'assets/vault-medal.png',
-            name: 'En medalj för lång och trogen tjänst',
-            blurb: 'Graverad åt någon annan. Bandet är slitet.',
+            name: 'A medal for long service',
+            blurb: 'Engraved for somebody else. The ribbon is worn.',
         },
         safe: {
             type: 'pipes',
@@ -744,14 +744,14 @@ const CAMPAIGN_LEVELS = Object.freeze([
     {
         id: 'deep-lock',
         number: 12,
-        title: 'Djupa låset',
-        completeTitle: 'Djupa låset öppnat',
-        summary: 'Knyt ihop allt du lärt dig: raszoner, sidofickor och tre hårda X-spärrar.',
+        title: 'The Next Safe Down',
+        completeTitle: 'Key in hand',
+        summary: 'Everything you have learned at once: fall zones, side pockets and three hard X-gates.',
         start: { x: 3, y: 2, facing: 'down', oxygen: 100 },
         reward: {
             image: 'assets/vault-key.png',
-            name: 'Nyckeln till ett större kassaskåp',
-            blurb: 'Det finns alltid ett större kassaskåp.',
+            name: 'The key to a bigger safe',
+            blurb: 'There is always a bigger safe.',
         },
         safe: {
             type: 'pipes',

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="sv">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
@@ -26,7 +26,7 @@
             width: 100%;
             height: 100%;
             overflow: hidden;
-            /* Inget gummiband eller pull-to-refresh när man drar i spaken. */
+            /* No rubber-banding or pull-to-refresh while dragging the stick. */
             overscroll-behavior: none;
             touch-action: manipulation;
             background:
@@ -276,7 +276,7 @@
             display: none;
         }
 
-        /* Spaken uppstår där tummen landar, så zonen är osynlig men gripbar. */
+        /* The stick appears where the thumb lands, so the zone is invisible but live. */
         .touch-stick-zone {
             position: absolute;
             bottom: 0;
@@ -961,7 +961,7 @@
             white-space: nowrap;
         }
 
-        /* Den lösta kretsen laddas upp innan skärmen lämnar över. */
+        /* The solved circuit charges up before the screen hands over. */
         @keyframes circuit-charge {
             0% {
                 box-shadow: 0 0 0 rgba(106, 240, 181, 0);
@@ -1004,7 +1004,7 @@
             }
         }
 
-        /* Pusselpanelen kommer in som en valvdörr som slår upp. */
+        /* The puzzle panel opens like a vault door. */
         @keyframes vault-open {
             from {
                 opacity: 0;
@@ -1095,7 +1095,7 @@
             image-rendering: pixelated;
         }
 
-        /* Ett hittat fynd lyser; ett ohittat är bara ett tomt fack. */
+        /* A found item glows; an unfound one is just an empty slot. */
         .gallery-item.is-locked .gallery-item__art {
             color: rgba(150, 168, 196, 0.44);
             font: 900 max(15px, calc(18px * var(--game-scale))) / 1
@@ -2137,7 +2137,7 @@
             --pipe-color: #ffce80;
         }
 
-        /* Nitarna i alla fyra hörn säger "fastsvetsad" utan förklaring. */
+        /* Rivets in all four corners say "welded" without explaining. */
         .puzzle-pipe-cell.is-welded::after {
             position: absolute;
             inset: calc(3px * var(--game-scale));
@@ -2155,7 +2155,7 @@
             pointer-events: none;
         }
 
-        /* Passerad säkring byter från väntande gult till kvitterat grönt. */
+        /* A passed weld turns from waiting gold to acknowledged green. */
         .puzzle-pipe-cell.is-welded.is-flowing,
         .puzzle-pipe-cell.is-welded.is-locked {
             border-color: #6af0b5;
@@ -2445,8 +2445,8 @@
                 display: contents;
             }
 
-            /* Ramen krymper till ~0.83 på en telefon, så typsnittsgolven
-               biter och lämnar 8–10 px text. Höj golven där de syns. */
+            /* The frame shrinks to ~0.83 on a phone, so the font-size floors
+               bite and leave 8-10px text. Raise them where they show. */
             .hud-label,
             .eyebrow,
             .level-select-title,
@@ -2490,7 +2490,7 @@
                 font-size: 7px;
             }
 
-            /* Lite mindre luft i rutnätet ger större tryckytor. */
+            /* Slightly tighter grid spacing gives bigger touch targets. */
             .puzzle-pipes__grid {
                 gap: 3px;
                 padding: 6px;
@@ -2501,7 +2501,7 @@
                 --pipe-gap: 3px;
             }
 
-            /* Två kolumner blir för smala för bildtexterna på en telefon. */
+            /* Two columns squeeze the captions too narrow on a phone. */
             .gallery-grid {
                 grid-template-columns: minmax(0, 1fr);
             }
@@ -2510,35 +2510,35 @@
 </head>
 <body>
     <main id="gameFrame" aria-label="Manny the Mole">
-        <canvas id="gameCanvas" aria-label="Spelplan"></canvas>
+        <canvas id="gameCanvas" aria-label="Playfield"></canvas>
 
         <div id="gameUi">
             <header id="gameHud" class="modern-hud" hidden>
                 <div class="hud-card">
-                    <span class="hud-label">Nivå <span id="hudLevel">1/6</span></span>
+                    <span class="hud-label">Level <span id="hudLevel">1/6</span></span>
                     <strong class="hud-value"><span id="hudDepth">0</span><small>m</small></strong>
                 </div>
 
                 <div class="hud-card hud-card--score">
-                    <span class="hud-label">Byte</span>
+                    <span class="hud-label">Loot</span>
                     <strong id="hudScore" class="hud-value">0</strong>
                 </div>
 
                 <div id="hudAirModule" class="hud-card hud-card--air">
-                    <span class="hud-label">Luft</span>
+                    <span class="hud-label">Air</span>
                     <strong id="hudAir" class="hud-value air-number">100%</strong>
                     <div class="air-track" aria-hidden="true">
                         <div id="hudAirFill" class="air-fill"></div>
                     </div>
                 </div>
 
-                <button id="pauseButton" class="icon-button" type="button" aria-label="Pausa spelet">
+                <button id="pauseButton" class="icon-button" type="button" aria-label="Pause the game">
                     <span class="pause-glyph" aria-hidden="true"></span>
                 </button>
             </header>
 
             <div id="sideDrillHint" class="side-drill-hint" role="status" hidden>
-                <span class="side-drill-hint__keys"><kbd>←/→</kbd><span>+</span><kbd>Space</kbd></span><span class="side-drill-hint__touch"><kbd>Spak i sidled</kbd><span>+</span><kbd>BORR</kbd></span><strong>Borra åt sidan</strong>
+                <span class="side-drill-hint__keys"><kbd>←/→</kbd><span>+</span><kbd>Space</kbd></span><span class="side-drill-hint__touch"><kbd>Stick sideways</kbd><span>+</span><kbd>DRILL</kbd></span><strong>Drill sideways</strong>
             </div>
             <div id="touchControls" class="touch-controls" hidden>
                 <div id="touchStickZone" class="touch-stick-zone" aria-hidden="true">
@@ -2555,21 +2555,21 @@
                     id="touchDrill"
                     class="touch-drill"
                     type="button"
-                    aria-label="Borra"
+                    aria-label="Drill"
                 >
-                    <span aria-hidden="true">BORR</span>
+                    <span aria-hidden="true">DRILL</span>
                 </button>
             </div>
             <div id="countdownDisplay" class="countdown" aria-live="assertive" hidden>3</div>
             <div id="gameToast" class="toast" role="status" hidden></div>
 
-            <section id="screenMenu" class="screen" aria-label="Startmeny">
+            <section id="screenMenu" class="screen" aria-label="Main menu">
                 <div class="screen-panel screen-panel--menu">
                     <p class="eyebrow">Vault Run</p>
                     <h1>Manny <span>the Mole</span></h1>
-                    <p class="screen-copy">Välj en nivå och gräv dig ned till kassaskåpet.</p>
+                    <p class="screen-copy">Pick a level and dig your way down to the safe.</p>
                     <div class="level-select-heading">
-                        <p id="levelSelectTitle" class="level-select-title">Välj nivå</p>
+                        <p id="levelSelectTitle" class="level-select-title">Select level</p>
                         <p id="campaignProgress" class="campaign-progress" aria-live="polite">0 av 6 klara</p>
                     </div>
                     <div id="levelSelect" class="level-select" role="group" aria-labelledby="levelSelectTitle"></div>
@@ -2578,12 +2578,12 @@
                             class="menu-button menu-button--puzzle-mode"
                             type="button"
                             data-action="puzzle-menu"
-                            aria-label="Öppna fristående pusselläge"
+                            aria-label="Open standalone puzzle mode"
                         >
                             <span class="puzzle-mode-entry__icon" aria-hidden="true">◇</span>
                             <span class="puzzle-mode-entry__copy">
-                                <strong>Pusselläge</strong>
-                                <small>Spela kretslåsets sex grader direkt</small>
+                                <strong>Puzzle mode</strong>
+                                <small>Play the six circuit grades directly</small>
                             </span>
                             <span class="puzzle-mode-entry__arrow" aria-hidden="true">→</span>
                         </button>
@@ -2591,23 +2591,23 @@
                             class="menu-button menu-button--puzzle-mode"
                             type="button"
                             data-action="gallery"
-                            aria-label="Öppna galleriet över fynd"
+                            aria-label="Open the gallery of finds"
                         >
                             <span class="puzzle-mode-entry__icon" aria-hidden="true">▣</span>
                             <span class="puzzle-mode-entry__copy">
-                                <strong>Galleriet</strong>
-                                <small id="galleryEntryCount">Prylarna du hittat i skåpen</small>
+                                <strong>The Gallery</strong>
+                                <small id="galleryEntryCount">What you have pulled out of the safes</small>
                             </span>
                             <span class="puzzle-mode-entry__arrow" aria-hidden="true">→</span>
                         </button>
                     </div>
                     <div class="controls" aria-label="Kontroller">
-                        <span class="control"><kbd>←/→</kbd> Gå · håll mot block för att kliva</span>
-                        <span class="control"><kbd>↓</kbd> Fall ned</span>
-                        <span class="control"><kbd>←/→ + Space</kbd> Sidoborra</span>
-                        <span class="control"><kbd>↑/↓ + Space</kbd> Borra lodrätt</span>
-                        <span class="control"><kbd>Pilar + Enter</kbd> Styr menyer</span>
-                        <span class="control"><kbd>P</kbd> Paus</span>
+                        <span class="control"><kbd>←/→</kbd> Walk · hold against a block to step up</span>
+                        <span class="control"><kbd>↓</kbd> Drop</span>
+                        <span class="control"><kbd>←/→ + Space</kbd> Drill sideways</span>
+                        <span class="control"><kbd>↑/↓ + Space</kbd> Drill vertically</span>
+                        <span class="control"><kbd>Arrows + Enter</kbd> Navigate menus</span>
+                        <span class="control"><kbd>P</kbd> Pause</span>
                     </div>
                 </div>
             </section>
@@ -2623,61 +2623,61 @@
             >
                 <div class="screen-panel screen-panel--puzzle-select">
                     <p class="eyebrow">Vault Puzzles</p>
-                    <h2 id="puzzleSelectTitle">Pusselläge</h2>
+                    <h2 id="puzzleSelectTitle">Puzzle mode</h2>
                     <p id="puzzleSelectCopy" class="screen-copy">
-                        Välj låsgrad och spela kretslåset direkt, utan att gräva dit.
+                        Pick a grade and play the circuit lock directly, without digging to it.
                     </p>
 
-                    <div class="puzzle-mode-list" aria-label="Välj låsgrad">
+                    <div class="puzzle-mode-list" aria-label="Pick a lock grade">
                         <article class="puzzle-mode-card" data-puzzle="pipes">
                             <span class="puzzle-mode-card__icon" aria-hidden="true">└─</span>
                             <div class="puzzle-mode-card__copy">
-                                <h3>Kretslås</h3>
-                                <p>Led strömmen från IN till UT innan tiden går ut.</p>
+                                <h3>Circuit lock</h3>
+                                <p>Route the current from IN to OUT before time runs out.</p>
                             </div>
-                            <div class="puzzle-grade-list" role="group" aria-label="Kretslås, välj låsgrad">
-                                <button class="puzzle-grade-row" type="button" data-action="start-puzzle" data-puzzle="pipes" data-difficulty="1" aria-label="Starta kretslås, låsgrad 1: 4 gånger 4, 3,8 sekunder per steg, hälften av brickorna uppvända">
+                            <div class="puzzle-grade-list" role="group" aria-label="Circuit lock, pick a grade">
+                                <button class="puzzle-grade-row" type="button" data-action="start-puzzle" data-puzzle="pipes" data-difficulty="1" aria-label="Start circuit lock, grade 1: four by four, 3.8 seconds per step">
                                     <span class="puzzle-grade-row__nr" aria-hidden="true">1</span>
                                     <span class="puzzle-grade-row__main">
-                                        <strong>4×4 · introduktion</strong>
-                                        <small>3,8 s per steg · 9 av 16 uppvända</small>
+                                        <strong>4×4 · introduction</strong>
+                                        <small>3.8 s per step · 9 of 16 face up</small>
                                     </span>
                                 </button>
-                                <button class="puzzle-grade-row" type="button" data-action="start-puzzle" data-puzzle="pipes" data-difficulty="2" aria-label="Starta kretslås, låsgrad 2: 5 gånger 5, 3,8 sekunder per steg">
+                                <button class="puzzle-grade-row" type="button" data-action="start-puzzle" data-puzzle="pipes" data-difficulty="2" aria-label="Start circuit lock, grade 2: five by five, 3.8 seconds per step">
                                     <span class="puzzle-grade-row__nr" aria-hidden="true">2</span>
                                     <span class="puzzle-grade-row__main">
-                                        <strong>5×5 · större bräde</strong>
-                                        <small>3,8 s per steg · 12 av 25 uppvända</small>
+                                        <strong>5×5 · bigger board</strong>
+                                        <small>3.8 s per step · 12 of 25 face up</small>
                                     </span>
                                 </button>
-                                <button class="puzzle-grade-row" type="button" data-action="start-puzzle" data-puzzle="pipes" data-difficulty="3" aria-label="Starta kretslås, låsgrad 3: 5 gånger 5, slingrande bana, 4 sekunder per steg">
+                                <button class="puzzle-grade-row" type="button" data-action="start-puzzle" data-puzzle="pipes" data-difficulty="3" aria-label="Start circuit lock, grade 3: five by five, winding route">
                                     <span class="puzzle-grade-row__nr" aria-hidden="true">3</span>
                                     <span class="puzzle-grade-row__main">
-                                        <strong>5×5 · slingrande bana</strong>
-                                        <small>4 s per steg · 11 av 25 uppvända</small>
+                                        <strong>5×5 · winding route</strong>
+                                        <small>4 s per step · 11 of 25 face up</small>
                                     </span>
                                 </button>
-                                <button class="puzzle-grade-row" type="button" data-action="start-puzzle" data-puzzle="pipes" data-difficulty="4" aria-label="Starta kretslås, låsgrad 4: 6 gånger 6 med två fastsvetsade ledare">
+                                <button class="puzzle-grade-row" type="button" data-action="start-puzzle" data-puzzle="pipes" data-difficulty="4" aria-label="Start circuit lock, grade 4: six by six with two welded conductors">
                                     <span class="puzzle-grade-row__nr" aria-hidden="true">4</span>
                                     <span class="puzzle-grade-row__main">
-                                        <strong>6×6 · fastsvetsade ledare</strong>
-                                        <small>5,2 s per steg · 2 ankare som sitter fast</small>
+                                        <strong>6×6 · welded conductors</strong>
+                                        <small>5.2 s per step · 2 fixed anchors</small>
                                     </span>
                                     <span class="puzzle-grade-row__tag" aria-hidden="true">NYTT</span>
                                 </button>
-                                <button class="puzzle-grade-row" type="button" data-action="start-puzzle" data-puzzle="pipes" data-difficulty="5" aria-label="Starta kretslås, låsgrad 5: 6 gånger 6 med tre fastsvetsade ledare och mest dolda brickor">
+                                <button class="puzzle-grade-row" type="button" data-action="start-puzzle" data-puzzle="pipes" data-difficulty="5" aria-label="Start circuit lock, grade 5: six by six with three welded conductors, most hidden">
                                     <span class="puzzle-grade-row__nr" aria-hidden="true">5</span>
                                     <span class="puzzle-grade-row__main">
-                                        <strong>6×6 · mest dolt</strong>
-                                        <small>4,8 s per steg · 3 ankare · 12 av 36 uppvända</small>
+                                        <strong>6×6 · most hidden</strong>
+                                        <small>4.8 s per step · 3 anchors · 12 of 36 face up</small>
                                     </span>
                                     <span class="puzzle-grade-row__tag" aria-hidden="true">NYTT</span>
                                 </button>
-                                <button class="puzzle-grade-row" type="button" data-action="start-puzzle" data-puzzle="pipes" data-difficulty="6" aria-label="Starta kretslås, låsgrad 6: förgrenad krets där strömmen delas i ett T-kors och måste mata två utgångar">
+                                <button class="puzzle-grade-row" type="button" data-action="start-puzzle" data-puzzle="pipes" data-difficulty="6" aria-label="Start circuit lock, grade 6: branching circuit that must feed two outlets">
                                     <span class="puzzle-grade-row__nr" aria-hidden="true">6</span>
                                     <span class="puzzle-grade-row__main">
-                                        <strong>6×6 · T-kors och två utgångar</strong>
-                                        <small>Strömmen delas och båda UT måste matas</small>
+                                        <strong>6×6 · tee and two outlets</strong>
+                                        <small>The current splits and both outlets must be fed</small>
                                     </span>
                                     <span class="puzzle-grade-row__tag" aria-hidden="true">NYTT</span>
                                 </button>
@@ -2686,9 +2686,9 @@
                     </div>
 
                     <button class="menu-button puzzle-select-back" type="button" data-action="menu">
-                        Tillbaka till nivåerna
+                        Back to the levels
                     </button>
-                    <p class="puzzle-help"><kbd>Pilar</kbd> välj · <kbd>Enter</kbd> starta · <kbd>Esc</kbd> tillbaka</p>
+                    <p class="puzzle-help"><kbd>Arrows</kbd> select · <kbd>Enter</kbd> start · <kbd>Esc</kbd> back</p>
                 </div>
             </section>
 
@@ -2702,27 +2702,27 @@
                 hidden
             >
                 <div class="screen-panel screen-panel--gallery">
-                    <p class="eyebrow">Bytet</p>
-                    <h2 id="galleryTitle">Galleriet</h2>
+                    <p class="eyebrow">The haul</p>
+                    <h2 id="galleryTitle">The Gallery</h2>
                     <p id="galleryCopy" class="screen-copy">
-                        Allt som stod i kassaskåpen. Ett skåp, en pryl.
+                        Everything the safes were holding. One safe, one thing.
                     </p>
                     <div id="galleryGrid" class="gallery-grid"></div>
                     <button class="menu-button gallery-back" type="button" data-action="menu">
-                        Tillbaka till nivåerna
+                        Back to the levels
                     </button>
                 </div>
             </section>
 
-            <section id="screenPaused" class="screen" aria-label="Pausmeny" hidden>
+            <section id="screenPaused" class="screen" aria-label="Pause menu" hidden>
                 <div class="screen-panel">
-                    <p class="eyebrow">Spelet är pausat</p>
-                    <h2>Ta ett andetag</h2>
-                    <p class="screen-copy">Gruvan väntar. Fortsätt när du är redo.</p>
+                    <p class="eyebrow">Game paused</p>
+                    <h2>Take a breath</h2>
+                    <p class="screen-copy">The mine is waiting. Resume when you are ready.</p>
                     <div class="menu-actions">
-                        <button class="menu-button menu-button--primary" type="button" data-action="resume">Fortsätt</button>
-                        <button class="menu-button" type="button" data-action="restart">Börja om</button>
-                        <button class="menu-button" type="button" data-action="menu">Välj nivå</button>
+                        <button class="menu-button menu-button--primary" type="button" data-action="resume">Resume</button>
+                        <button class="menu-button" type="button" data-action="restart">Restart</button>
+                        <button class="menu-button" type="button" data-action="menu">Level select</button>
                     </div>
                 </div>
             </section>
@@ -2738,15 +2738,15 @@
             >
                 <div class="screen-panel screen-panel--puzzle">
                     <div class="puzzle-heading">
-                        <p id="puzzleEyebrow" class="eyebrow">Kassaskåpslås</p>
-                        <span id="puzzleDifficulty" class="puzzle-difficulty">Låsgrad 1</span>
+                        <p id="puzzleEyebrow" class="eyebrow">Vault lock</p>
+                        <span id="puzzleDifficulty" class="puzzle-difficulty">Lock grade 1</span>
                     </div>
-                    <h2 id="puzzleTitle">Bryt upp kassaskåpet</h2>
-                    <p id="puzzleCopy" class="screen-copy">Lös låset för att slutföra nivån.</p>
+                    <h2 id="puzzleTitle">Crack the safe</h2>
+                    <p id="puzzleCopy" class="screen-copy">Crack the lock to finish the level.</p>
                     <div id="puzzleBody" class="puzzle-body"></div>
                     <p id="puzzleStatus" class="puzzle-status" role="status" aria-live="polite"></p>
                     <div id="puzzleActions" class="menu-actions puzzle-actions"></div>
-                    <p class="puzzle-help"><kbd>Esc</kbd> tillbaka · <kbd>Pilar</kbd> välj · <kbd>Enter</kbd> aktivera</p>
+                    <p class="puzzle-help"><kbd>Esc</kbd> back · <kbd>Arrows</kbd> select · <kbd>Enter</kbd> activate</p>
                 </div>
             </section>
 
@@ -2760,16 +2760,16 @@
                 hidden
             >
                 <div class="screen-panel">
-                    <p id="gameoverEyebrow" class="eyebrow">Kuppen misslyckades</p>
-                    <h2 id="gameoverTitle">Gruvan vann</h2>
-                    <p id="gameoverCopy" class="screen-copy">Försök igen och ta dig djupare nästa gång.</p>
+                    <p id="gameoverEyebrow" class="eyebrow">The job went wrong</p>
+                    <h2 id="gameoverTitle">The mine won</h2>
+                    <p id="gameoverCopy" class="screen-copy">Try again and get deeper next time.</p>
                     <div class="result-stats">
-                        <div class="result-stat"><span>Poäng</span><strong id="gameoverScore">0</strong></div>
+                        <div class="result-stat"><span>Score</span><strong id="gameoverScore">0</strong></div>
                         <div class="result-stat"><span>Djup</span><strong id="gameoverDepth">0 m</strong></div>
                     </div>
                     <div class="menu-actions">
-                        <button class="menu-button menu-button--primary" type="button" data-action="restart">Försök igen</button>
-                        <button class="menu-button" type="button" data-action="menu">Välj nivå</button>
+                        <button class="menu-button menu-button--primary" type="button" data-action="restart">Try again</button>
+                        <button class="menu-button" type="button" data-action="menu">Level select</button>
                     </div>
                 </div>
             </section>
@@ -2784,26 +2784,26 @@
                 hidden
             >
                 <div class="screen-panel">
-                    <p id="wonEyebrow" class="eyebrow">Nivå 1 av 6 klar</p>
-                    <h2 id="wonTitle">Första schaktet klart</h2>
-                    <p id="wonCopy" class="screen-copy">Bra grävt. Nästa schakt väntar.</p>
+                    <p id="wonEyebrow" class="eyebrow">Level 1 of 12 cleared</p>
+                    <h2 id="wonTitle">First bite taken</h2>
+                    <p id="wonCopy" class="screen-copy">Well dug. The next shaft is waiting.</p>
                     <div class="vault-find">
                         <img id="wonRewardIcon" class="vault-find__icon" alt="" src="" width="16" height="16">
                         <span class="vault-find__copy">
-                            <small>I kassaskåpet</small>
-                            <strong id="wonRewardName">Ett gebiss</strong>
-                            <em id="wonRewardBlurb">Någons löständer.</em>
+                            <small>In the safe</small>
+                            <strong id="wonRewardName">A set of dentures</strong>
+                            <em id="wonRewardBlurb">Somebody&#39;s teeth.</em>
                         </span>
                     </div>
                     <div class="result-stats">
-                        <div class="result-stat"><span>Byte</span><strong id="wonScore">0</strong></div>
-                        <div class="result-stat"><span>Luft kvar</span><strong id="wonAir">0%</strong></div>
-                        <div class="result-stat"><span>Bästa luft</span><strong id="wonBestAir">0%</strong></div>
+                        <div class="result-stat"><span>Loot</span><strong id="wonScore">0</strong></div>
+                        <div class="result-stat"><span>Air left</span><strong id="wonAir">0%</strong></div>
+                        <div class="result-stat"><span>Best air</span><strong id="wonBestAir">0%</strong></div>
                     </div>
                     <div class="menu-actions">
-                        <button id="wonPrimaryButton" class="menu-button menu-button--primary" type="button" data-action="next-level">Fortsätt till nivå 2</button>
-                        <button id="wonRetryButton" class="menu-button" type="button" data-action="restart">Spela om nivån</button>
-                        <button class="menu-button" type="button" data-action="menu">Välj nivå</button>
+                        <button id="wonPrimaryButton" class="menu-button menu-button--primary" type="button" data-action="next-level">Continue to level 2</button>
+                        <button id="wonRetryButton" class="menu-button" type="button" data-action="restart">Replay the level</button>
+                        <button class="menu-button" type="button" data-action="menu">Level select</button>
                     </div>
                 </div>
             </section>
