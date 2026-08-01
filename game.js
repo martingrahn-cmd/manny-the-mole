@@ -35,7 +35,11 @@ const DIG_RECOVERY = 0.105;
 const DIG_LOCK_DURATION = 0.055;
 const DIG_ANIM_DURATION = 0.18;
 const DRILL_ANIM_SPEED = 24;
-const MAX_DEBRIS_PARTICLES = 44;
+// Raised from 44 when blocks started breaking into pieces. A cleared
+// piece now spawns ten particles per block, so the old cap threw away
+// most of a big break before a single frame had drawn it — and it culled
+// the oldest first, which is exactly the ones already in flight.
+const MAX_DEBRIS_PARTICLES = 240;
 const PROGRESS_STORAGE_KEY = 'manny-the-mole:campaign-progress';
 const MUTE_STORAGE_KEY = 'manny-the-mole:muted';
 
@@ -2847,11 +2851,18 @@ class Game {
         }
 
         for (const particle of this.debrisParticles) {
+            // Shards from a cleared piece are staggered so the break runs
+            // outward from the drill. They sit still until their turn.
+            if (particle.delay > 0) {
+                particle.delay -= deltaTime;
+                continue;
+            }
             particle.life -= deltaTime;
             particle.x += particle.vx * deltaTime;
             particle.y += particle.vy * deltaTime;
             particle.vy += (particle.gravity ?? 760) * deltaTime;
             particle.vx *= Math.pow(particle.drag ?? 0.08, deltaTime);
+            if (particle.spin) particle.rotation += particle.spin * deltaTime;
         }
 
         this.debrisParticles = this.debrisParticles.filter(particle => particle.life > 0);
@@ -3599,6 +3610,93 @@ class Game {
         }
     }
 
+    /**
+     * Breaks one block into flying pieces.
+     *
+     * Purely cosmetic: the grid cell is still emptied on the old
+     * DIG_CLEAR_FLASH clock, so nothing here changes when you can move
+     * into the space. A block used to blink out over 90 milliseconds and
+     * that was all — a five-block piece gave one small burst at the drill
+     * and four silent disappearances. Now every block in the piece throws
+     * its own quarters, staggered by how far it sits from the impact, so
+     * the piece comes apart outward instead of vanishing at once.
+     */
+    shatterBlock(gridX, gridY, colorIndex, delay = 0) {
+        const palette = BLOCK_COLORS[colorIndex];
+        if (!palette) return;
+
+        const centerX = gridX * GRID_SIZE + GRID_SIZE / 2;
+        const centerY = gridY * GRID_SIZE + GRID_SIZE / 2;
+        const faces = [palette.color, palette.highlight, palette.light, palette.shadow];
+
+        // four quarters, thrown out along their own diagonal
+        for (let quadrant = 0; quadrant < 4; quadrant++) {
+            const dirX = quadrant % 2 ? 1 : -1;
+            const dirY = quadrant < 2 ? -1 : 1;
+            const life = 0.42 + Math.random() * 0.26;
+            this.debrisParticles.push({
+                x: centerX + dirX * GRID_SIZE * 0.2,
+                y: centerY + dirY * GRID_SIZE * 0.2,
+                vx: dirX * (70 + Math.random() * 130),
+                vy: dirY * 60 - 130 - Math.random() * 110,
+                life,
+                maxLife: life,
+                size: GRID_SIZE * (0.3 + Math.random() * 0.1),
+                color: faces[quadrant],
+                edge: palette.highlight,
+                kind: 'shard',
+                rotation: Math.random() * Math.PI,
+                spin: (Math.random() - 0.5) * 11,
+                gravity: 980,
+                drag: 0.2,
+                delay,
+            });
+        }
+
+        // grit and a puff of the colour, so the gap left behind is dusty
+        for (let index = 0; index < 5; index++) {
+            const life = 0.3 + Math.random() * 0.3;
+            const isDust = index > 2;
+            this.debrisParticles.push({
+                x: centerX + (Math.random() - 0.5) * GRID_SIZE * 0.8,
+                y: centerY + (Math.random() - 0.5) * GRID_SIZE * 0.8,
+                vx: (Math.random() - 0.5) * 190,
+                vy: -50 - Math.random() * 150,
+                life,
+                maxLife: life,
+                size: isDust ? 9 + Math.floor(Math.random() * 6) : 3,
+                color: isDust ? palette.shadow : palette.highlight,
+                kind: isDust ? 'dust' : 'chip',
+                gravity: isDust ? 300 : 900,
+                drag: isDust ? 0.05 : 0.16,
+                delay,
+            });
+        }
+
+        // the flash in the hole the block just left
+        this.debrisParticles.push({
+            x: centerX,
+            y: centerY,
+            vx: 0,
+            vy: 0,
+            life: 0.16,
+            maxLife: 0.16,
+            size: GRID_SIZE * 0.5,
+            color: palette.light,
+            kind: 'burst',
+            gravity: 0,
+            drag: 1,
+            delay,
+        });
+
+        if (this.debrisParticles.length > MAX_DEBRIS_PARTICLES) {
+            this.debrisParticles.splice(
+                0,
+                this.debrisParticles.length - MAX_DEBRIS_PARTICLES
+            );
+        }
+    }
+
     spawnAirOutParticles() {
         const centerX = this.player.x + PLAYER_SIZE / 2;
         const centerY = this.player.y + PLAYER_SIZE / 2;
@@ -3813,7 +3911,18 @@ class Game {
                 pieceBlock.clearTimer = 0;
                 pieceBlock.clearDuration = DIG_CLEAR_FLASH;
                 pieceBlock.matchEligible = false;
-                
+
+                // The break travels out from the block the drill touched,
+                // one step per cell of separation.
+                const reach = Math.abs(pieceBlock.x - block.x) +
+                    Math.abs(pieceBlock.y - block.y);
+                this.shatterBlock(
+                    pieceBlock.x,
+                    pieceBlock.y,
+                    pieceBlock.colorIndex,
+                    Math.min(0.2, reach * 0.035)
+                );
+
                 if (this.grid[pieceBlock.y]?.[pieceBlock.x] === pieceBlock.colorIndex + BLOCK_TYPES.COLORED) {
                     this.grid[pieceBlock.y][pieceBlock.x] = BLOCK_TYPES.EMPTY;
                 }
@@ -6250,13 +6359,47 @@ class Game {
         ctx.save();
 
         for (const particle of this.debrisParticles) {
+            if (particle.delay > 0) continue;
             const alpha = Math.max(0, particle.life / particle.maxLife);
             const screenY = particle.y - this.cameraY;
-            if (screenY < -16 || screenY > CANVAS_HEIGHT + 16) continue;
+            if (screenY < -32 || screenY > CANVAS_HEIGHT + 32) continue;
 
             const screenX = this.pixelSnap(particle.x);
             const snappedY = this.pixelSnap(screenY);
             ctx.fillStyle = particle.color;
+
+            if (particle.kind === 'shard') {
+                // A quarter of the block face, tumbling and shrinking. It
+                // keeps the block's own lit edge so the piece still reads
+                // as a piece of that block rather than a coloured dot.
+                const size = Math.max(3, particle.size * (0.45 + alpha * 0.55));
+                ctx.save();
+                ctx.globalAlpha = Math.min(1, alpha * 1.35);
+                ctx.translate(screenX, snappedY);
+                ctx.rotate(particle.rotation || 0);
+                const half = size / 2;
+                ctx.fillRect(-half, -half, size, size);
+                ctx.fillStyle = particle.edge || '#ffffff';
+                ctx.globalAlpha = Math.min(1, alpha * 0.85);
+                ctx.fillRect(-half, -half, size, Math.max(1, size * 0.26));
+                ctx.fillRect(-half, -half, Math.max(1, size * 0.26), size);
+                ctx.restore();
+                continue;
+            }
+
+            if (particle.kind === 'burst') {
+                // The gap flashes as the block leaves it, then closes.
+                const grow = 1 - alpha;
+                const size = particle.size * (0.5 + grow * 1.15);
+                ctx.globalAlpha = alpha * alpha * 0.75;
+                ctx.fillRect(
+                    this.pixelSnap(screenX - size / 2),
+                    this.pixelSnap(snappedY - size / 2),
+                    this.pixelSnap(size),
+                    this.pixelSnap(size)
+                );
+                continue;
+            }
 
             if (particle.kind === 'sparkle') {
                 const arm = Math.max(2, particle.size);
