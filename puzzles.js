@@ -18,8 +18,8 @@ const SAFE_PUZZLE_META = Object.freeze({
     },
     'wires-probe': {
         eyebrow: 'Sealed bank',
-        title: 'Test, then cut once',
-        copy: 'No second cut. Spend your probes to learn the bank first.',
+        title: 'Test before you cut',
+        copy: 'Fewer cuts than the open bank. Probes buy a terminal outright.',
     },
 });
 
@@ -34,15 +34,24 @@ const WIRE_COLORS = Object.freeze([
     { id: 'white', name: 'White', color: '#dbe4f2', light: '#ffffff' },
 ]);
 
-// Per grade: how many terminals, how many colours to choose between, and
-// what the variant spends instead of patience — cuts, seconds or probes.
+// Per grade: the board, and what each variant spends on being wrong.
+//
+// Every budget here is the 95th percentile of what a player who only ever
+// guesses something consistent with the tester actually needs, measured
+// over 1200 banks per grade. The first table did the opposite — it grew
+// the board while shrinking the budget — which made grade six solvable
+// one run in ten. Difficulty comes from the board now; the budget only
+// keeps every grade equally fair.
+//
+// probeCuts is the same percentile taken on what is left after the probes
+// are spent, which is a smaller board and so a smaller number.
 const WIRE_BALANCE = Object.freeze({
-    1: Object.freeze({ length: 3, colors: 4, cuts: 6, seconds: 60, probes: 2 }),
-    2: Object.freeze({ length: 4, colors: 4, cuts: 6, seconds: 60, probes: 2 }),
-    3: Object.freeze({ length: 4, colors: 5, cuts: 5, seconds: 50, probes: 2 }),
-    4: Object.freeze({ length: 5, colors: 5, cuts: 5, seconds: 50, probes: 3 }),
-    5: Object.freeze({ length: 5, colors: 6, cuts: 4, seconds: 45, probes: 3 }),
-    6: Object.freeze({ length: 6, colors: 6, cuts: 4, seconds: 45, probes: 3 }),
+    1: Object.freeze({ length: 3, colors: 4, cuts: 5, seconds: 70, probes: 2, probeCuts: 4 }),
+    2: Object.freeze({ length: 4, colors: 4, cuts: 5, seconds: 70, probes: 2, probeCuts: 4 }),
+    3: Object.freeze({ length: 4, colors: 5, cuts: 5, seconds: 70, probes: 2, probeCuts: 5 }),
+    4: Object.freeze({ length: 5, colors: 5, cuts: 6, seconds: 80, probes: 3, probeCuts: 5 }),
+    5: Object.freeze({ length: 5, colors: 6, cuts: 6, seconds: 85, probes: 3, probeCuts: 6 }),
+    6: Object.freeze({ length: 6, colors: 6, cuts: 7, seconds: 95, probes: 4, probeCuts: 6 }),
 });
 
 const WIRE_TYPES = Object.freeze(['wires', 'wires-live', 'wires-probe']);
@@ -1013,11 +1022,11 @@ class SafePuzzleEngine {
             selected: 0,
             attempts: [],
             probes: Array.from({ length: balance.length }, () => null),
-            cutsLeft: type === 'wires-live' ? Infinity : balance.cuts,
+            cutsLeft: type === 'wires-live' ? Infinity :
+                type === 'wires-probe' ? balance.probeCuts : balance.cuts,
             probesLeft: type === 'wires-probe' ? balance.probes : 0,
-            singleCut: type === 'wires-probe',
             timeLeft: type === 'wires-live' ? balance.seconds : Infinity,
-            penalty: 8,
+            penalty: 5,
             status: this.getWiresOpeningStatus(type, balance),
         };
     }
@@ -1027,7 +1036,8 @@ class SafePuzzleEngine {
             return `${balance.length} terminals · ${balance.seconds}s on the charge`;
         }
         if (type === 'wires-probe') {
-            return `${balance.length} terminals · ${balance.probes} probes · one cut`;
+            return `${balance.length} terminals · ${balance.probes} probes · ` +
+                `${balance.probeCuts} cuts`;
         }
         return `${balance.length} terminals · ${balance.cuts} cuts`;
     }
@@ -1123,11 +1133,7 @@ class SafePuzzleEngine {
 
         state.cutsLeft--;
         if (state.cutsLeft <= 0) {
-            return this.failWires(
-                state.singleCut ?
-                    'That was the only cut you had.' :
-                    'Out of cuts. The bank locks.'
-            );
+            return this.failWires('Out of cuts. The bank locks.');
         }
         state.status = score.exact === 0 && score.misplaced === 0 ?
             'Not one of those colours is in the bank.' :
@@ -1151,7 +1157,8 @@ class SafePuzzleEngine {
         state.phase = 'active';
         state.bank = state.bank.map((_, i) => state.probes[i] ?? 0);
         state.attempts = [];
-        state.cutsLeft = state.type === 'wires-live' ? Infinity : balance.cuts;
+        state.cutsLeft = state.type === 'wires-live' ? Infinity :
+            state.type === 'wires-probe' ? balance.probeCuts : balance.cuts;
         state.timeLeft = state.type === 'wires-live' ? balance.seconds : Infinity;
         state.status = this.getWiresOpeningStatus(state.type, balance);
         this.touch();

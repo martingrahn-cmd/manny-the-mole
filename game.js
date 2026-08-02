@@ -1978,8 +1978,8 @@ class GameUI {
         if (state.type === 'wires-probe') {
             this.wiresGauge.textContent =
                 `${state.probesLeft} probe${state.probesLeft === 1 ? '' : 's'} · ` +
-                'one cut';
-            this.wiresGauge.classList.toggle('is-critical', state.probesLeft === 0);
+                `${state.cutsLeft} cut${state.cutsLeft === 1 ? '' : 's'}`;
+            this.wiresGauge.classList.toggle('is-critical', state.cutsLeft <= 1);
             return;
         }
         this.wiresGauge.textContent =
