@@ -1477,7 +1477,6 @@ class GameUI {
                 `${result.cutsUsed} of ${result.cutBudget}`,
             ]);
             stats.push(['Terminals', result.terminals.toString()]);
-            stats.push(['Hint', result.hintUsed ? 'Used' : 'Unspent']);
         } else if (result.boardSize) {
             stats.push([
                 'Board',
@@ -2025,12 +2024,6 @@ class GameUI {
                 'Try again', 'puzzle-reset', { primary: true }
             ));
         } else if (!state.solved) {
-            if (state.hintsLeft > 0) {
-                this.puzzleActions.append(this.createPuzzleButton(
-                    `Tester hint · terminal ${state.selected + 1}`,
-                    'puzzle-hint'
-                ));
-            }
             const cut = this.createPuzzleButton(
                 'Cut', 'puzzle-cut', { primary: true }
             );
@@ -2050,8 +2043,7 @@ class GameUI {
         const clamped = state.clamped.filter(Boolean).length;
         this.wiresGauge.textContent =
             `${clamped}/${state.answer.length} clamped · ` +
-            `${state.cutsLeft} cut${state.cutsLeft === 1 ? '' : 's'} left` +
-            (state.hintsLeft > 0 ? ' · 1 hint' : '');
+            `${state.cutsLeft} cut${state.cutsLeft === 1 ? '' : 's'} left`;
         this.wiresGauge.classList.toggle('is-critical', state.cutsLeft <= 1);
     }
 
@@ -4023,7 +4015,6 @@ class Game {
             // wires only; the circuit has no equivalent to count
             cutsUsed: state.attempts ? state.attempts.length : null,
             cutBudget: WIRE_BALANCE[state.difficulty]?.cuts ?? null,
-            hintUsed: state.hintsLeft === 0,
             terminals: state.answer ? state.answer.length : null,
             // circuit only
             boardSize: state.size ?? null,
