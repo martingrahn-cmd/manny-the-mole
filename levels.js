@@ -605,7 +605,7 @@ const CAMPAIGN_LEVELS = Object.freeze([
         title: 'Negative Space',
         completeTitle: 'Space developed',
         summary: 'Rock, supports and X all the way down. No stretch comes free.',
-        start: { x: 3, y: 2, facing: 'down', oxygen: 90 },
+        start: { x: 3, y: 2, facing: 'down', oxygen: 65 },
         par: 23,
         reward: {
             image: 'assets/vault-photo.png',
@@ -681,7 +681,7 @@ const CAMPAIGN_LEVELS = Object.freeze([
         title: 'Long Service',
         completeTitle: 'Service recognised',
         summary: 'The last shaft before the deep. Least air, most blocks, no margin.',
-        start: { x: 3, y: 2, facing: 'down', oxygen: 85 },
+        start: { x: 3, y: 2, facing: 'down', oxygen: 70 },
         par: 22,
         reward: {
             image: 'assets/vault-medal.png',
