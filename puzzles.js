@@ -184,6 +184,9 @@ class SafePuzzleEngine {
             phase: 'ready',
             status: '',
             solved: false,
+            // wall-clock spent with the board live, so a standalone run
+            // has something to beat next time
+            elapsed: 0,
             completionTimer: 0,
             completionReported: false,
         };
@@ -1169,6 +1172,7 @@ class SafePuzzleEngine {
         const elapsed = Number.isFinite(deltaTime) ?
             Math.max(0, deltaTime) :
             0;
+        if (state.phase === 'active' && !state.solved) state.elapsed += elapsed;
 
         if (
             state.type === 'pipes' &&

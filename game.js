@@ -42,6 +42,7 @@ const DRILL_ANIM_SPEED = 24;
 const MAX_DEBRIS_PARTICLES = 240;
 const PROGRESS_STORAGE_KEY = 'manny-the-mole:campaign-progress';
 const MUTE_STORAGE_KEY = 'manny-the-mole:muted';
+const PUZZLE_BEST_STORAGE_KEY = 'manny-the-mole:puzzle-bests';
 
 // Medals rank the descent, not the safe. Air cannot do that job: every
 // level carries roughly ten times the air the route needs, so even a
@@ -968,6 +969,7 @@ class GameUI {
             gallery: document.getElementById('screenGallery'),
             trophies: document.getElementById('screenTrophies'),
             times: document.getElementById('screenTimes'),
+            'puzzle-won': document.getElementById('screenPuzzleWon'),
             finale: document.getElementById('screenFinale'),
             paused: document.getElementById('screenPaused'),
             puzzle: document.getElementById('screenPuzzle'),
@@ -975,6 +977,12 @@ class GameUI {
             won: document.getElementById('screenWon'),
         };
 
+        this.puzzleWonEyebrow = document.getElementById('puzzleWonEyebrow');
+        this.puzzleWonTitle = document.getElementById('puzzleWonTitle');
+        this.puzzleWonTime = document.getElementById('puzzleWonTime');
+        this.puzzleWonBest = document.getElementById('puzzleWonBest');
+        this.puzzleWonStats = document.getElementById('puzzleWonStats');
+        this.puzzleWonActions = document.getElementById('puzzleWonActions');
         this.timesRows = document.getElementById('timesRows');
         this.timesTotal = document.getElementById('timesTotal');
         this.trophyShelves = document.getElementById('trophyShelves');
@@ -1018,6 +1026,8 @@ class GameUI {
             else if (action === 'gallery') this.game.showGallery();
             else if (action === 'trophies') this.game.showTrophies();
             else if (action === 'times') this.game.showTimes();
+            else if (action === 'puzzle-again') this.game.retryStandalonePuzzle();
+            else if (action === 'puzzle-next') this.game.advanceStandalonePuzzle();
             else if (action === 'finale') this.game.showFinale();
             else if (action === 'title-start') this.game.leaveTitle();
             else if (action === 'start-puzzle') {
@@ -1435,6 +1445,72 @@ class GameUI {
 
             this.timesRows.append(item);
         });
+    }
+
+    /**
+     * What a solved standalone board earned: the time as the headline,
+     * because beating it is the only reason to run a grade twice, and the
+     * few numbers that say how it was won underneath.
+     */
+    refreshPuzzleWon() {
+        const result = this.game.lastPuzzleResult;
+        if (!this.puzzleWonStats || !result) return;
+        const meta = SAFE_PUZZLE_META[result.type];
+
+        this.puzzleWonEyebrow.textContent = meta?.eyebrow ?? 'Lock';
+        this.puzzleWonTitle.textContent = WIRE_TYPES.includes(result.type) ?
+            'Bank open' :
+            'Circuit restored';
+        this.puzzleWonTime.textContent = `${result.seconds.toFixed(1)}s`;
+
+        this.puzzleWonBest.textContent = result.isBest ?
+            (result.previousBest > 0 ?
+                `New best · was ${result.previousBest.toFixed(1)}s` :
+                'First clear') :
+            `Best ${result.previousBest.toFixed(1)}s`;
+        this.puzzleWonBest.classList.toggle('is-record', result.isBest);
+
+        const stats = [['Grade', result.difficulty.toString()]];
+        if (result.cutsUsed !== null) {
+            stats.push([
+                'Cuts',
+                `${result.cutsUsed} of ${result.cutBudget}`,
+            ]);
+            stats.push(['Terminals', result.terminals.toString()]);
+            stats.push(['Hint', result.hintUsed ? 'Used' : 'Unspent']);
+        } else if (result.boardSize) {
+            stats.push([
+                'Board',
+                `${result.boardSize}×${result.boardSize}` +
+                (result.branching ? ' · branching' : ''),
+            ]);
+            if (result.swaps !== null) {
+                stats.push(['Swaps', result.swaps.toString()]);
+            }
+        }
+        this.puzzleWonStats.replaceChildren(...stats.map(([label, value]) => {
+            const row = document.createElement('p');
+            row.className = 'puzzle-won__stat';
+            const name = document.createElement('span');
+            name.textContent = label;
+            const figure = document.createElement('b');
+            figure.textContent = value;
+            row.append(name, figure);
+            return row;
+        }));
+
+        this.puzzleWonActions.replaceChildren();
+        if (result.difficulty < MAX_PIPE_DIFFICULTY) {
+            this.puzzleWonActions.append(this.createPuzzleButton(
+                `Grade ${result.difficulty + 1}`,
+                'puzzle-next',
+                { primary: true }
+            ));
+        }
+        this.puzzleWonActions.append(
+            this.createPuzzleButton('Run it again', 'puzzle-again'),
+            this.createPuzzleButton('Back to the puzzles', 'puzzles')
+        );
     }
 
     /** The cabinet: one shelf per group, in the order they are defined. */
@@ -2440,6 +2516,7 @@ class GameUI {
             game.gameState === 'gallery' ||
             game.gameState === 'trophies' ||
             game.gameState === 'times' ||
+            game.gameState === 'puzzle-won' ||
             game.gameState === 'puzzle-select' ||
             (
                 game.gameState === 'puzzle' &&
@@ -2637,6 +2714,8 @@ class Game {
         this.gamepadMessage = null;
         this.gamepadMessageTime = 0;
         this.progress = this.loadProgress();
+        this.puzzleBests = this.loadPuzzleBests();
+        this.lastPuzzleResult = null;
         this.trophies = new TrophyCabinet(this);
         // set on the first air pocket of a run, so a level finished on the
         // air it started with can be told from one that was topped up
@@ -3900,13 +3979,19 @@ class Game {
         this.trophies?.onLockOpened(this.safePuzzle.state.difficulty);
 
         if (this.puzzleContext === 'standalone') {
-            const difficulty = this.safePuzzle.state.difficulty;
-            this.sound.playClear(6 + difficulty);
+            // the board is read before it is cleared, because the summary
+            // is the whole point of the screen that follows
+            this.lastPuzzleResult = this.summariseSolvedPuzzle(
+                this.safePuzzle.state
+            );
+            this.sound.playClear(6 + this.safePuzzle.state.difficulty);
+            this.sound.playVaultFind();
             this.safePuzzle.clear();
             this.puzzleContext = null;
-            this.gameState = 'puzzle-select';
+            this.gameState = 'puzzle-won';
             this.clearKeyboardInput();
             this.lastRenderedState = null;
+            this.ui?.refreshPuzzleWon();
             return true;
         }
 
@@ -3920,6 +4005,77 @@ class Game {
         this.gameState = 'won';
         this.clearKeyboardInput();
         return true;
+    }
+
+    /** Reads a solved board into the numbers its win screen shows. */
+    summariseSolvedPuzzle(state) {
+        const seconds = Math.round(state.elapsed * 10) / 10;
+        const previous = this.getPuzzleBest(state.type, state.difficulty);
+        const isBest = previous === 0 || seconds < previous;
+        if (isBest) this.setPuzzleBest(state.type, state.difficulty, seconds);
+
+        return {
+            type: state.type,
+            difficulty: state.difficulty,
+            seconds,
+            previousBest: previous,
+            isBest,
+            // wires only; the circuit has no equivalent to count
+            cutsUsed: state.attempts ? state.attempts.length : null,
+            cutBudget: WIRE_BALANCE[state.difficulty]?.cuts ?? null,
+            hintUsed: state.hintsLeft === 0,
+            terminals: state.answer ? state.answer.length : null,
+            // circuit only
+            boardSize: state.size ?? null,
+            swaps: Number.isFinite(state.moves) ? state.moves : null,
+            branching: state.branching === true,
+        };
+    }
+
+    loadPuzzleBests() {
+        try {
+            const raw = window.localStorage?.getItem(PUZZLE_BEST_STORAGE_KEY);
+            const parsed = raw ? JSON.parse(raw) : null;
+            return parsed && typeof parsed === 'object' ? parsed : {};
+        } catch {
+            return {};
+        }
+    }
+
+    getPuzzleBest(type, difficulty) {
+        const value = this.puzzleBests?.[`${type}:${difficulty}`];
+        return Number.isFinite(value) && value > 0 ? value : 0;
+    }
+
+    setPuzzleBest(type, difficulty, seconds) {
+        if (!this.puzzleBests) this.puzzleBests = {};
+        this.puzzleBests[`${type}:${difficulty}`] = seconds;
+        try {
+            window.localStorage?.setItem(
+                PUZZLE_BEST_STORAGE_KEY,
+                JSON.stringify(this.puzzleBests)
+            );
+        } catch {
+            // a blocked store still shows the run, just not the record
+        }
+    }
+
+    /** Replay the same grade, straight from the win screen. */
+    retryStandalonePuzzle() {
+        const result = this.lastPuzzleResult;
+        if (this.gameState !== 'puzzle-won' || !result) return false;
+        this.gameState = 'puzzle-select';
+        return this.startStandalonePuzzle(result.type, result.difficulty);
+    }
+
+    /** The next grade up, if the player has not run out of them. */
+    advanceStandalonePuzzle() {
+        const result = this.lastPuzzleResult;
+        if (this.gameState !== 'puzzle-won' || !result) return false;
+        const next = result.difficulty + 1;
+        if (next > MAX_PIPE_DIFFICULTY) return false;
+        this.gameState = 'puzzle-select';
+        return this.startStandalonePuzzle(result.type, next);
     }
 
     showWarningMessage(message, duration = 2.4) {

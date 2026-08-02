@@ -1001,6 +1001,65 @@
 
         /* The wire bank. Terminals are the only bright thing on the
            panel, because choosing one is the whole interaction. */
+
+        .screen-panel--puzzle-won {
+            width: min(90cqw, calc(360px * var(--game-scale)));
+        }
+
+        /* The time is the headline, because beating it is the only reason
+           to run a grade a second time. */
+        .puzzle-won__time {
+            margin-top: calc(6px * var(--game-scale));
+            color: #f8fbff;
+            font-size: max(38px, calc(50px * var(--game-scale)));
+            font-weight: 800;
+            letter-spacing: -0.05em;
+            line-height: 1;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .puzzle-won__best {
+            margin-top: calc(10px * var(--game-scale));
+            color: rgba(226, 231, 242, 0.6);
+            font-size: max(9px, calc(10px * var(--game-scale)));
+            font-weight: 780;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+        }
+
+        .puzzle-won__best.is-record {
+            color: #ffd76a;
+        }
+
+        .puzzle-won__stats {
+            display: grid;
+            gap: calc(5px * var(--game-scale));
+            margin-top: calc(15px * var(--game-scale));
+        }
+
+        .puzzle-won__stat {
+            display: flex;
+            gap: calc(10px * var(--game-scale));
+            align-items: baseline;
+            justify-content: space-between;
+            padding: calc(6px * var(--game-scale)) calc(10px * var(--game-scale));
+            border-radius: calc(9px * var(--game-scale));
+            background: rgba(255, 255, 255, 0.05);
+            text-align: left;
+        }
+
+        .puzzle-won__stat span {
+            color: rgba(222, 230, 244, 0.56);
+            font-size: max(9px, calc(10px * var(--game-scale)));
+        }
+
+        .puzzle-won__stat b {
+            color: #f5fbff;
+            font-size: max(10px, calc(11px * var(--game-scale)));
+            font-variant-numeric: tabular-nums;
+            white-space: nowrap;
+        }
+
         .puzzle-wires {
             display: grid;
             gap: calc(11px * var(--game-scale));
@@ -3764,6 +3823,24 @@
                 </div>
             </section>
 
+
+            <section
+                id="screenPuzzleWon"
+                class="screen screen--puzzle-won"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="puzzleWonTitle"
+                hidden
+            >
+                <div class="screen-panel screen-panel--puzzle-won">
+                    <p id="puzzleWonEyebrow" class="eyebrow"></p>
+                    <h2 id="puzzleWonTitle">Open</h2>
+                    <p id="puzzleWonBest" class="puzzle-won__best"></p>
+                    <p id="puzzleWonTime" class="puzzle-won__time"></p>
+                    <div id="puzzleWonStats" class="puzzle-won__stats"></div>
+                    <div id="puzzleWonActions" class="menu-actions"></div>
+                </div>
+            </section>
 
             <section
                 id="screenTimes"
