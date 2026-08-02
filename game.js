@@ -76,6 +76,45 @@ function formatTime(seconds) {
     const whole = Math.floor(seconds);
     return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`;
 }
+/**
+ * The twelve shafts ordered by what a replay would actually buy you.
+ *
+ * Not level order: the question this answers is "which one do I run
+ * again", and that is the one furthest off its gold time. Shafts already
+ * at gold have nothing left to give and sink below the ones that do;
+ * shafts never finished sit below those, because a first clear is a
+ * different job from shaving a second off one.
+ */
+function rankShaftsByTimeOwed(game) {
+    return CAMPAIGN_LEVELS.map((level, levelIndex) => {
+        const best = game.getLevelBestTime(levelIndex);
+        const medal = game.getLevelMedal(levelIndex);
+        const run = best > 0;
+        // gold is the par time itself, so the gap is simply how far over
+        const gap = run ? Math.max(0, best - level.par) : 0;
+        return {
+            level,
+            levelIndex,
+            best,
+            medal,
+            gap,
+            run,
+            unlocked: game.isLevelUnlocked(levelIndex),
+            state: !run ?
+                (game.isLevelUnlocked(levelIndex) ? 'never-run' : 'locked') :
+                gap > 0 ? 'owes' : 'gold',
+        };
+    }).sort((a, b) => {
+        const order = { owes: 0, gold: 1, 'never-run': 2, locked: 3 };
+        if (order[a.state] !== order[b.state]) {
+            return order[a.state] - order[b.state];
+        }
+        // within the ones that owe time, the biggest debt first
+        if (a.state === 'owes') return b.gap - a.gap;
+        return a.levelIndex - b.levelIndex;
+    });
+}
+
 const SAFE_INTRO_DURATION = 0.85;
 
 let CANVAS_WIDTH = GRID_WIDTH * GRID_SIZE;
@@ -928,6 +967,7 @@ class GameUI {
             'puzzle-select': document.getElementById('screenPuzzleSelect'),
             gallery: document.getElementById('screenGallery'),
             trophies: document.getElementById('screenTrophies'),
+            times: document.getElementById('screenTimes'),
             finale: document.getElementById('screenFinale'),
             paused: document.getElementById('screenPaused'),
             puzzle: document.getElementById('screenPuzzle'),
@@ -935,6 +975,8 @@ class GameUI {
             won: document.getElementById('screenWon'),
         };
 
+        this.timesRows = document.getElementById('timesRows');
+        this.timesTotal = document.getElementById('timesTotal');
         this.trophyShelves = document.getElementById('trophyShelves');
         this.trophyCount = document.getElementById('trophyCount');
         this.trophyToast = document.getElementById('trophyToast');
@@ -945,6 +987,7 @@ class GameUI {
         this.refreshLevelSelect();
         this.refreshGallery();
         this.refreshTrophies();
+        this.refreshTimes();
         this.refreshFinale();
         this.syncMute();
 
@@ -974,6 +1017,7 @@ class GameUI {
             }
             else if (action === 'gallery') this.game.showGallery();
             else if (action === 'trophies') this.game.showTrophies();
+            else if (action === 'times') this.game.showTimes();
             else if (action === 'finale') this.game.showFinale();
             else if (action === 'title-start') this.game.leaveTitle();
             else if (action === 'start-puzzle') {
@@ -1308,6 +1352,89 @@ class GameUI {
         if (this.muteState) {
             this.muteState.textContent = muted ? 'Off' : 'On';
         }
+    }
+
+    /**
+     * The ledger. Each row is a shaft, the bar is its debt drawn against
+     * the worst debt on the board, so the shape of the list answers the
+     * question before any of the numbers are read.
+     */
+    refreshTimes() {
+        if (!this.timesRows) return;
+        const ranked = rankShaftsByTimeOwed(this.game);
+        const worst = Math.max(...ranked.map(row => row.gap), 1);
+        const owed = ranked.reduce((sum, row) => sum + row.gap, 0);
+
+        if (this.timesTotal) {
+            const owing = ranked.filter(row => row.state === 'owes').length;
+            const run = ranked.filter(row => row.run).length;
+            // a player who has run nothing owes nothing, but saying so as
+            // "every shaft you have run is at gold" is nonsense
+            this.timesTotal.textContent =
+                run === 0 ? 'Nothing run yet — the ledger fills as you dig' :
+                owing === 0 ? 'Nothing owed — every shaft you have run is at gold' :
+                `${formatTime(owed)} owed across ${owing} shaft` +
+                `${owing === 1 ? '' : 's'}`;
+        }
+        const note = document.getElementById('timesEntryNote');
+        if (note) {
+            note.textContent = ranked[0]?.state === 'owes' ?
+                `${ranked[0].level.title} is off gold by ` +
+                `${Math.round(ranked[0].gap)}s` :
+                'Which shaft is worth running again';
+        }
+
+        this.timesRows.replaceChildren();
+        ranked.forEach(row => {
+            // an unlocked shaft starts from its own row: naming the one
+            // worth running and then making you go and find it is the
+            // whole job left undone
+            const item = document.createElement(row.unlocked ? 'button' : 'div');
+            item.className = 'times-row';
+            item.classList.add(`is-${row.state}`);
+            if (row.unlocked) {
+                item.type = 'button';
+                item.dataset.action = 'start-level';
+                item.dataset.level = row.levelIndex.toString();
+                item.setAttribute(
+                    'aria-label',
+                    `Run ${row.level.title} again`
+                );
+            }
+
+            const name = document.createElement('span');
+            name.className = 'times-row__name';
+            name.textContent = `${row.level.number}. ${row.level.title}`;
+
+            const debt = document.createElement('span');
+            debt.className = 'times-row__debt';
+            debt.textContent =
+                row.state === 'owes' ? `−${Math.round(row.gap)}s` :
+                row.state === 'gold' ? 'Gold' :
+                row.state === 'never-run' ? 'Never run' : 'Locked';
+
+            const detail = document.createElement('span');
+            detail.className = 'times-row__detail';
+            detail.textContent = row.run ?
+                `best ${formatTime(row.best)} · gold ${formatTime(row.level.par)}` +
+                (row.medal ? ` · ${MEDALS[row.medal].label}` : ' · no medal') :
+                `gold ${formatTime(row.level.par)}`;
+
+            item.append(name, debt, detail);
+
+            // only a debt gets a bar; gold and unrun rows would draw an
+            // empty track that reads as a bar at zero rather than as none
+            if (row.state === 'owes') {
+                const track = document.createElement('span');
+                track.className = 'times-row__bar';
+                const fill = document.createElement('span');
+                fill.style.width = `${Math.max(4, (row.gap / worst) * 100)}%`;
+                track.append(fill);
+                item.append(track);
+            }
+
+            this.timesRows.append(item);
+        });
     }
 
     /** The cabinet: one shelf per group, in the order they are defined. */
@@ -2198,6 +2325,7 @@ class GameUI {
             game.gameState === 'menu' ||
             game.gameState === 'gallery' ||
             game.gameState === 'trophies' ||
+            game.gameState === 'times' ||
             game.gameState === 'puzzle-select' ||
             (
                 game.gameState === 'puzzle' &&
@@ -3533,6 +3661,15 @@ class Game {
         this.sound.playTone(196, 294, 0.16, 0.05, 'square');
         this.sound.playTone(294, 392, 0.2, 0.045, 'square', 0.13);
         return this.showMainMenu();
+    }
+
+    showTimes() {
+        this.clearKeyboardInput();
+        this.safePuzzle.clear();
+        this.puzzleContext = null;
+        this.gameState = 'times';
+        this.lastRenderedState = null;
+        return true;
     }
 
     showTrophies() {
@@ -5077,6 +5214,7 @@ class Game {
         });
 
         this.ui?.refreshLevelSelect();
+        this.ui?.refreshTimes();
         this.ui?.refreshGallery();
         this.ui?.refreshFinale();
     }

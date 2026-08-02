@@ -1194,6 +1194,99 @@
         /* The cabinet: a shelf per group, each trophy the same object
            whether you have it or not — earned ones in their own metal,
            the rest struck in dead grey. */
+
+        /* The ledger: one row per shaft, ordered by how far it sits off
+           gold. The bar is the debt drawn to scale against the worst one,
+           so the shape of the list is the answer. */
+        .times-rows {
+            display: grid;
+            gap: calc(5px * var(--game-scale));
+            margin-top: calc(12px * var(--game-scale));
+            text-align: left;
+        }
+
+        .times-row {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: calc(2px * var(--game-scale)) calc(9px * var(--game-scale));
+            padding: calc(7px * var(--game-scale)) calc(9px * var(--game-scale));
+            border: max(1px, calc(1px * var(--game-scale))) solid rgba(255, 255, 255, 0.08);
+            border-radius: calc(10px * var(--game-scale));
+            background: linear-gradient(180deg, rgba(31, 37, 55, 0.9), rgba(12, 14, 27, 0.95));
+        }
+
+        .times-row.is-owes {
+            border-color: rgba(255, 211, 99, 0.26);
+        }
+
+        .times-row.is-gold {
+            border-color: rgba(105, 240, 177, 0.24);
+        }
+
+        .times-row.is-locked {
+            opacity: 0.5;
+        }
+
+        button.times-row {
+            width: 100%;
+            cursor: pointer;
+            text-align: left;
+            transition: transform 160ms ease, border-color 160ms ease;
+        }
+
+        button.times-row:hover,
+        button.times-row:focus-visible {
+            border-color: rgba(116, 232, 246, 0.5);
+            transform: translateY(-1px);
+        }
+
+        .times-row__name {
+            overflow: hidden;
+            color: rgba(248, 250, 255, 0.94);
+            font-size: max(10px, calc(11px * var(--game-scale)));
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .times-row__debt {
+            color: #ffd76a;
+            font-size: max(10px, calc(11px * var(--game-scale)));
+            font-weight: 800;
+            white-space: nowrap;
+        }
+
+        .times-row.is-gold .times-row__debt {
+            color: #76e9ae;
+        }
+
+        .times-row:not(.is-owes):not(.is-gold) .times-row__debt {
+            color: rgba(222, 230, 244, 0.42);
+            font-weight: 700;
+        }
+
+        .times-row__detail {
+            grid-column: 1 / -1;
+            color: rgba(220, 228, 241, 0.58);
+            font-size: max(8px, calc(9px * var(--game-scale)));
+            font-variant-numeric: tabular-nums;
+        }
+
+        .times-row__bar {
+            grid-column: 1 / -1;
+            height: max(3px, calc(4px * var(--game-scale)));
+            margin-top: calc(3px * var(--game-scale));
+            overflow: hidden;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.07);
+        }
+
+        .times-row__bar span {
+            display: block;
+            height: 100%;
+            border-radius: inherit;
+            background: linear-gradient(90deg, #ffb347, #ffd76a);
+        }
+
         .trophy-shelf {
             margin-top: calc(14px * var(--game-scale));
             text-align: left;
@@ -3329,6 +3422,19 @@
                         <button
                             class="menu-button menu-button--puzzle-mode"
                             type="button"
+                            data-action="times"
+                            aria-label="Open the time ledger"
+                        >
+                            <span class="puzzle-mode-entry__icon" aria-hidden="true">⏱</span>
+                            <span class="puzzle-mode-entry__copy">
+                                <strong>Time Owed</strong>
+                                <small id="timesEntryNote">Which shaft is worth running again</small>
+                            </span>
+                            <span class="puzzle-mode-entry__arrow" aria-hidden="true">→</span>
+                        </button>
+                        <button
+                            class="menu-button menu-button--puzzle-mode"
+                            type="button"
                             data-action="trophies"
                             aria-label="Open the trophy cabinet"
                         >
@@ -3453,6 +3559,30 @@
                 </div>
             </section>
 
+
+            <section
+                id="screenTimes"
+                class="screen screen--gallery"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="timesTitle"
+                aria-describedby="timesCopy"
+                hidden
+            >
+                <div class="screen-panel screen-panel--gallery">
+                    <p class="eyebrow">The ledger</p>
+                    <h2 id="timesTitle">Time Owed</h2>
+                    <p id="timesCopy" class="screen-copy">
+                        Every shaft, worst debt first. The top of this list is
+                        the one worth running again.
+                    </p>
+                    <p id="timesTotal" class="campaign-progress"></p>
+                    <div id="timesRows" class="times-rows"></div>
+                    <button class="menu-button gallery-back" type="button" data-action="menu">
+                        Back to the levels
+                    </button>
+                </div>
+            </section>
 
             <section
                 id="screenTrophies"
