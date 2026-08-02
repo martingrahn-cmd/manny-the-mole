@@ -1364,7 +1364,8 @@
            stack them on top of each other. */
         .trophy-toast {
             position: absolute;
-            top: calc(58px * var(--game-scale));
+            /* the same rail the game's own toast runs on */
+            bottom: calc(15px * var(--game-scale));
             left: 50%;
             z-index: 8;
             display: flex;
@@ -1406,8 +1407,14 @@
             white-space: nowrap;
         }
 
+        /* A warning owns the rail while it is up, so a trophy struck at
+           the same moment steps above it rather than landing on it. */
+        #gameToast:not([hidden]) ~ .trophy-toast {
+            bottom: calc(56px * var(--game-scale));
+        }
+
         @keyframes trophy-toast-in {
-            from { opacity: 0; transform: translateX(-50%) translateY(calc(-8px * var(--game-scale))); }
+            from { opacity: 0; transform: translateX(-50%) translateY(calc(10px * var(--game-scale))); }
             to { opacity: 1; transform: translateX(-50%) translateY(0); }
         }
 
