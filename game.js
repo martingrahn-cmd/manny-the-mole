@@ -1869,9 +1869,9 @@ class GameUI {
     }
 
     /**
-     * The wire bank. One row of terminals you dial and cut, a log of what
-     * the tester said about every previous cut, and whatever the variant
-     * is counting down — cuts, seconds or probes.
+     * The wire bank. Terminals the tester clamped are settled and read as
+     * bolted down; the live ones are the only thing still to solve, which
+     * is the whole reason this variant suits a game about digging.
      */
     renderWiresPuzzle(state) {
         const failed = state.phase === 'failed';
@@ -1889,6 +1889,7 @@ class GameUI {
         bank.className = 'puzzle-wires__bank';
         state.bank.forEach((colorIndex, index) => {
             const swatch = state.palette[colorIndex];
+            const clamped = state.clamped[index];
             const button = document.createElement('button');
             button.type = 'button';
             button.className = 'puzzle-wire';
@@ -1896,14 +1897,13 @@ class GameUI {
             button.dataset.value = index.toString();
             button.style.setProperty('--wire', swatch.color);
             button.style.setProperty('--wire-light', swatch.light);
-            button.classList.toggle('is-known', state.probes[index] !== null);
+            button.classList.toggle('is-known', clamped);
             button.classList.toggle('is-selected', state.selected === index);
-            button.disabled = failed || state.solved ||
-                state.probes[index] !== null;
+            button.disabled = failed || state.solved || clamped;
             button.setAttribute(
                 'aria-label',
                 `Terminal ${index + 1}, ${swatch.name}` +
-                (state.probes[index] !== null ? ', confirmed' : ', press to change')
+                (clamped ? ', clamped' : ', press to change')
             );
             const label = document.createElement('span');
             label.className = 'puzzle-wire__label';
@@ -1916,22 +1916,25 @@ class GameUI {
         if (state.attempts.length) {
             const log = document.createElement('div');
             log.className = 'puzzle-wires__log';
-            // newest at the top: the last cut is the one being reasoned from
             [...state.attempts].reverse().forEach(attempt => {
                 const row = document.createElement('div');
                 row.className = 'puzzle-wires__attempt';
                 const marks = document.createElement('span');
                 marks.className = 'puzzle-wires__marks';
-                attempt.bank.forEach(colorIndex => {
+                attempt.bank.forEach((colorIndex, index) => {
                     const dot = document.createElement('i');
                     dot.style.background = state.palette[colorIndex].color;
+                    // a hit is ringed, so the row reads as a picture of
+                    // what held rather than a number to interpret
+                    dot.classList.toggle('is-hit', attempt.hits[index]);
                     marks.append(dot);
                 });
                 const score = document.createElement('span');
                 score.className = 'puzzle-wires__score';
-                score.innerHTML =
-                    `<b>${attempt.exact}</b> in place · ` +
-                    `<em>${attempt.misplaced}</em> wrong slot`;
+                const hits = attempt.hits.filter(Boolean).length;
+                score.innerHTML = hits === 0 ?
+                    'nothing held' :
+                    `<b>${hits}</b> held`;
                 row.append(marks, score);
                 log.append(row);
             });
@@ -1946,19 +1949,13 @@ class GameUI {
                 'Try again', 'puzzle-reset', { primary: true }
             ));
         } else if (!state.solved) {
-            if (state.type === 'wires-probe') {
-                const button = this.createPuzzleButton(
-                    `Probe terminal ${state.selected + 1}`,
-                    'puzzle-probe'
-                );
-                button.dataset.value = state.selected.toString();
-                button.disabled = state.probesLeft <= 0 ||
-                    state.probes[state.selected] !== null;
-                this.puzzleActions.append(button);
-            }
-            this.puzzleActions.append(this.createPuzzleButton(
+            const cut = this.createPuzzleButton(
                 'Cut', 'puzzle-cut', { primary: true }
-            ));
+            );
+            // pressing Cut on a bank you have not touched would spend a
+            // cut to learn what the log already says
+            cut.disabled = !this.game.safePuzzle.canCutWires(state);
+            this.puzzleActions.append(cut);
             this.puzzleActions.append(
                 this.createPuzzleButton('Reset bank', 'puzzle-reset')
             );
@@ -1966,23 +1963,11 @@ class GameUI {
         this.appendPuzzleCloseButton(state);
     }
 
-    /** The only part of the bank that changes between revisions. */
     syncWiresGauge(state) {
         if (!this.wiresGauge) return;
-        if (state.type === 'wires-live') {
-            const left = Math.max(0, state.timeLeft);
-            this.wiresGauge.textContent = `${left.toFixed(1)}s on the charge`;
-            this.wiresGauge.classList.toggle('is-critical', left <= 10);
-            return;
-        }
-        if (state.type === 'wires-probe') {
-            this.wiresGauge.textContent =
-                `${state.probesLeft} probe${state.probesLeft === 1 ? '' : 's'} · ` +
-                `${state.cutsLeft} cut${state.cutsLeft === 1 ? '' : 's'}`;
-            this.wiresGauge.classList.toggle('is-critical', state.cutsLeft <= 1);
-            return;
-        }
+        const clamped = state.clamped.filter(Boolean).length;
         this.wiresGauge.textContent =
+            `${clamped}/${state.answer.length} clamped · ` +
             `${state.cutsLeft} cut${state.cutsLeft === 1 ? '' : 's'} left`;
         this.wiresGauge.classList.toggle('is-critical', state.cutsLeft <= 1);
     }
@@ -2358,11 +2343,7 @@ class GameUI {
 
         if (state.type === 'pipes') {
             this.syncPipesFlow(state);
-        } else if (state.type === 'wires-live') {
-            // the charge burns down between revisions, so the gauge is
-            // refreshed every frame rather than only on a state change
-            this.syncWiresGauge(state);
-        }
+                }
     }
 
     sync(game) {

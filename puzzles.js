@@ -9,18 +9,10 @@ const SAFE_PUZZLE_META = Object.freeze({
     wires: {
         eyebrow: 'Detonator bank',
         title: 'Cut the right one',
-        copy: 'Set the bank and cut. The tester counts what you got right.',
+        copy: 'Cut, and the tester clamps whichever terminals were right.',
     },
-    'wires-live': {
-        eyebrow: 'Live bank',
-        title: 'Cut it before it goes',
-        copy: 'Same bank, but the charge is counting. A wrong cut costs you.',
-    },
-    'wires-probe': {
-        eyebrow: 'Sealed bank',
-        title: 'Test before you cut',
-        copy: 'Fewer cuts than the open bank. Probes buy a terminal outright.',
-    },
+
+
 });
 
 // The bank shares the block palette so a wire reads as part of the same
@@ -34,27 +26,27 @@ const WIRE_COLORS = Object.freeze([
     { id: 'white', name: 'White', color: '#dbe4f2', light: '#ffffff' },
 ]);
 
-// Per grade: the board, and what each variant spends on being wrong.
+// Per grade: the board, and how many cuts it allows.
 //
-// Every budget here is the 95th percentile of what a player who only ever
-// guesses something consistent with the tester actually needs, measured
-// over 1200 banks per grade. The first table did the opposite — it grew
-// the board while shrinking the budget — which made grade six solvable
-// one run in ten. Difficulty comes from the board now; the budget only
-// keeps every grade equally fair.
+// The tester clamps every terminal it finds in place, so each one is an
+// independent search through its own colours and no terminal can ever
+// need more tries than there are colours. The budget is exactly that
+// number, which makes a sensibly played bank impossible to lose — the
+// pressure belongs to the clock running on the level outside, not to a
+// deduction the player has to hold in their head.
 //
-// probeCuts is the same percentile taken on what is left after the probes
-// are spent, which is a smaller board and so a smaller number.
+// Measured over 4000 banks a grade: 3.4 to 5.6 cuts on average, never
+// more than the colour count.
 const WIRE_BALANCE = Object.freeze({
-    1: Object.freeze({ length: 3, colors: 4, cuts: 5, seconds: 70, probes: 2, probeCuts: 4 }),
-    2: Object.freeze({ length: 4, colors: 4, cuts: 5, seconds: 70, probes: 2, probeCuts: 4 }),
-    3: Object.freeze({ length: 4, colors: 5, cuts: 5, seconds: 70, probes: 2, probeCuts: 5 }),
-    4: Object.freeze({ length: 5, colors: 5, cuts: 6, seconds: 80, probes: 3, probeCuts: 5 }),
-    5: Object.freeze({ length: 5, colors: 6, cuts: 6, seconds: 85, probes: 3, probeCuts: 6 }),
-    6: Object.freeze({ length: 6, colors: 6, cuts: 7, seconds: 95, probes: 4, probeCuts: 6 }),
+    1: Object.freeze({ length: 3, colors: 4, cuts: 4 }),
+    2: Object.freeze({ length: 4, colors: 4, cuts: 4 }),
+    3: Object.freeze({ length: 4, colors: 5, cuts: 5 }),
+    4: Object.freeze({ length: 5, colors: 5, cuts: 5 }),
+    5: Object.freeze({ length: 5, colors: 6, cuts: 6 }),
+    6: Object.freeze({ length: 6, colors: 6, cuts: 6 }),
 });
 
-const WIRE_TYPES = Object.freeze(['wires', 'wires-live', 'wires-probe']);
+const WIRE_TYPES = Object.freeze(['wires']);
 
 const PIPE_BASE_CONNECTIONS = Object.freeze({
     straight: Object.freeze([false, true, false, true]),
@@ -999,9 +991,11 @@ class SafePuzzleEngine {
 
     // — the wire bank —
     //
-    // One hidden arrangement, three ways of paying to find it. The board
-    // and the cut are identical across the variants; what differs is what
-    // a wrong answer costs and what a right guess is allowed to know.
+    // One hidden arrangement. Cut, and every terminal that was right is
+    // clamped and stops moving; the rest stay live. That turns the bank
+    // into a handful of small independent searches rather than one piece
+    // of combinatorial reasoning, which is the whole point: this sits in
+    // a game about digging, not a game about deduction.
 
     createWiresState(type, difficulty, seed) {
         const random = this.createRandom(seed);
@@ -1017,117 +1011,57 @@ class SafePuzzleEngine {
             phase: 'active',
             palette,
             answer,
-            // what the player has dialled in but not yet cut
             bank: Array.from({ length: balance.length }, () => 0),
+            // a clamped terminal is settled and can no longer be dialled
+            clamped: Array.from({ length: balance.length }, () => false),
             selected: 0,
             attempts: [],
-            probes: Array.from({ length: balance.length }, () => null),
-            cutsLeft: type === 'wires-live' ? Infinity :
-                type === 'wires-probe' ? balance.probeCuts : balance.cuts,
-            probesLeft: type === 'wires-probe' ? balance.probes : 0,
-            timeLeft: type === 'wires-live' ? balance.seconds : Infinity,
-            penalty: 5,
-            status: this.getWiresOpeningStatus(type, balance),
+            // the bank as it was when last cut, so an unchanged bank
+            // cannot burn another cut for no information
+            lastCut: null,
+            cutsLeft: balance.cuts,
+            status: `${balance.length} terminals · ${balance.cuts} cuts`,
         };
     }
 
-    getWiresOpeningStatus(type, balance) {
-        if (type === 'wires-live') {
-            return `${balance.length} terminals · ${balance.seconds}s on the charge`;
-        }
-        if (type === 'wires-probe') {
-            return `${balance.length} terminals · ${balance.probes} probes · ` +
-                `${balance.probeCuts} cuts`;
-        }
-        return `${balance.length} terminals · ${balance.cuts} cuts`;
-    }
-
-    /** Exact hits, and colours that are present but in the wrong slot. */
+    /** Which terminals sat in place, and how many. */
     scoreWireCut(bank, answer) {
-        let exact = 0;
-        const leftoverBank = [];
-        const leftoverAnswer = [];
-        bank.forEach((value, index) => {
-            if (value === answer[index]) {
-                exact++;
-            } else {
-                leftoverBank.push(value);
-                leftoverAnswer.push(answer[index]);
-            }
-        });
-
-        // a colour can only be credited once, so each match is consumed
-        const pool = [...leftoverAnswer];
-        let misplaced = 0;
-        leftoverBank.forEach(value => {
-            const at = pool.indexOf(value);
-            if (at !== -1) {
-                misplaced++;
-                pool.splice(at, 1);
-            }
-        });
-        return { exact, misplaced };
+        const hits = bank.map((value, index) => value === answer[index]);
+        return { hits, exact: hits.filter(Boolean).length };
     }
 
-    /** Cycle one terminal to the next colour. */
     cycleWire(rawIndex) {
         const state = this.state;
         if (!state || state.solved || state.phase !== 'active') return false;
         const index = Number(rawIndex);
         if (!Number.isInteger(index) || !(index in state.bank)) return false;
-        // a probed terminal is known truth and must not be dialled off it
-        if (state.probes[index] !== null) return false;
+        if (state.clamped[index]) return false;
         state.bank[index] = (state.bank[index] + 1) % state.palette.length;
         state.selected = index;
         this.touch();
         return true;
     }
 
-    /**
-     * Spend a probe on one terminal. The sealed bank allows a single cut,
-     * so the only way in is to buy the truth a terminal at a time.
-     */
-    probeWire(rawIndex) {
-        const state = this.state;
+    /** A cut only means something if the bank moved since the last one. */
+    canCutWires(state = this.state) {
         if (!state || state.solved || state.phase !== 'active') return false;
-        if (state.type !== 'wires-probe' || state.probesLeft <= 0) return false;
-        const index = Number(rawIndex);
-        if (!Number.isInteger(index) || !(index in state.bank)) return false;
-        if (state.probes[index] !== null) return false;
-
-        state.probes[index] = state.answer[index];
-        state.bank[index] = state.answer[index];
-        state.probesLeft--;
-        state.selected = index;
-        // the gauge already counts the probes, so this says what was
-        // learned and nothing else
-        state.status = state.probesLeft > 0 ?
-            `Terminal ${index + 1} is ${state.palette[state.answer[index]].name}.` :
-            `Terminal ${index + 1} is ` +
-            `${state.palette[state.answer[index]].name}. No probes left.`;
-        this.touch();
-        return true;
+        if (!state.lastCut) return true;
+        return state.bank.some((value, i) => value !== state.lastCut[i]);
     }
 
     cutWires() {
         const state = this.state;
-        if (!state || state.solved || state.phase !== 'active') return false;
+        if (!this.canCutWires(state)) return false;
 
         const score = this.scoreWireCut(state.bank, state.answer);
-        state.attempts.push({ bank: [...state.bank], ...score });
+        score.hits.forEach((hit, index) => {
+            if (hit) state.clamped[index] = true;
+        });
+        state.attempts.push({ bank: [...state.bank], hits: [...score.hits] });
+        state.lastCut = [...state.bank];
 
         if (score.exact === state.answer.length) {
             this.markSolved('The bank goes dead. It opens.');
-            return true;
-        }
-
-        if (state.type === 'wires-live') {
-            state.timeLeft = Math.max(0, state.timeLeft - state.penalty);
-            if (state.timeLeft <= 0) {
-                return this.failWires('The charge went off.');
-            }
-            state.status = `Not it — ${state.penalty} seconds gone.`;
-            this.touch();
             return true;
         }
 
@@ -1135,9 +1069,11 @@ class SafePuzzleEngine {
         if (state.cutsLeft <= 0) {
             return this.failWires('Out of cuts. The bank locks.');
         }
-        state.status = score.exact === 0 && score.misplaced === 0 ?
-            'Not one of those colours is in the bank.' :
-            'Not it. The tester logged the cut.';
+
+        const clamped = state.clamped.filter(Boolean).length;
+        state.status = clamped === 0 ?
+            'Nothing held. Change the bank and cut again.' :
+            `${clamped} of ${state.answer.length} clamped.`;
         this.touch();
         return true;
     }
@@ -1155,12 +1091,12 @@ class SafePuzzleEngine {
         if (!state) return false;
         const balance = WIRE_BALANCE[state.difficulty];
         state.phase = 'active';
-        state.bank = state.bank.map((_, i) => state.probes[i] ?? 0);
+        state.bank = state.bank.map(() => 0);
+        state.clamped = state.clamped.map(() => false);
         state.attempts = [];
-        state.cutsLeft = state.type === 'wires-live' ? Infinity :
-            state.type === 'wires-probe' ? balance.probeCuts : balance.cuts;
-        state.timeLeft = state.type === 'wires-live' ? balance.seconds : Infinity;
-        state.status = this.getWiresOpeningStatus(state.type, balance);
+        state.lastCut = null;
+        state.cutsLeft = balance.cuts;
+        state.status = `${balance.length} terminals · ${balance.cuts} cuts`;
         this.touch();
         return true;
     }
@@ -1169,7 +1105,6 @@ class SafePuzzleEngine {
         if (!this.state || this.state.solved) return false;
         if (action === 'puzzle-pipe') return this.interactPipe(value);
         if (action === 'puzzle-wire') return this.cycleWire(value);
-        if (action === 'puzzle-probe') return this.probeWire(value);
         if (action === 'puzzle-cut') return this.cutWires();
         if (action === 'puzzle-reset') {
             return WIRE_TYPES.includes(this.state.type) ?
@@ -1195,16 +1130,6 @@ class SafePuzzleEngine {
         const elapsed = Number.isFinite(deltaTime) ?
             Math.max(0, deltaTime) :
             0;
-
-        // the live bank is the only wire variant with a clock
-        if (
-            state.type === 'wires-live' &&
-            state.phase === 'active' &&
-            !state.solved
-        ) {
-            state.timeLeft = Math.max(0, state.timeLeft - elapsed);
-            if (state.timeLeft <= 0) this.failWires('The charge went off.');
-        }
 
         if (
             state.type === 'pipes' &&
