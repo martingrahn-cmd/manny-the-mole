@@ -1019,6 +1019,9 @@ class SafePuzzleEngine {
             // the bank as it was when last cut, so an unchanged bank
             // cannot burn another cut for no information
             lastCut: null,
+            // one free clamp per bank: enough to unstick a player who
+            // cannot see it, too few to solve the bank with
+            hintsLeft: 1,
             cutsLeft: balance.cuts,
             status: `${balance.length} terminals · ${balance.cuts} cuts`,
         };
@@ -1078,6 +1081,40 @@ class SafePuzzleEngine {
         return true;
     }
 
+    /**
+     * The tester gives one terminal away. It takes the one the player has
+     * their finger on, because the whole value of a hint is being able to
+     * point at the terminal you are stuck on rather than being handed a
+     * different one.
+     */
+    hintWire() {
+        const state = this.state;
+        if (!state || state.solved || state.phase !== 'active') return false;
+        if (state.hintsLeft <= 0) return false;
+
+        const index = state.clamped[state.selected] ?
+            state.clamped.findIndex(clamped => !clamped) :
+            state.selected;
+        if (index === -1) return false;
+
+        state.bank[index] = state.answer[index];
+        state.clamped[index] = true;
+        state.hintsLeft--;
+        state.selected = index;
+        state.status =
+            `Terminal ${index + 1} is ` +
+            `${state.palette[state.answer[index]].name}. Clamped.`;
+
+        // handing over the last one should open the bank, not leave the
+        // player pressing Cut on a finished answer
+        if (state.clamped.every(Boolean)) {
+            this.markSolved('The bank goes dead. It opens.');
+            return true;
+        }
+        this.touch();
+        return true;
+    }
+
     failWires(message) {
         const state = this.state;
         state.phase = 'failed';
@@ -1095,6 +1132,7 @@ class SafePuzzleEngine {
         state.clamped = state.clamped.map(() => false);
         state.attempts = [];
         state.lastCut = null;
+        state.hintsLeft = 1;
         state.cutsLeft = balance.cuts;
         state.status = `${balance.length} terminals · ${balance.cuts} cuts`;
         this.touch();
@@ -1106,6 +1144,7 @@ class SafePuzzleEngine {
         if (action === 'puzzle-pipe') return this.interactPipe(value);
         if (action === 'puzzle-wire') return this.cycleWire(value);
         if (action === 'puzzle-cut') return this.cutWires();
+        if (action === 'puzzle-hint') return this.hintWire();
         if (action === 'puzzle-reset') {
             return WIRE_TYPES.includes(this.state.type) ?
                 this.resetWires() :

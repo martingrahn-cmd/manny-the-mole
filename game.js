@@ -1949,6 +1949,12 @@ class GameUI {
                 'Try again', 'puzzle-reset', { primary: true }
             ));
         } else if (!state.solved) {
+            if (state.hintsLeft > 0) {
+                this.puzzleActions.append(this.createPuzzleButton(
+                    `Tester hint · terminal ${state.selected + 1}`,
+                    'puzzle-hint'
+                ));
+            }
             const cut = this.createPuzzleButton(
                 'Cut', 'puzzle-cut', { primary: true }
             );
@@ -1968,7 +1974,8 @@ class GameUI {
         const clamped = state.clamped.filter(Boolean).length;
         this.wiresGauge.textContent =
             `${clamped}/${state.answer.length} clamped · ` +
-            `${state.cutsLeft} cut${state.cutsLeft === 1 ? '' : 's'} left`;
+            `${state.cutsLeft} cut${state.cutsLeft === 1 ? '' : 's'} left` +
+            (state.hintsLeft > 0 ? ' · 1 hint' : '');
         this.wiresGauge.classList.toggle('is-critical', state.cutsLeft <= 1);
     }
 
