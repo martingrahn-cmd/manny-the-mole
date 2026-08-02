@@ -998,6 +998,142 @@
             margin-top: calc(14px * var(--game-scale));
         }
 
+
+        /* The wire bank. Terminals are the only bright thing on the
+           panel, because choosing one is the whole interaction. */
+        .puzzle-wires {
+            display: grid;
+            gap: calc(11px * var(--game-scale));
+            justify-items: center;
+        }
+
+        .puzzle-wires__gauge {
+            margin: 0;
+            color: rgba(226, 231, 242, 0.66);
+            font-size: max(9px, calc(10px * var(--game-scale)));
+            font-weight: 720;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .puzzle-wires__gauge.is-critical {
+            color: #ff8a99;
+        }
+
+        .puzzle-wires__bank {
+            display: flex;
+            gap: calc(7px * var(--game-scale));
+            justify-content: center;
+        }
+
+        .puzzle-wire {
+            position: relative;
+            width: calc(38px * var(--game-scale));
+            min-width: 30px;
+            height: calc(76px * var(--game-scale));
+            min-height: 62px;
+            padding: 0;
+            overflow: hidden;
+            border: max(1px, calc(2px * var(--game-scale))) solid rgba(255, 255, 255, 0.16);
+            border-radius: calc(8px * var(--game-scale));
+            background:
+                linear-gradient(180deg, var(--wire-light), var(--wire) 42%, var(--wire) 100%);
+            box-shadow:
+                inset 0 calc(2px * var(--game-scale)) rgba(255, 255, 255, 0.32),
+                inset 0 calc(-8px * var(--game-scale)) calc(14px * var(--game-scale)) rgba(0, 0, 0, 0.35),
+                0 calc(5px * var(--game-scale)) calc(14px * var(--game-scale)) rgba(0, 0, 0, 0.34);
+            cursor: pointer;
+            transition: transform 140ms ease, border-color 140ms ease;
+        }
+
+        .puzzle-wire:hover:not(:disabled),
+        .puzzle-wire:focus-visible {
+            border-color: rgba(255, 255, 255, 0.72);
+            transform: translateY(calc(-2px * var(--game-scale)));
+        }
+
+        .puzzle-wire.is-selected {
+            border-color: #8ee9ff;
+        }
+
+        /* A probed terminal is settled truth, so it reads as clamped
+           down rather than merely disabled. */
+        .puzzle-wire.is-known {
+            cursor: default;
+        }
+
+        .puzzle-wire.is-known::after {
+            position: absolute;
+            inset: 0;
+            content: "";
+            border: max(2px, calc(3px * var(--game-scale))) solid rgba(10, 14, 22, 0.72);
+            border-radius: inherit;
+            box-shadow: inset 0 0 0 max(1px, calc(1px * var(--game-scale))) rgba(255, 255, 255, 0.4);
+        }
+
+        .puzzle-wire:disabled:not(.is-known) {
+            opacity: 0.55;
+            cursor: not-allowed;
+        }
+
+        .puzzle-wire__label {
+            position: absolute;
+            bottom: calc(4px * var(--game-scale));
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(6, 10, 16, 0.72);
+            font: 900 max(9px, calc(11px * var(--game-scale))) / 1 ui-monospace, monospace;
+        }
+
+        .puzzle-wires__log {
+            display: grid;
+            gap: calc(4px * var(--game-scale));
+            width: 100%;
+            max-height: calc(124px * var(--game-scale));
+            overflow-y: auto;
+            scrollbar-color: rgba(115, 232, 246, 0.32) transparent;
+            scrollbar-width: thin;
+        }
+
+        .puzzle-wires__attempt {
+            display: flex;
+            gap: calc(9px * var(--game-scale));
+            align-items: center;
+            justify-content: space-between;
+            padding: calc(4px * var(--game-scale)) calc(8px * var(--game-scale));
+            border-radius: calc(7px * var(--game-scale));
+            background: rgba(255, 255, 255, 0.045);
+        }
+
+        .puzzle-wires__marks {
+            display: flex;
+            gap: calc(3px * var(--game-scale));
+        }
+
+        .puzzle-wires__marks i {
+            width: calc(11px * var(--game-scale));
+            min-width: 9px;
+            height: calc(11px * var(--game-scale));
+            min-height: 9px;
+            border-radius: 3px;
+            box-shadow: inset 0 1px rgba(255, 255, 255, 0.4);
+        }
+
+        .puzzle-wires__score {
+            color: rgba(220, 228, 241, 0.62);
+            font-size: max(8px, calc(9px * var(--game-scale)));
+            white-space: nowrap;
+        }
+
+        .puzzle-wires__score b {
+            color: #8df0bd;
+        }
+
+        .puzzle-wires__score em {
+            color: #ffd76a;
+            font-style: normal;
+        }
+
         .puzzle-mode-card {
             --puzzle-accent: #73e8f6;
             --puzzle-accent-rgb: 115, 232, 246;
@@ -1018,6 +1154,21 @@
         .puzzle-mode-card[data-puzzle="pipes"] {
             --puzzle-accent: #6af0b5;
             --puzzle-accent-rgb: 106, 240, 181;
+        }
+
+        .puzzle-mode-card[data-puzzle="wires"] {
+            --puzzle-accent: #ffd76a;
+            --puzzle-accent-rgb: 255, 215, 106;
+        }
+
+        .puzzle-mode-card[data-puzzle="wires-live"] {
+            --puzzle-accent: #ff8a99;
+            --puzzle-accent-rgb: 255, 138, 153;
+        }
+
+        .puzzle-mode-card[data-puzzle="wires-probe"] {
+            --puzzle-accent: #9db4ff;
+            --puzzle-accent-rgb: 157, 180, 255;
         }
 
         .level-card__find {
@@ -3532,6 +3683,159 @@
                                         <small>The current splits and both outlets must be fed</small>
                                     </span>
                                     <span class="puzzle-grade-row__tag" aria-hidden="true">NYTT</span>
+                                </button>
+                            </div>
+                        </article>
+                        <article class="puzzle-mode-card" data-puzzle="wires">
+                            <span class="puzzle-mode-card__icon" aria-hidden="true">✂</span>
+                            <div class="puzzle-mode-card__copy">
+                                <h3>Cut the right one</h3>
+                                <p>Set the bank and cut. The tester counts what you got right.</p>
+                            </div>
+                            <div class="puzzle-grade-list" role="group" aria-label="Cut the right one, pick a grade">
+                                <button class="puzzle-grade-row" type="button" data-action="start-puzzle" data-puzzle="wires" data-difficulty="1" aria-label="Start wire bank, grade 1: 3 terminals · 4 colours, 6 cuts">
+                                    <span class="puzzle-grade-row__nr" aria-hidden="true">1</span>
+                                    <span class="puzzle-grade-row__main">
+                                        <strong>3 terminals · 4 colours</strong>
+                                        <small>6 cuts</small>
+                                    </span>
+                                </button>
+                                <button class="puzzle-grade-row" type="button" data-action="start-puzzle" data-puzzle="wires" data-difficulty="2" aria-label="Start wire bank, grade 2: 4 terminals · 4 colours, 6 cuts">
+                                    <span class="puzzle-grade-row__nr" aria-hidden="true">2</span>
+                                    <span class="puzzle-grade-row__main">
+                                        <strong>4 terminals · 4 colours</strong>
+                                        <small>6 cuts</small>
+                                    </span>
+                                </button>
+                                <button class="puzzle-grade-row" type="button" data-action="start-puzzle" data-puzzle="wires" data-difficulty="3" aria-label="Start wire bank, grade 3: 4 terminals · 5 colours, 5 cuts">
+                                    <span class="puzzle-grade-row__nr" aria-hidden="true">3</span>
+                                    <span class="puzzle-grade-row__main">
+                                        <strong>4 terminals · 5 colours</strong>
+                                        <small>5 cuts</small>
+                                    </span>
+                                </button>
+                                <button class="puzzle-grade-row" type="button" data-action="start-puzzle" data-puzzle="wires" data-difficulty="4" aria-label="Start wire bank, grade 4: 5 terminals · 5 colours, 5 cuts">
+                                    <span class="puzzle-grade-row__nr" aria-hidden="true">4</span>
+                                    <span class="puzzle-grade-row__main">
+                                        <strong>5 terminals · 5 colours</strong>
+                                        <small>5 cuts</small>
+                                    </span>
+                                </button>
+                                <button class="puzzle-grade-row" type="button" data-action="start-puzzle" data-puzzle="wires" data-difficulty="5" aria-label="Start wire bank, grade 5: 5 terminals · 6 colours, 4 cuts">
+                                    <span class="puzzle-grade-row__nr" aria-hidden="true">5</span>
+                                    <span class="puzzle-grade-row__main">
+                                        <strong>5 terminals · 6 colours</strong>
+                                        <small>4 cuts</small>
+                                    </span>
+                                </button>
+                                <button class="puzzle-grade-row" type="button" data-action="start-puzzle" data-puzzle="wires" data-difficulty="6" aria-label="Start wire bank, grade 6: 6 terminals · 6 colours, 4 cuts">
+                                    <span class="puzzle-grade-row__nr" aria-hidden="true">6</span>
+                                    <span class="puzzle-grade-row__main">
+                                        <strong>6 terminals · 6 colours</strong>
+                                        <small>4 cuts</small>
+                                    </span>
+                                </button>
+                            </div>
+                        </article>
+                        <article class="puzzle-mode-card" data-puzzle="wires-live">
+                            <span class="puzzle-mode-card__icon" aria-hidden="true">⏱</span>
+                            <div class="puzzle-mode-card__copy">
+                                <h3>Live bank</h3>
+                                <p>The same bank, but the charge is counting. A wrong cut costs eight seconds.</p>
+                            </div>
+                            <div class="puzzle-grade-list" role="group" aria-label="Live bank, pick a grade">
+                                <button class="puzzle-grade-row" type="button" data-action="start-puzzle" data-puzzle="wires-live" data-difficulty="1" aria-label="Start live bank, grade 1: 3 terminals · 4 colours, 60 s on the charge">
+                                    <span class="puzzle-grade-row__nr" aria-hidden="true">1</span>
+                                    <span class="puzzle-grade-row__main">
+                                        <strong>3 terminals · 4 colours</strong>
+                                        <small>60 s on the charge</small>
+                                    </span>
+                                </button>
+                                <button class="puzzle-grade-row" type="button" data-action="start-puzzle" data-puzzle="wires-live" data-difficulty="2" aria-label="Start live bank, grade 2: 4 terminals · 4 colours, 60 s on the charge">
+                                    <span class="puzzle-grade-row__nr" aria-hidden="true">2</span>
+                                    <span class="puzzle-grade-row__main">
+                                        <strong>4 terminals · 4 colours</strong>
+                                        <small>60 s on the charge</small>
+                                    </span>
+                                </button>
+                                <button class="puzzle-grade-row" type="button" data-action="start-puzzle" data-puzzle="wires-live" data-difficulty="3" aria-label="Start live bank, grade 3: 4 terminals · 5 colours, 50 s on the charge">
+                                    <span class="puzzle-grade-row__nr" aria-hidden="true">3</span>
+                                    <span class="puzzle-grade-row__main">
+                                        <strong>4 terminals · 5 colours</strong>
+                                        <small>50 s on the charge</small>
+                                    </span>
+                                </button>
+                                <button class="puzzle-grade-row" type="button" data-action="start-puzzle" data-puzzle="wires-live" data-difficulty="4" aria-label="Start live bank, grade 4: 5 terminals · 5 colours, 50 s on the charge">
+                                    <span class="puzzle-grade-row__nr" aria-hidden="true">4</span>
+                                    <span class="puzzle-grade-row__main">
+                                        <strong>5 terminals · 5 colours</strong>
+                                        <small>50 s on the charge</small>
+                                    </span>
+                                </button>
+                                <button class="puzzle-grade-row" type="button" data-action="start-puzzle" data-puzzle="wires-live" data-difficulty="5" aria-label="Start live bank, grade 5: 5 terminals · 6 colours, 45 s on the charge">
+                                    <span class="puzzle-grade-row__nr" aria-hidden="true">5</span>
+                                    <span class="puzzle-grade-row__main">
+                                        <strong>5 terminals · 6 colours</strong>
+                                        <small>45 s on the charge</small>
+                                    </span>
+                                </button>
+                                <button class="puzzle-grade-row" type="button" data-action="start-puzzle" data-puzzle="wires-live" data-difficulty="6" aria-label="Start live bank, grade 6: 6 terminals · 6 colours, 45 s on the charge">
+                                    <span class="puzzle-grade-row__nr" aria-hidden="true">6</span>
+                                    <span class="puzzle-grade-row__main">
+                                        <strong>6 terminals · 6 colours</strong>
+                                        <small>45 s on the charge</small>
+                                    </span>
+                                </button>
+                            </div>
+                        </article>
+                        <article class="puzzle-mode-card" data-puzzle="wires-probe">
+                            <span class="puzzle-mode-card__icon" aria-hidden="true">⌁</span>
+                            <div class="puzzle-mode-card__copy">
+                                <h3>Sealed bank</h3>
+                                <p>No second cut. Spend your probes to learn the bank, then commit once.</p>
+                            </div>
+                            <div class="puzzle-grade-list" role="group" aria-label="Sealed bank, pick a grade">
+                                <button class="puzzle-grade-row" type="button" data-action="start-puzzle" data-puzzle="wires-probe" data-difficulty="1" aria-label="Start sealed bank, grade 1: 3 terminals · 4 colours, 2 probes · one cut">
+                                    <span class="puzzle-grade-row__nr" aria-hidden="true">1</span>
+                                    <span class="puzzle-grade-row__main">
+                                        <strong>3 terminals · 4 colours</strong>
+                                        <small>2 probes · one cut</small>
+                                    </span>
+                                </button>
+                                <button class="puzzle-grade-row" type="button" data-action="start-puzzle" data-puzzle="wires-probe" data-difficulty="2" aria-label="Start sealed bank, grade 2: 4 terminals · 4 colours, 2 probes · one cut">
+                                    <span class="puzzle-grade-row__nr" aria-hidden="true">2</span>
+                                    <span class="puzzle-grade-row__main">
+                                        <strong>4 terminals · 4 colours</strong>
+                                        <small>2 probes · one cut</small>
+                                    </span>
+                                </button>
+                                <button class="puzzle-grade-row" type="button" data-action="start-puzzle" data-puzzle="wires-probe" data-difficulty="3" aria-label="Start sealed bank, grade 3: 4 terminals · 5 colours, 2 probes · one cut">
+                                    <span class="puzzle-grade-row__nr" aria-hidden="true">3</span>
+                                    <span class="puzzle-grade-row__main">
+                                        <strong>4 terminals · 5 colours</strong>
+                                        <small>2 probes · one cut</small>
+                                    </span>
+                                </button>
+                                <button class="puzzle-grade-row" type="button" data-action="start-puzzle" data-puzzle="wires-probe" data-difficulty="4" aria-label="Start sealed bank, grade 4: 5 terminals · 5 colours, 3 probes · one cut">
+                                    <span class="puzzle-grade-row__nr" aria-hidden="true">4</span>
+                                    <span class="puzzle-grade-row__main">
+                                        <strong>5 terminals · 5 colours</strong>
+                                        <small>3 probes · one cut</small>
+                                    </span>
+                                </button>
+                                <button class="puzzle-grade-row" type="button" data-action="start-puzzle" data-puzzle="wires-probe" data-difficulty="5" aria-label="Start sealed bank, grade 5: 5 terminals · 6 colours, 3 probes · one cut">
+                                    <span class="puzzle-grade-row__nr" aria-hidden="true">5</span>
+                                    <span class="puzzle-grade-row__main">
+                                        <strong>5 terminals · 6 colours</strong>
+                                        <small>3 probes · one cut</small>
+                                    </span>
+                                </button>
+                                <button class="puzzle-grade-row" type="button" data-action="start-puzzle" data-puzzle="wires-probe" data-difficulty="6" aria-label="Start sealed bank, grade 6: 6 terminals · 6 colours, 3 probes · one cut">
+                                    <span class="puzzle-grade-row__nr" aria-hidden="true">6</span>
+                                    <span class="puzzle-grade-row__main">
+                                        <strong>6 terminals · 6 colours</strong>
+                                        <small>3 probes · one cut</small>
+                                    </span>
                                 </button>
                             </div>
                         </article>
