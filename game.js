@@ -1077,6 +1077,17 @@ class GameUI {
             }
         });
 
+        // On iPhone inside the artifact frame, a downward dig drag that
+        // starts on the letterbox around the game becomes a page pan,
+        // and the host app reads that as pull-to-dismiss — the game
+        // closes mid-dig. CSS touch-action covers the modern path; this
+        // is the hard stop for the in-app webviews that ignore it. The
+        // menus keep their scrolling: anything inside a .screen is theirs.
+        document.addEventListener('touchmove', event => {
+            if (event.target?.closest?.('.screen')) return;
+            if (event.cancelable) event.preventDefault();
+        }, { passive: false });
+
         document.addEventListener('keydown', event => {
             if (this.handlePuzzleShortcut(event)) return;
             this.handleMenuKeydown(event);
