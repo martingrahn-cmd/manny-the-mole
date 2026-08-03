@@ -837,6 +837,17 @@ class ArcadeSound {
         this.playTone(300, 105, 0.24, 0.042, 'sine', 0.02);
     }
 
+    /**
+     * Bedrock refusing the drill. The X-block borrows the hard-drill
+     * voice and then breaks, so bedrock cannot share it — this is a dead
+     * clank with no bite in it, the sound of a tool that is wrong.
+     */
+    playBedrockClank() {
+        if (this.playSample('bedrock-clank', { volume: 0.5 })) return;
+        this.playTone(1150, 760, 0.05, 0.034, 'square');
+        this.playTone(190, 130, 0.09, 0.028, 'triangle', 0.01);
+    }
+
     playCrush() {
         if (this.playSample('crush', { volume: 0.8 })) return;
         this.playTone(92, 28, 0.24, 0.085, 'sawtooth');
@@ -2707,6 +2718,8 @@ class Game {
         this.oxygen = 100;
         this.airWarningTimer = 0;
         this.airTaxFlash = 0;
+        this.bedrockGrindCount = 0;
+        this.bedrockHintShown = false;
         this.maxOxygen = 100;
         this.score = 0;
         this.depth = 0;
@@ -3674,6 +3687,7 @@ class Game {
                 didDig || targetIsSolid || targetIsUpwardItem;
 
             if (didDig) {
+                this.bedrockGrindCount = 0;
                 if (p.facing === 'left' || p.facing === 'right') {
                     this.hasSideDrilled = true;
                 }
@@ -3687,9 +3701,21 @@ class Game {
                 );
                 this.spawnDigDebris(digX, digY, targetBlock);
             } else if (targetIsSolid) {
-                this.sound.playDrill(1, true);
+                this.sound.playBedrockClank();
                 this.screenShake = Math.max(this.screenShake, 2.5);
                 this.spawnDigDebris(digX, digY, BLOCK_TYPES.BEDROCK, 5);
+                // A player who does not know bedrock is undrillable will
+                // stand here grinding while the air runs out — the most
+                // likely place a new player bounces. Two strikes in a row
+                // earn the lesson, once per level.
+                this.bedrockGrindCount++;
+                if (this.bedrockGrindCount >= 2 && !this.bedrockHintShown) {
+                    this.bedrockHintShown = true;
+                    this.showWarningMessage(
+                        'Bedrock — the drill won\'t bite. Dig around it.',
+                        2.8
+                    );
+                }
             }
             return;
         }
@@ -5760,6 +5786,8 @@ class Game {
         this.oxygen = level.start.oxygen ?? 100;
         this.airWarningTimer = 0;
         this.airTaxFlash = 0;
+        this.bedrockGrindCount = 0;
+        this.bedrockHintShown = false;
         this.toppedUpThisLevel = false;
         this.score = score;
         this.depth = 0;
