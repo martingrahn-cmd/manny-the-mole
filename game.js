@@ -2599,7 +2599,9 @@ class GameUI {
         this.sideDrillHint.hidden = !showSideDrillHint;
         this.countdown.hidden = game.gameState !== 'countdown';
         if (game.gameState === 'countdown') {
-            this.countdown.textContent = Math.max(1, game.countdownNumber).toString();
+            this.countdown.textContent = game.countdownQuick ?
+                'GO!' :
+                Math.max(1, game.countdownNumber).toString();
         }
 
         const activeScreen = this.screens[game.gameState] || null;
@@ -3891,6 +3893,24 @@ class Game {
 
     openSafePuzzle() {
         if (!this.safe) return false;
+
+        // A lock you have already picked stays picked. On a replay the
+        // vault swings open at the touch, because the campaign lock is
+        // seeded by the level and re-executing a memorised solution was
+        // a toll on the very loop the medals promote. The dig clock
+        // freezes here either way, so no medal is affected.
+        if (this.isLevelCompleted(this.currentLevelIndex)) {
+            this.puzzleBonus = 200 + this.safe.difficulty * 100;
+            this.score += this.puzzleBonus;
+            this.sound.playClear(6 + this.safe.difficulty);
+            this.sound.playVaultFind();
+            this.recordCurrentLevelCompletion();
+            this.puzzleContext = null;
+            this.gameState = 'won';
+            this.clearKeyboardInput();
+            return true;
+        }
+
         this.puzzleContext = 'campaign';
         this.safePuzzle.start(
             this.safe.type,
@@ -5623,6 +5643,7 @@ class Game {
     }
 
     retryCurrentLevel() {
+        this.pendingQuickStart = true;
         this.loadLevel(this.currentLevelIndex, {
             score: this.levelStartScore,
             checkpoint: this.levelStartScore,
@@ -5802,8 +5823,16 @@ class Game {
         this.itemsByCell = new Map();
         this.reinforcedRoofCells = new Set();
         this.gameState = state;
-        this.countdownTimer = 0;
-        this.countdownNumber = 3;
+        // The full 3-2-1 belongs to a shaft you have never beaten. A
+        // retry or a medal replay gets one beat of GO — a fast-death
+        // game cannot charge 2.4 seconds at the door every time.
+        this.countdownQuick = state === 'countdown' && (
+            this.pendingQuickStart === true ||
+            this.isLevelCompleted(levelIndex)
+        );
+        this.pendingQuickStart = false;
+        this.countdownTimer = this.countdownQuick ? 0.25 : 0;
+        this.countdownNumber = this.countdownQuick ? 1 : 3;
         this.safePuzzle.clear();
         this.puzzleContext = null;
         this.safeContactArmed = true;
