@@ -47,13 +47,14 @@ The whole game is static files — no build step, no server, no dependencies.
 
 ## Credits
 
-- **Manny, his animations, and the vault loot** — hand-drawn by
+- **Manny and his animations** — hand-drawn by
   [**Alex_Greenfield**](https://www.reddit.com/user/Alex_Greenfield/).
   The mole is not generated; he has an author.
-- **Everything else** — code, level design, the lock puzzles, the trophy
-  and UI sprites, and the procedural sound — built with
-  [Claude Code](https://claude.com/claude-code) in an AI-assisted
-  workflow: hand-rolled canvas engine, no libraries, no game framework.
+- **Everything else** — code, level design, the lock puzzles, the vault
+  loot and title artwork, the trophy and UI sprites, and the procedural
+  sound — built with [Claude Code](https://claude.com/claude-code) in an
+  AI-assisted workflow: hand-rolled canvas engine, no libraries, no game
+  framework.
 
 ## Feedback
 
