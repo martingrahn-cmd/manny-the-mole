@@ -819,6 +819,24 @@ class ArcadeSound {
         this.playNoise(0.09, 0.018, 145);
     }
 
+    /**
+     * The low-air pulse: a soft sonar ping, because the air meter is the
+     * one clock a player watching the shaft never sees. Urgency shortens
+     * the interval upstream; here it only sharpens the voice a little.
+     */
+    playAirWarning(urgent = false) {
+        if (this.playSample(urgent ? 'air-low-urgent' : 'air-low', { volume: 0.5 })) return;
+        this.playTone(urgent ? 640 : 520, urgent ? 440 : 390, 0.11, 0.03, 'sine');
+        if (urgent) this.playTone(640, 440, 0.09, 0.024, 'sine', 0.16);
+    }
+
+    /** A heavy block eating twenty percent: a puncture, not a chime. */
+    playAirTax() {
+        if (this.playSample('air-tax', { volume: 0.55 })) return;
+        this.playNoise(0.18, 0.04, 760);
+        this.playTone(300, 105, 0.24, 0.042, 'sine', 0.02);
+    }
+
     playCrush() {
         if (this.playSample('crush', { volume: 0.8 })) return;
         this.playTone(92, 28, 0.24, 0.085, 'sawtooth');
@@ -2466,6 +2484,7 @@ class GameUI {
         this.air.textContent = `${Math.floor(game.oxygen)}%`;
         this.airFill.style.transform = `scaleX(${airPercent})`;
         this.airModule.classList.toggle('is-low', airPercent <= 0.25);
+        this.airModule.classList.toggle('is-taxed', game.airTaxFlash > 0);
 
         const deathPresentation = game.deathCause === 'crushed' ? {
             eyebrow: 'Cave-in',
@@ -2686,6 +2705,8 @@ class Game {
         };
         
         this.oxygen = 100;
+        this.airWarningTimer = 0;
+        this.airTaxFlash = 0;
         this.maxOxygen = 100;
         this.score = 0;
         this.depth = 0;
@@ -3287,6 +3308,7 @@ class Game {
         this.visualTime += deltaTime;
         this.screenShakePhase += deltaTime * 52;
         this.screenShake = Math.max(0, this.screenShake - deltaTime * 34);
+        this.airTaxFlash = Math.max(0, this.airTaxFlash - deltaTime);
 
         for (const xBlock of this.xBlocks) {
             xBlock.hitFlash = Math.max(0, xBlock.hitFlash - deltaTime);
@@ -4472,6 +4494,10 @@ class Game {
                 xBlock.destroyed = true;
                 this.grid[y][x] = BLOCK_TYPES.EMPTY;
                 this.oxygen = Math.max(0, this.oxygen - 20);
+                // the tax was silent at the moment of loss; now it
+                // punctures, and the air card flashes where the loss is
+                this.sound.playAirTax();
+                this.airTaxFlash = 0.7;
                 this.score += 50;
                 this.lastDigStrength = 3;
             }
@@ -5235,6 +5261,22 @@ class Game {
         if (this.oxygen <= 0) {
             this.oxygen = 0;
             this.triggerDeath('oxygen');
+            return;
+        }
+
+        // The audible half of the low-air card. Below a quarter tank the
+        // meter pings; below an eighth it pings urgently and often. The
+        // first ping lands the moment the line is crossed, not an
+        // interval later.
+        if (this.oxygen <= 25) {
+            this.airWarningTimer -= deltaTime;
+            if (this.airWarningTimer <= 0) {
+                const urgent = this.oxygen <= 12;
+                this.sound.playAirWarning(urgent);
+                this.airWarningTimer = urgent ? 1.15 : 2.4;
+            }
+        } else {
+            this.airWarningTimer = 0;
         }
     }
 
@@ -5716,6 +5758,8 @@ class Game {
         this.player = this.createPlayer(level.start);
 
         this.oxygen = level.start.oxygen ?? 100;
+        this.airWarningTimer = 0;
+        this.airTaxFlash = 0;
         this.toppedUpThisLevel = false;
         this.score = score;
         this.depth = 0;

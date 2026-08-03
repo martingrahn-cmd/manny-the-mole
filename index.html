@@ -249,6 +249,17 @@
             box-shadow: 0 0 calc(12px * var(--game-scale)) rgba(255, 75, 101, 0.55);
         }
 
+        /* The moment a heavy block eats twenty percent, the loss flashes
+           on the meter it came off — colour only, so reduced motion has
+           nothing to object to. */
+        .hud-card--air.is-taxed {
+            border-color: rgba(255, 173, 62, 0.72);
+        }
+
+        .hud-card--air.is-taxed .air-number {
+            color: #ffb35c;
+        }
+
         .icon-button {
             display: grid;
             width: calc(35px * var(--game-scale));
