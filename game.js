@@ -906,6 +906,7 @@ class GameUI {
         this.hud = document.getElementById('gameHud');
         this.level = document.getElementById('hudLevel');
         this.depth = document.getElementById('hudDepth');
+        this.time = document.getElementById('hudTime');
         this.score = document.getElementById('hudScore');
         this.air = document.getElementById('hudAir');
         this.airFill = document.getElementById('hudAirFill');
@@ -2362,6 +2363,35 @@ class GameUI {
         );
     }
 
+    /**
+     * The run clock, and the line it is racing. Every medal, the ledger
+     * and the finale are priced in seconds, but until now the run itself
+     * never showed one — a twelve-second gold was chased blind. The clock
+     * wears the colour of the medal still in reach and shows that medal's
+     * cutoff, so slipping past a line is visible the moment it happens.
+     */
+    syncRunClock(game) {
+        if (!this.time) return;
+        const level = game.currentLevel;
+        if (!level?.par) {
+            this.time.textContent = '';
+            return;
+        }
+
+        const elapsed = Math.max(0.01, game.levelElapsed);
+        const pace = medalForTime(level, elapsed);
+        const cutoff = pace === 'gold' ? level.par :
+            pace === 'silver' ? level.par * MEDAL_SILVER_FACTOR :
+                pace === 'bronze' ? level.par * MEDAL_BRONZE_FACTOR :
+                    null;
+
+        this.time.textContent = formatTime(elapsed) +
+            (cutoff !== null ? ' / ' + formatTime(cutoff) : '');
+        this.time.classList.toggle('is-gold', pace === 'gold');
+        this.time.classList.toggle('is-silver', pace === 'silver');
+        this.time.classList.toggle('is-bronze', pace === 'bronze');
+    }
+
     syncPuzzle(game) {
         const state = game.safePuzzle?.state;
         if (!state) {
@@ -2431,6 +2461,7 @@ class GameUI {
                 `${game.currentLevelIndex + 1}/${CAMPAIGN_LEVELS.length}`;
         }
         this.depth.textContent = Math.max(0, game.depth).toString();
+        this.syncRunClock(game);
         this.score.textContent = game.score.toString();
         this.air.textContent = `${Math.floor(game.oxygen)}%`;
         this.airFill.style.transform = `scaleX(${airPercent})`;
