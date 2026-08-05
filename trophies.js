@@ -313,7 +313,7 @@ class TrophyCabinet {
     load() {
         const fallback = { earned: {}, counters: { blocks: 0, crushes: 0 } };
         try {
-            const raw = window.localStorage?.getItem(TROPHY_STORAGE_KEY);
+            const raw = VaultStore.getItem(TROPHY_STORAGE_KEY);
             if (!raw) return fallback;
             const parsed = JSON.parse(raw);
             return {
@@ -335,7 +335,7 @@ class TrophyCabinet {
 
     save() {
         try {
-            window.localStorage?.setItem(TROPHY_STORAGE_KEY, JSON.stringify({
+            VaultStore.setItem(TROPHY_STORAGE_KEY, JSON.stringify({
                 earned: this.earned,
                 counters: this.counters,
             }));

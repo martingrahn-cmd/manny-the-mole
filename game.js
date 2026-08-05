@@ -40,6 +40,26 @@ const DRILL_ANIM_SPEED = 24;
 // most of a big break before a single frame had drawn it — and it culled
 // the oldest first, which is exactly the ones already in flight.
 const MAX_DEBRIS_PARTICLES = 240;
+
+// On CrazyGames the SDK's data module carries saves, so progress follows
+// the player's account instead of one browser's localStorage. Everywhere
+// else the fallback is exactly the old behaviour. The backend is chosen
+// per call, because the SDK finishes initialising after this file parses.
+const VaultStore = {
+    backend() {
+        const data = window.CrazyGames?.SDK?.data;
+        return data && typeof data.getItem === 'function' ?
+            data :
+            window.localStorage;
+    },
+    getItem(key) {
+        try { return this.backend()?.getItem(key) ?? null; } catch { return null; }
+    },
+    setItem(key, value) {
+        try { this.backend()?.setItem(key, value); } catch { /* storage blocked */ }
+    },
+};
+
 const PROGRESS_STORAGE_KEY = 'manny-the-mole:campaign-progress';
 const MUTE_STORAGE_KEY = 'manny-the-mole:muted';
 const PUZZLE_BEST_STORAGE_KEY = 'manny-the-mole:puzzle-bests';
@@ -589,6 +609,8 @@ class ArcadeSound {
         this.lastLandTime = -1;
         this.lastFallWarningTime = -1;
         this.muted = this.loadMuted();
+        // the platform's master mute, layered over the user's own
+        this.platformMuted = false;
         this.samples = new Map();
         this.samplesRequested = false;
         this.drillVariation = 0;
@@ -653,7 +675,7 @@ class ArcadeSound {
      * which is the caller's cue to play its own tone instead.
      */
     playSample(name, { volume = 1, rate = 1, delay = 0 } = {}) {
-        if (this.muted) return true;   // muted is handled, not un-played
+        if (this.muted || this.platformMuted) return true;   // handled, not un-played
         const context = this.unlock();
         if (!context) return true;
         const entry = this.samples.get(name);
@@ -672,7 +694,7 @@ class ArcadeSound {
 
     loadMuted() {
         try {
-            return window.localStorage?.getItem(MUTE_STORAGE_KEY) === '1';
+            return VaultStore.getItem(MUTE_STORAGE_KEY) === '1';
         } catch {
             return false;
         }
@@ -685,10 +707,7 @@ class ArcadeSound {
     setMuted(muted) {
         this.muted = Boolean(muted);
         try {
-            window.localStorage?.setItem(
-                MUTE_STORAGE_KEY,
-                this.muted ? '1' : '0'
-            );
+            VaultStore.setItem(MUTE_STORAGE_KEY, this.muted ? '1' : '0');
         } catch {
             // a browser with storage blocked still mutes, just not across visits
         }
@@ -700,7 +719,7 @@ class ArcadeSound {
     }
 
     unlock() {
-        if (this.muted) return null;
+        if (this.muted || this.platformMuted) return null;
         const AudioContextClass = window.AudioContext || window.webkitAudioContext;
         if (!AudioContextClass) return null;
 
@@ -2786,6 +2805,19 @@ class Game {
         this.progress = this.loadProgress();
         this.puzzleBests = this.loadPuzzleBests();
         this.lastPuzzleResult = null;
+        // The platform's own mute sits on top of the user's: their site
+        // button silences the game without touching the saved preference.
+        this.cgWasGameplay = false;
+        const cgGame = window.CrazyGames?.SDK?.game;
+        if (cgGame?.settings) {
+            const applyPlatform = settings => {
+                this.sound.platformMuted = settings?.muteAudio === true;
+            };
+            try {
+                applyPlatform(cgGame.settings);
+                cgGame.addSettingsChangeListener?.(applyPlatform);
+            } catch { /* platform optional, always */ }
+        }
         this.trophies = new TrophyCabinet(this);
         // set on the first air pocket of a run, so a level finished on the
         // air it started with can be told from one that was topped up
@@ -3182,6 +3214,20 @@ class Game {
     }
     
     update(deltaTime) {
+        // The platform hears every gameplay edge from one place, instead
+        // of a call scattered into each of the fifteen transitions.
+        const cgActive = this.gameState === 'playing' ||
+            this.gameState === 'countdown' ||
+            this.gameState === 'puzzle';
+        if (cgActive !== this.cgWasGameplay) {
+            this.cgWasGameplay = cgActive;
+            const cgGame = window.CrazyGames?.SDK?.game;
+            try {
+                if (cgActive) cgGame?.gameplayStart?.();
+                else cgGame?.gameplayStop?.();
+            } catch { /* platform optional */ }
+        }
+
         // Pumped here rather than in updateEffects: that runs at a
         // fraction of real time on the menus and not at all on the win
         // screen, which is exactly where a level's trophies land.
@@ -3987,6 +4033,8 @@ class Game {
     }
 
     showFinale() {
+        // the one moment big enough for the platform's confetti
+        try { window.CrazyGames?.SDK?.game?.happytime?.(); } catch { /* optional */ }
         this.trophies?.onEndingSeen();
         this.clearKeyboardInput();
         this.safePuzzle.clear();
@@ -4135,7 +4183,7 @@ class Game {
 
     loadPuzzleBests() {
         try {
-            const raw = window.localStorage?.getItem(PUZZLE_BEST_STORAGE_KEY);
+            const raw = VaultStore.getItem(PUZZLE_BEST_STORAGE_KEY);
             const parsed = raw ? JSON.parse(raw) : null;
             return parsed && typeof parsed === 'object' ? parsed : {};
         } catch {
@@ -4152,7 +4200,7 @@ class Game {
         if (!this.puzzleBests) this.puzzleBests = {};
         this.puzzleBests[`${type}:${difficulty}`] = seconds;
         try {
-            window.localStorage?.setItem(
+            VaultStore.setItem(
                 PUZZLE_BEST_STORAGE_KEY,
                 JSON.stringify(this.puzzleBests)
             );
@@ -5467,7 +5515,7 @@ class Game {
     loadProgress() {
         const fallback = this.createDefaultProgress();
         try {
-            const stored = window.localStorage?.getItem(PROGRESS_STORAGE_KEY);
+            const stored = VaultStore.getItem(PROGRESS_STORAGE_KEY);
             if (!stored) return fallback;
             return this.normalizeProgress(JSON.parse(stored));
         } catch {
@@ -5477,7 +5525,7 @@ class Game {
 
     saveProgress() {
         try {
-            window.localStorage?.setItem(
+            VaultStore.setItem(
                 PROGRESS_STORAGE_KEY,
                 JSON.stringify(this.progress)
             );
@@ -7955,11 +8003,26 @@ class Game {
     }
 }
 
-// Load assets then start game
-loadAssets().then(() => {
-    console.log('Assets loaded, starting game');
+// Load assets then start game. On CrazyGames the SDK must finish
+// initialising first, because the data module carries the saves the Game
+// constructor reads; a hung SDK is given 2.5 seconds and then the game
+// starts anyway on local storage — their outage must not become ours.
+(async () => {
+    const sdk = window.CrazyGames?.SDK;
+    if (sdk?.init) {
+        try {
+            await Promise.race([
+                sdk.init(),
+                new Promise(resolve => setTimeout(resolve, 2500)),
+            ]);
+            sdk.game?.loadingStart?.();
+        } catch { /* the game does not depend on the platform */ }
+    }
+    try {
+        await loadAssets();
+    } catch (err) {
+        console.warn('Asset loading failed, starting with fallbacks', err);
+    }
     new Game();
-}).catch(err => {
-    console.warn('Asset loading failed, starting with fallbacks', err);
-    new Game();
-});
+    try { sdk?.game?.loadingStop?.(); } catch { /* same */ }
+})();
