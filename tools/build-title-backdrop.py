@@ -107,5 +107,12 @@ glow([int(1.6 * S), int(8.5 * S), int(5.4 * S), int(10.4 * S)],
 canvas.paste(mole, (int(3.5 * S), int(4.7 * S)), mole)
 canvas.paste(safe, (int(2.5 * S), int(8.5 * S)), safe)
 
-canvas.save(A / 'title-backdrop.png')
-print('title-backdrop.png', canvas.size)
+# JPEG, not PNG: this is a full-bleed painted backdrop with no
+# transparency, and as a PNG it was 767 KB — four fifths of everything the
+# game ships, sitting on the first screen anyone waits for. At quality 85
+# it is 106 KB and the difference is invisible under the title plate.
+canvas.convert('RGB').save(
+    A / 'title-backdrop.jpg',
+    'JPEG', quality=85, optimize=True, progressive=True,
+)
+print('title-backdrop.jpg', canvas.size)

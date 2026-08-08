@@ -28,19 +28,24 @@ title = re.search(r'<title>(.*?)</title>', html, re.S).group(1)
 body = re.search(r'<body[^>]*>(.*)</body>', html, re.S).group(1)
 body = re.sub(r'\s*<script\s+src="[^"]*"></script>', '', body)
 
-ASSETS = {p.name: p for p in (ROOT / 'assets').glob('*.png')}
+ASSETS = {
+    p.name: p
+    for pattern in ('*.png', '*.jpg')
+    for p in (ROOT / 'assets').glob(pattern)
+}
+MIME = {'.png': 'image/png', '.jpg': 'image/jpeg'}
 
 
 def data_uri(name):
     path = ASSETS.get(name)
     if path is None:
         raise SystemExit(f'missing asset: {name}')
-    return 'data:image/png;base64,' + \
+    return f'data:{MIME[path.suffix]};base64,' + \
         base64.b64encode(path.read_bytes()).decode('ascii')
 
 
 def inline_assets(text):
-    """Rewrites assets/x.png in JS literals and CSS url() alike."""
+    """Rewrites assets/x.png and assets/x.jpg in JS literals and CSS alike."""
     text = re.sub(
         r"'assets/([^']+)'",
         lambda m: f"'{data_uri(m.group(1))}'",

@@ -60,6 +60,33 @@ const VaultStore = {
     },
 };
 
+// The platform reports a crash rate but never the crash, which leaves the
+// number impossible to act on. Faults are printed under one greppable
+// prefix and kept in a short ring buffer, so anyone who can reproduce the
+// problem on their own device can read back what actually threw.
+const FAULT_STORAGE_KEY = 'manny-the-mole:faults';
+const FAULT_LOG_LIMIT = 12;
+const faultLog = [];
+
+function reportFault(where, err) {
+    faultLog.push({
+        where,
+        message: String(err?.message ?? err ?? 'unknown'),
+        stack: String(err?.stack ?? '').slice(0, 400),
+    });
+    if (faultLog.length > FAULT_LOG_LIMIT) faultLog.shift();
+    console.error(`[manny] fault in ${where}`, err);
+    VaultStore.setItem(FAULT_STORAGE_KEY, JSON.stringify(faultLog));
+}
+
+window.mannyFaults = () => faultLog.slice();
+window.addEventListener('error', event => {
+    reportFault('window', event.error ?? event.message);
+});
+window.addEventListener('unhandledrejection', event => {
+    reportFault('promise', event.reason);
+});
+
 const PROGRESS_STORAGE_KEY = 'manny-the-mole:campaign-progress';
 const MUTE_STORAGE_KEY = 'manny-the-mole:muted';
 const PUZZLE_BEST_STORAGE_KEY = 'manny-the-mole:puzzle-bests';
@@ -724,12 +751,24 @@ class ArcadeSound {
         if (!AudioContextClass) return null;
 
         if (!this.context) {
-            this.context = new AudioContextClass();
-            const sampleCount = Math.floor(this.context.sampleRate * 0.5);
-            this.noiseBuffer = this.context.createBuffer(1, sampleCount, this.context.sampleRate);
-            const samples = this.noiseBuffer.getChannelData(0);
-            for (let i = 0; i < sampleCount; i++) {
-                samples[i] = Math.random() * 2 - 1;
+            // This runs on the press that leaves the title screen. An
+            // iframe without autoplay permission, or a browser at its
+            // limit of live contexts, throws here — and an uncaught throw
+            // would take the press with it, leaving a dead button on the
+            // first screen anyone sees. A silent game still beats no game.
+            try {
+                this.context = new AudioContextClass();
+                const sampleCount = Math.floor(this.context.sampleRate * 0.5);
+                this.noiseBuffer = this.context.createBuffer(1, sampleCount, this.context.sampleRate);
+                const samples = this.noiseBuffer.getChannelData(0);
+                for (let i = 0; i < sampleCount; i++) {
+                    samples[i] = Math.random() * 2 - 1;
+                }
+            } catch (err) {
+                console.warn('Audio unavailable, continuing without sound', err);
+                this.context = null;
+                this.noiseBuffer = null;
+                return null;
             }
         }
 
@@ -1048,10 +1087,20 @@ class GameUI {
         this.refreshFinale();
         this.syncMute();
 
+        // Every button in the game arrives here. A throw inside one action
+        // must not stop the next press from being heard, so the dispatch
+        // is fenced and the failure is reported rather than swallowed.
         this.root.addEventListener('click', event => {
             const button = event.target.closest?.('[data-action]');
             if (!button || !this.root.contains(button) || button.disabled) return;
+            try {
+                this.dispatchAction(button);
+            } catch (err) {
+                reportFault('action:' + button.dataset.action, err);
+            }
+        });
 
+        this.dispatchAction = button => {
             const action = button.dataset.action;
             // Unlocking audio is what every other button press is for; the
             // mute button is the one that must not do it.
@@ -1094,7 +1143,7 @@ class GameUI {
                     button.dataset.value
                 );
             }
-        });
+        };
 
         // On iPhone inside the artifact frame, a downward dig drag that
         // starts on the letterbox around the game becomes a page pan,
@@ -3997,11 +4046,21 @@ class Game {
     // The one press that starts the game is also the gesture browsers want
     // before audio may play, so unlock here and answer with a tone you can
     // hear. If it stays silent, the player knows before the first level.
+    //
+    // The press drops straight into the shaft rather than into the menu.
+    // Every screen between loading and digging is a place people leave,
+    // and the menu costs nothing to reach: pause carries Level select,
+    // and that is where the players who want it go looking anyway.
     leaveTitle() {
         this.sound.unlock();
         this.sound.playTone(196, 294, 0.16, 0.05, 'square');
         this.sound.playTone(294, 392, 0.2, 0.045, 'square', 0.13);
-        return this.showMainMenu();
+        this.startRun();
+        // startRun refuses an index it cannot open. It should never happen
+        // — level one is unlocked from the first boot — but a title screen
+        // whose only button does nothing is the worst failure available.
+        if (this.gameState === 'title') this.showMainMenu();
+        return true;
     }
 
     showTimes() {
@@ -7987,19 +8046,38 @@ class Game {
         const deltaTime = Math.min(1 / 30, Math.max(0, rawDeltaTime));
         this.lastTime = currentTime;
         
-        this.update(deltaTime);
+        // A throw here used to skip the requestAnimationFrame below and
+        // freeze the game permanently — the worst shape a bug can take,
+        // because one bad frame becomes a dead tab. The frame is allowed
+        // to fail. The loop is not.
+        try {
+            this.update(deltaTime);
 
-        const canReusePausedFrame =
-            this.gameState === 'paused' &&
-            this.lastRenderedState === 'paused';
-        if (canReusePausedFrame) {
-            this.ui.sync(this);
-        } else {
-            this.render();
+            const canReusePausedFrame =
+                this.gameState === 'paused' &&
+                this.lastRenderedState === 'paused';
+            if (canReusePausedFrame) {
+                this.ui.sync(this);
+            } else {
+                this.render();
+            }
+            this.lastRenderedState = this.gameState;
+        } catch (err) {
+            this.reportFrameFault(err);
         }
-        this.lastRenderedState = this.gameState;
-        
+
         requestAnimationFrame(this.boundGameLoop);
+    }
+
+    // A frame that throws usually throws again on every frame after it.
+    // Report the first of each kind and drop the repeats, so sixty faults
+    // a second do not bury the one line that explains them.
+    reportFrameFault(err) {
+        const key = `${this.gameState}:${err?.message ?? err}`;
+        this.seenFrameFaults = this.seenFrameFaults ?? new Set();
+        if (this.seenFrameFaults.has(key)) return;
+        this.seenFrameFaults.add(key);
+        reportFault(`frame:${this.gameState}`, err);
     }
 }
 
@@ -8023,6 +8101,10 @@ class Game {
     } catch (err) {
         console.warn('Asset loading failed, starting with fallbacks', err);
     }
-    new Game();
+    try {
+        new Game();
+    } catch (err) {
+        reportFault('boot', err);
+    }
     try { sdk?.game?.loadingStop?.(); } catch { /* same */ }
 })();
