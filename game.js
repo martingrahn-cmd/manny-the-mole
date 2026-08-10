@@ -2525,12 +2525,13 @@ class GameUI {
             // A player who is never told the clock exists just meets it at
             // the second lock instead, which would move the wall rather
             // than remove it.
-            this.puzzleCopy.textContent = state.untimed ?
-                'Your first lock, and this one has no clock. Swap conductors ' +
-                'until a route runs from IN to OUT. The next lock is timed.' :
+            this.puzzleCopy.textContent = state.teaching ?
+                'Your first lock, and the current crawls on this one. Swap ' +
+                'conductors until a route runs from IN to OUT. The next ' +
+                'lock runs at full speed.' :
                 meta.copy;
-            this.puzzleDifficulty.textContent = state.untimed ?
-                `Lock grade ${state.difficulty} · no clock` :
+            this.puzzleDifficulty.textContent = state.teaching ?
+                `Lock grade ${state.difficulty} · slow current` :
                 `Lock grade ${state.difficulty}`;
             this.puzzleStatus.textContent = state.status;
             this.puzzleStatus.classList.toggle('is-success', state.solved);
@@ -4033,13 +4034,13 @@ class Game {
 
         this.puzzleContext = 'campaign';
         // The very first lock a player ever reaches is a lesson, not a test.
-        // It runs without a clock; every one after it is timed as before.
+        // Its current crawls; every one after it runs at the normal pace.
         const teaching = !this.hasSeenLock();
         this.safePuzzle.start(
             this.safe.type,
             this.safe.difficulty,
             this.currentLevel.id,
-            { untimed: teaching }
+            { teaching }
         );
         if (teaching) this.markLockSeen();
         this.gameState = 'puzzle';

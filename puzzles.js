@@ -1,4 +1,12 @@
 const MAX_PIPE_DIFFICULTY = 6;
+// The first lock a player ever sees. The step is stretched hard, because
+// that is the budget an actual solve spends. The opening is stretched much
+// less on purpose: it is dead time before the current first moves, and a
+// board where nothing moves reads as broken — which is exactly how the
+// frozen version failed. Twelve seconds is long enough to look around and
+// short enough to prove the thing is alive.
+const TEACHING_STEP_SCALE = 10;
+const TEACHING_OPENING_SCALE = 2;
 
 const SAFE_PUZZLE_META = Object.freeze({
     pipes: {
@@ -135,12 +143,16 @@ class SafePuzzleEngine {
         this.revision = 0;
     }
 
-    // untimed: the first lock a player ever opens runs without a clock.
-    // Thirteen seconds is not long enough to work out what a board of
-    // conductors even is, and a mechanic should be taught before it is
-    // tested. The board is otherwise identical, so nothing is dumbed down —
-    // the current simply waits.
-    start(type, difficulty, seedText, { untimed = false } = {}) {
+    // The first lock a player ever opens gets a very slow clock rather than
+    // no clock. Stopping the current outright made the puzzle unwinnable —
+    // the win fires when the current reaches OUT, so a frozen current can
+    // never open the safe. It also looked broken, which is its own answer
+    // to how slow is too slow: the current has to visibly move, or the
+    // player is back to wondering what the board is for.
+    //
+    // At this scale grade one opens after 12 seconds and then steps every
+    // 38, against 6 and 3.8 normally.
+    start(type, difficulty, seedText, { teaching = false } = {}) {
         if (!SAFE_PUZZLE_META[type]) {
             throw new Error(`Unknown safe puzzle type: ${type}`);
         }
@@ -153,11 +165,13 @@ class SafePuzzleEngine {
         this.state = WIRE_TYPES.includes(type) ?
             this.createWiresState(type, safeDifficulty, seed) :
             this.createPipesState(safeDifficulty, seed);
-        this.state.untimed = untimed === true;
-        // createPipesState writes the opening line before the flag reaches
-        // the state, so it would still promise a current that is about to
-        // move. Recompute it now that the state knows better.
-        if (this.state.type === 'pipes') {
+        this.state.teaching = teaching === true;
+        if (this.state.teaching && this.state.type === 'pipes') {
+            this.state.flowStep *= TEACHING_STEP_SCALE;
+            this.state.flowFastStep *= TEACHING_STEP_SCALE;
+            this.state.flowTimer *= TEACHING_OPENING_SCALE;
+            // createPipesState writes the opening line before the flag
+            // reaches the state, so it has to be recomputed here.
             this.state.status = this.getPipeOpeningStatus(this.state);
         }
         this.touch();
@@ -560,11 +574,9 @@ class SafePuzzleEngine {
     }
 
     getPipeOpeningStatus(state) {
-        // On the untimed first lock the current never advances, so the usual
-        // warning that it is about to would be a lie.
-        if (state.untimed) {
-            return 'The current is holding. Take as long as you like on ' +
-                'this one.';
+        if (state.teaching) {
+            return 'The current is barely creeping on this one. ' +
+                'Take your time.';
         }
         return state.flowFastForward ?
             'The route to OUT is already open — the current races through!' :
@@ -1157,8 +1169,7 @@ class SafePuzzleEngine {
         if (
             state.type === 'pipes' &&
             state.phase === 'active' &&
-            !state.solved &&
-            !state.untimed
+            !state.solved
         ) {
             state.flowTimer -= elapsed;
             let advances = 0;
