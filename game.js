@@ -90,6 +90,7 @@ window.addEventListener('unhandledrejection', event => {
 const PROGRESS_STORAGE_KEY = 'manny-the-mole:campaign-progress';
 const MUTE_STORAGE_KEY = 'manny-the-mole:muted';
 const PUZZLE_BEST_STORAGE_KEY = 'manny-the-mole:puzzle-bests';
+const LOCK_SEEN_STORAGE_KEY = 'manny-the-mole:lock-seen';
 
 // Medals rank the descent, not the safe. Air cannot do that job: every
 // level carries roughly ten times the air the route needs, so even a
@@ -2364,7 +2365,11 @@ class GameUI {
             '<span><b>1</b> Uncover</span>' +
             '<span><b>2</b> Mark</span>' +
             '<span><b>3</b> Swap</span>';
-        shell.append(failureBanner || legend, board);
+        // The legend used to be replaced by the failure banner, so the only
+        // explanation on screen disappeared at the exact moment the player
+        // had proved they needed it. Both stay now.
+        if (failureBanner) shell.append(failureBanner);
+        shell.append(legend, board);
         this.puzzleBody.append(shell);
 
         if (failed) {
@@ -2516,8 +2521,17 @@ class GameUI {
             const meta = SAFE_PUZZLE_META[state.type];
             this.puzzleEyebrow.textContent = meta.eyebrow;
             this.puzzleTitle.textContent = meta.title;
-            this.puzzleCopy.textContent = meta.copy;
-            this.puzzleDifficulty.textContent = `Lock grade ${state.difficulty}`;
+            // Saying the free one is free matters as much as making it free.
+            // A player who is never told the clock exists just meets it at
+            // the second lock instead, which would move the wall rather
+            // than remove it.
+            this.puzzleCopy.textContent = state.untimed ?
+                'Your first lock, and this one has no clock. Swap conductors ' +
+                'until a route runs from IN to OUT. The next lock is timed.' :
+                meta.copy;
+            this.puzzleDifficulty.textContent = state.untimed ?
+                `Lock grade ${state.difficulty} · no clock` :
+                `Lock grade ${state.difficulty}`;
             this.puzzleStatus.textContent = state.status;
             this.puzzleStatus.classList.toggle('is-success', state.solved);
             this.puzzleStatus.classList.toggle('is-critical', false);
@@ -4018,11 +4032,16 @@ class Game {
         }
 
         this.puzzleContext = 'campaign';
+        // The very first lock a player ever reaches is a lesson, not a test.
+        // It runs without a clock; every one after it is timed as before.
+        const teaching = !this.hasSeenLock();
         this.safePuzzle.start(
             this.safe.type,
             this.safe.difficulty,
-            this.currentLevel.id
+            this.currentLevel.id,
+            { untimed: teaching }
         );
+        if (teaching) this.markLockSeen();
         this.gameState = 'puzzle';
         this.lastRenderedState = null;
         this.sound.playTone(260, 430, 0.12, 0.035, 'square');
@@ -4238,6 +4257,17 @@ class Game {
             swaps: Number.isFinite(state.moves) ? state.moves : null,
             branching: state.branching === true,
         };
+    }
+
+    // Remembered across runs, so the free lock is genuinely once per player
+    // rather than once per session. A blocked or wiped store simply gives
+    // the lesson again, which is the harmless direction to fail in.
+    hasSeenLock() {
+        return VaultStore.getItem(LOCK_SEEN_STORAGE_KEY) === '1';
+    }
+
+    markLockSeen() {
+        VaultStore.setItem(LOCK_SEEN_STORAGE_KEY, '1');
     }
 
     loadPuzzleBests() {

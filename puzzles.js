@@ -4,7 +4,8 @@ const SAFE_PUZZLE_META = Object.freeze({
     pipes: {
         eyebrow: 'Fuse box',
         title: 'Restore the circuit',
-        copy: 'Uncover and swap conductors before the current catches you.',
+        copy: 'Build a route from IN to OUT by swapping conductors — ' +
+            'the current is coming down it.',
     },
     wires: {
         eyebrow: 'Detonator bank',
@@ -134,7 +135,12 @@ class SafePuzzleEngine {
         this.revision = 0;
     }
 
-    start(type, difficulty, seedText) {
+    // untimed: the first lock a player ever opens runs without a clock.
+    // Thirteen seconds is not long enough to work out what a board of
+    // conductors even is, and a mechanic should be taught before it is
+    // tested. The board is otherwise identical, so nothing is dumbed down —
+    // the current simply waits.
+    start(type, difficulty, seedText, { untimed = false } = {}) {
         if (!SAFE_PUZZLE_META[type]) {
             throw new Error(`Unknown safe puzzle type: ${type}`);
         }
@@ -147,6 +153,13 @@ class SafePuzzleEngine {
         this.state = WIRE_TYPES.includes(type) ?
             this.createWiresState(type, safeDifficulty, seed) :
             this.createPipesState(safeDifficulty, seed);
+        this.state.untimed = untimed === true;
+        // createPipesState writes the opening line before the flag reaches
+        // the state, so it would still promise a current that is about to
+        // move. Recompute it now that the state knows better.
+        if (this.state.type === 'pipes') {
+            this.state.status = this.getPipeOpeningStatus(this.state);
+        }
         this.touch();
         return this.state;
     }
@@ -547,6 +560,12 @@ class SafePuzzleEngine {
     }
 
     getPipeOpeningStatus(state) {
+        // On the untimed first lock the current never advances, so the usual
+        // warning that it is about to would be a lie.
+        if (state.untimed) {
+            return 'The current is holding. Take as long as you like on ' +
+                'this one.';
+        }
         return state.flowFastForward ?
             'The route to OUT is already open — the current races through!' :
             'The current is holding in the first conductor — ' +
@@ -1138,7 +1157,8 @@ class SafePuzzleEngine {
         if (
             state.type === 'pipes' &&
             state.phase === 'active' &&
-            !state.solved
+            !state.solved &&
+            !state.untimed
         ) {
             state.flowTimer -= elapsed;
             let advances = 0;

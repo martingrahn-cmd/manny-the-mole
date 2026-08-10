@@ -2246,6 +2246,12 @@
             flex-basis: 100%;
         }
 
+        /* The keyboard line is hidden on touch, which used to leave phones
+           with no instructions at all. This one takes its place there. */
+        .puzzle-help--touch {
+            display: none;
+        }
+
         .puzzle-help {
             margin-top: calc(10px * var(--game-scale));
             color: rgba(217, 225, 239, 0.4);
@@ -3468,6 +3474,10 @@
                 display: none;
             }
 
+            .puzzle-help--touch {
+                display: block;
+            }
+
             .side-drill-hint__touch {
                 display: contents;
             }
@@ -4002,6 +4012,7 @@
                     <p id="puzzleStatus" class="puzzle-status" role="status" aria-live="polite"></p>
                     <div id="puzzleActions" class="menu-actions puzzle-actions"></div>
                     <p class="puzzle-help"><kbd>Esc</kbd> back · <kbd>Arrows</kbd> select · <kbd>Enter</kbd> activate</p>
+                    <p class="puzzle-help puzzle-help--touch"><kbd>Tap</kbd> a conductor, then <kbd>tap</kbd> another to swap them</p>
                 </div>
             </section>
 
@@ -4077,10 +4088,10 @@
     <!-- Bump v on every change to these files. It stayed at 15 through a
          release that rewrote game.js, so returning players kept running the
          old file from cache: same URL, guaranteed hit. -->
-    <script src="sounds.js?v=16"></script>
-    <script src="levels.js?v=16"></script>
-    <script src="puzzles.js?v=16"></script>
-    <script src="trophies.js?v=16"></script>
-    <script src="game.js?v=16"></script>
+    <script src="sounds.js?v=17"></script>
+    <script src="levels.js?v=17"></script>
+    <script src="puzzles.js?v=17"></script>
+    <script src="trophies.js?v=17"></script>
+    <script src="game.js?v=17"></script>
 </body>
 </html>
