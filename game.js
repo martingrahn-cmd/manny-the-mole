@@ -8087,14 +8087,22 @@ class Game {
 // starts anyway on local storage — their outage must not become ours.
 (async () => {
     const sdk = window.CrazyGames?.SDK;
+    let loadingOpen = false;
     if (sdk?.init) {
         try {
             await Promise.race([
                 sdk.init(),
                 new Promise(resolve => setTimeout(resolve, 2500)),
             ]);
-            sdk.game?.loadingStart?.();
         } catch { /* the game does not depend on the platform */ }
+        // Outside the catch on purpose. This used to sit inside the try,
+        // so an init that rejected skipped the start and still sent the
+        // stop below — a loading window that closed without opening.
+        // Whatever the platform makes of that, it isn't the truth.
+        try {
+            sdk.game?.loadingStart?.();
+            loadingOpen = true;
+        } catch { /* platform optional */ }
     }
     try {
         await loadAssets();
@@ -8106,5 +8114,7 @@ class Game {
     } catch (err) {
         reportFault('boot', err);
     }
-    try { sdk?.game?.loadingStop?.(); } catch { /* same */ }
+    if (loadingOpen) {
+        try { sdk.game?.loadingStop?.(); } catch { /* same */ }
+    }
 })();
