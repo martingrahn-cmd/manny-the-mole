@@ -27,7 +27,7 @@ CHAMBER = 4           # rows the safe chamber occupies
 SECONDS_PER_ROW = 0.42  # measured: 24 rows read as roughly ten seconds
 DRAIN = 1.2           # oxygen per second
 AIR_SLACK = 1.6       # how much longer the tank lasts than a clean descent
-MAX_SEAM = 10         # largest run one bite may remove
+MAX_SEAM = 7          # largest run one bite may remove
 GOLD_PACE = 0.40      # seconds per row a gold run may spend
 
 # Depth is the honest knob for length; character is what keeps the levels
@@ -35,15 +35,16 @@ GOLD_PACE = 0.40      # seconds per row a gold run may spend
 #
 #   seam    how far a colour spreads before the next one starts. Big seams
 #           break in one bite, which is the move the game is most fun at.
-#   bands   bedrock courses per hundred rows. Each one has a gap or two,
-#           so passing it means drilling sideways — where the danger is.
+#   ledges  bedrock shelves per hundred rows. Two to four cells wide, so
+#           there is always more than one way round and always an
+#           overhang to be caught under.
 #   heavy   share of cells that are X blocks, which cost air to crack.
 PROFILES = {
-    'gentle':  {'seam': 2.4, 'bands': 14, 'heavy': 0.00, 'colors': 3},
-    'ore':     {'seam': 3.2, 'bands': 16, 'heavy': 0.01, 'colors': 3},
-    'maze':    {'seam': 1.8, 'bands': 30, 'heavy': 0.02, 'colors': 4},
-    'heavy':   {'seam': 2.0, 'bands': 20, 'heavy': 0.07, 'colors': 4},
-    'mixed':   {'seam': 2.2, 'bands': 24, 'heavy': 0.04, 'colors': 4},
+    'gentle':  {'seam': 1.8, 'ledges': 34, 'heavy': 0.00, 'colors': 3},
+    'ore':     {'seam': 2.4, 'ledges': 40, 'heavy': 0.01, 'colors': 3},
+    'maze':    {'seam': 1.4, 'ledges': 62, 'heavy': 0.02, 'colors': 4},
+    'heavy':   {'seam': 1.6, 'ledges': 52, 'heavy': 0.07, 'colors': 4},
+    'mixed':   {'seam': 1.7, 'ledges': 62, 'heavy': 0.04, 'colors': 4},
 }
 
 # seconds of digging, character. Level one is the lesson; the rest run
@@ -90,20 +91,29 @@ def build_rows(depth, profile, rng):
             if rng.random() < profile['heavy']:
                 grid[y][x] = 'X'
 
-    # Bedrock courses. Each leaves one or two gaps, so the way down is a
-    # sideways move rather than a straight drop.
-    band_count = max(1, round(profile['bands'] * (body_bottom - body_top) / 100))
-    if band_count:
-        spacing = (body_bottom - body_top) / (band_count + 1)
-        for i in range(band_count):
-            y = body_top + int(spacing * (i + 1))
-            if not (body_top + 1 < y < body_bottom - 1):
-                continue
-            gaps = {rng.randrange(GRID_W)}
-            if rng.random() < 0.45:
-                gaps.add(rng.randrange(GRID_W))
-            for x in range(GRID_W):
-                grid[y][x] = str(rng.randrange(colors)) if x in gaps else '='
+    # Bedrock ledges, not courses. A wall with one hole in it is not a
+    # decision, it is a funnel, and twenty of them in a row read as a
+    # corridor with gates. Ledges two to four cells wide leave several ways
+    # past, so going sideways is a choice about which way — and they leave
+    # overhangs to dig under, which is the only place the falling blocks
+    # can reach you.
+    ledges = round(profile['ledges'] * (body_bottom - body_top) / 100)
+    for _ in range(ledges):
+        y = rng.randrange(body_top + 1, body_bottom - 1)
+        width = rng.randint(2, 4)
+        x0 = rng.randrange(0, GRID_W - width + 1)
+        # Never the full width: something must always be diggable on a row.
+        if width >= GRID_W:
+            continue
+        for x in range(x0, x0 + width):
+            grid[y][x] = '='
+
+    # Ledges are placed independently, so at the denser settings two of them
+    # occasionally line up into the full-width wall this was meant to avoid.
+    # Any row that closes completely gets a cell back.
+    for y in range(body_top, body_bottom):
+        if all(cell == '=' for cell in grid[y]):
+            grid[y][rng.randrange(GRID_W)] = str(rng.randrange(colors))
 
     # The chamber: bedrock shell with a two-by-two pocket for the safe and
     # one soft cell above it to break in through.
