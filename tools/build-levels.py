@@ -194,17 +194,24 @@ def carve_pockets(grid, depth, count, rng):
     return cells
 
 
-def reachable(grid, start, target):
-    """Bedrock is the only thing that cannot be drilled, so a route exists
-    whenever one can be walked ignoring everything else."""
+# A mole falls. It can drill upwards but it cannot travel upwards — the up
+# input only points the drill, and the one climb it has is a single diagonal
+# step onto a ledge. Searching in all four directions, as this did at first,
+# blessed routes that only exist if the player backtracks up the shaft, and
+# a play test duly found itself standing on bedrock with nine per cent air
+# and every way on blocked.
+DOWNHILL = ((0, 1), (1, 0), (-1, 0))
+UPHILL = ((0, -1), (1, 0), (-1, 0))
+
+
+def flood(grid, origin, moves):
+    """Cells reachable from origin using only the given moves."""
     depth = len(grid)
-    seen = {start}
-    queue = deque([start])
+    seen = {origin}
+    queue = deque([origin])
     while queue:
         x, y = queue.popleft()
-        if (x, y) == target:
-            return True
-        for dx, dy in ((0, 1), (0, -1), (1, 0), (-1, 0)):
+        for dx, dy in moves:
             nx, ny = x + dx, y + dy
             if not (0 <= nx < GRID_W and 0 <= ny < depth):
                 continue
@@ -212,7 +219,49 @@ def reachable(grid, start, target):
                 continue
             seen.add((nx, ny))
             queue.append((nx, ny))
-    return False
+    return seen
+
+
+def traps(grid, start, target):
+    """Cells the player can descend into but cannot leave for the safe.
+
+    Forward reachability alone is not enough. What matters is that nowhere
+    a player can end up is a dead end, so the set reachable going down and
+    sideways must sit entirely inside the set from which the safe is still
+    reachable going down and sideways — which is the same as what the safe
+    reaches going up and sideways."""
+    return flood(grid, start, DOWNHILL) - flood(grid, target, UPHILL)
+
+
+def carve_descent(grid, depth, start, target, colors, rng):
+    """Cut one guaranteed way down before anything else is checked.
+
+    Scattering ledges and hoping a pure descent survives does not work: the
+    shelves close the shaft more often than not, and the layouts that came
+    through were the ones that asked the player to climb back up. The mole
+    manages exactly one block of climb, so a route that needs more is not a
+    route.
+
+    The path wanders — it drifts sideways as it falls — so it reads as rock
+    like everything else. It only promises that going down and sideways is
+    always enough."""
+    x, y = start
+    while y < target[1]:
+        if grid[y][x] in '#=':
+            grid[y][x] = str(rng.randrange(colors))
+        # Drift toward the chamber, with some slack so it is not a straight
+        # line down to the safe.
+        if rng.random() < 0.45:
+            step = 1 if target[0] > x else (-1 if target[0] < x else 0)
+            if rng.random() < 0.3:
+                step = rng.choice((-1, 1))
+            nx = min(GRID_W - 1, max(0, x + step))
+            if grid[y][nx] in '#=':
+                grid[y][nx] = str(rng.randrange(colors))
+            x = nx
+        y += 1
+    if grid[y][x] in '#=':
+        grid[y][x] = str(rng.randrange(colors))
 
 
 def free_column(grid, depth):
@@ -232,17 +281,20 @@ def make_level(source, seconds, character, seed):
     for attempt in range(400):
         rng = random.Random(seed * 1000 + attempt)
         grid = build_rows(depth, profile, rng)
+        start = (source['start']['x'], source['start']['y'])
+        safe_cell = (2, depth - CHAMBER + 1)
+        carve_descent(grid, depth, start, safe_cell, profile['colors'], rng)
         split_big_seams(grid, depth, MAX_SEAM, profile['colors'], rng)
         pockets = carve_pockets(grid, depth, tubes + coins, rng)
         if len(pockets) < tubes + coins:
             continue
-        start = (source['start']['x'], source['start']['y'])
-        safe_cell = (2, depth - CHAMBER + 1)
         if free_column(grid, depth):
             continue
-        if not reachable(grid, start, safe_cell):
-            continue
-        if not all(reachable(grid, start, p) for p in pockets):
+        # Any pocket the descent cannot reach is a dead end with a prize in
+        # it, so those are dropped rather than dangled.
+        downhill = flood(grid, start, DOWNHILL)
+        pockets = [p for p in pockets if p in downhill]
+        if len(pockets) < tubes + 1 or safe_cell not in downhill:
             continue
         break
     else:
