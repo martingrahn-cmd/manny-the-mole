@@ -168,8 +168,16 @@ class SafePuzzleEngine {
         this.state.teaching = teaching === true;
         if (this.state.teaching && this.state.type === 'pipes') {
             this.state.flowStep *= TEACHING_STEP_SCALE;
-            this.state.flowFastStep *= TEACHING_STEP_SCALE;
+            // flowOpening as well as flowTimer: resetting the board restores
+            // the timer from it, so scaling only the timer meant "Restart
+            // circuit" quietly handed back the fast six-second opening.
             this.state.flowTimer *= TEACHING_OPENING_SCALE;
+            this.state.flowOpening *= TEACHING_OPENING_SCALE;
+            // flowFastStep is deliberately left alone. It is the speed the
+            // current runs at once the route is finished — the payoff for
+            // solving it, not part of the difficulty. Stretching it turned
+            // "the current races through" into half a minute of watching it
+            // crawl, with the puzzle already won.
             // createPipesState writes the opening line before the flag
             // reaches the state, so it has to be recomputed here.
             this.state.status = this.getPipeOpeningStatus(this.state);

@@ -27,7 +27,7 @@ CHAMBER = 4           # rows the safe chamber occupies
 SECONDS_PER_ROW = 0.42  # measured: 24 rows read as roughly ten seconds
 DRAIN = 1.2           # oxygen per second
 AIR_SLACK = 1.6       # how much longer the tank lasts than a clean descent
-MAX_SEAM = 14         # largest run one bite may remove
+MAX_SEAM = 10         # largest run one bite may remove
 
 # Depth is the honest knob for length; character is what keeps the levels
 # from feeling like one shaft cut into twelve pieces.
@@ -38,11 +38,11 @@ MAX_SEAM = 14         # largest run one bite may remove
 #           so passing it means drilling sideways — where the danger is.
 #   heavy   share of cells that are X blocks, which cost air to crack.
 PROFILES = {
-    'gentle':  {'seam': 3.4, 'bands': 5,  'heavy': 0.00, 'colors': 3},
-    'ore':     {'seam': 4.6, 'bands': 7,  'heavy': 0.01, 'colors': 3},
-    'maze':    {'seam': 2.4, 'bands': 20, 'heavy': 0.02, 'colors': 4},
-    'heavy':   {'seam': 2.8, 'bands': 9,  'heavy': 0.07, 'colors': 4},
-    'mixed':   {'seam': 3.2, 'bands': 13, 'heavy': 0.04, 'colors': 4},
+    'gentle':  {'seam': 2.4, 'bands': 14, 'heavy': 0.00, 'colors': 3},
+    'ore':     {'seam': 3.2, 'bands': 16, 'heavy': 0.01, 'colors': 3},
+    'maze':    {'seam': 1.8, 'bands': 30, 'heavy': 0.02, 'colors': 4},
+    'heavy':   {'seam': 2.0, 'bands': 20, 'heavy': 0.07, 'colors': 4},
+    'mixed':   {'seam': 2.2, 'bands': 24, 'heavy': 0.04, 'colors': 4},
 }
 
 # seconds of digging, character. Level one is the lesson; the rest run
