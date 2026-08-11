@@ -2,7 +2,7 @@
 const GRID_SIZE = 64; // Double size - scale up 32px sprites
 const PLAYER_SIZE = 64;
 const GRID_WIDTH = 7; // Like Mr. Driller / Tetris
-const GRID_HEIGHT = 50;
+const GRID_HEIGHT = 130; // World grid; the deepest shaft must fit inside it
 const VIEWPORT_HEIGHT = 11;
 const FALL_DELAY = 1.1; // Readable hang time after the last support disappears
 const MIN_FALL_DELAY = 0.85;
@@ -4874,7 +4874,10 @@ class Game {
 
     getComponentDepthFactor(component) {
         const deepestRow = Math.max(...component.blocks.map(block => block.y));
-        return Math.max(0, Math.min(1, deepestRow / (GRID_HEIGHT - 1)));
+        // Measured against this shaft's own floor rather than the world
+        // grid, so raising the ceiling for deeper levels does not quietly
+        // reslow every fall in the shallow ones.
+        return Math.max(0, Math.min(1, deepestRow / Math.max(1, this.levelHeight - 1)));
     }
 
     getComponentFallDelay(component) {
@@ -5180,7 +5183,10 @@ class Game {
         
         for (const xBlock of this.xBlocks) {
             if (xBlock.destroyed) continue;
-            const depthFactor = Math.max(0, Math.min(1, xBlock.y / (GRID_HEIGHT - 1)));
+            const depthFactor = Math.max(
+                0,
+                Math.min(1, xBlock.y / Math.max(1, this.levelHeight - 1))
+            );
             const fallDuration = Math.max(
                 MIN_FALL_SPEED,
                 FALL_SPEED - depthFactor * FALL_SPEED_DEPTH_REDUCTION
