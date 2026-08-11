@@ -28,6 +28,7 @@ SECONDS_PER_ROW = 0.42  # measured: 24 rows read as roughly ten seconds
 DRAIN = 1.2           # oxygen per second
 AIR_SLACK = 1.6       # how much longer the tank lasts than a clean descent
 MAX_SEAM = 10         # largest run one bite may remove
+GOLD_PACE = 0.40      # seconds per row a gold run may spend
 
 # Depth is the honest knob for length; character is what keeps the levels
 # from feeling like one shaft cut into twelve pieces.
@@ -251,7 +252,11 @@ def make_level(source, seconds, character, seed):
     level = dict(source)
     level['rows'] = [''.join(row) for row in grid]
     level['items'] = items
-    level['par'] = round(depth * 0.5)
+    # Gold sits under a good casual run rather than on top of it. A play
+    # test put level one at 20-24 seconds across 48 rows, and par was 24 —
+    # so the medal landed on the first attempt and the Time Owed ledger
+    # had nothing left to rank.
+    level['par'] = round(depth * GOLD_PACE)
     level['start'] = dict(source['start'])
     level['start']['oxygen'] = round(seconds * AIR_SLACK * DRAIN)
     level['safe'] = dict(source['safe'])
