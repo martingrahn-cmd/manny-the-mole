@@ -2069,6 +2069,23 @@
             text-align: left;
         }
 
+        .puzzle-grade-row.is-locked {
+            opacity: 0.45;
+        }
+
+        .puzzle-grade-row__medal {
+            margin-left: auto;
+            font-size: max(9px, calc(9px * var(--game-scale)));
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            white-space: nowrap;
+        }
+
+        .puzzle-grade-row__medal.is-gold { color: #ffd75e; }
+        .puzzle-grade-row__medal.is-silver { color: #cdd6e4; }
+        .puzzle-grade-row__medal.is-bronze { color: #d99a66; }
+        .puzzle-grade-row__medal.is-none { color: rgba(217, 225, 239, 0.45); }
+
         .puzzle-grade-row:hover:not(:disabled),
         .puzzle-grade-row.is-menu-focused {
             border-color: rgba(var(--puzzle-accent-rgb), 0.6);
@@ -3732,63 +3749,17 @@
                     <p class="eyebrow">Vault Puzzles</p>
                     <h2 id="puzzleSelectTitle">Puzzle mode</h2>
                     <p id="puzzleSelectCopy" class="screen-copy">
-                        Pick a grade and play the circuit lock directly, without digging to it.
+                        The locks from the campaign and twelve beyond it — no digging required.
                     </p>
 
                     <div class="puzzle-mode-list" aria-label="Pick a lock grade">
                         <article class="puzzle-mode-card" data-puzzle="pipes">
                             <span class="puzzle-mode-card__icon" aria-hidden="true">└─</span>
                             <div class="puzzle-mode-card__copy">
-                                <h3>Circuit lock</h3>
-                                <p>Route the current from IN to OUT before time runs out.</p>
+                                <h3>Lock Campaign</h3>
+                                <p>Twenty-four locks, one curve. Each is a fixed board — beat it, then beat your time.</p>
                             </div>
-                            <div class="puzzle-grade-list" role="group" aria-label="Circuit lock, pick a grade">
-                                <button class="puzzle-grade-row" type="button" data-action="start-puzzle" data-puzzle="pipes" data-difficulty="1" aria-label="Start circuit lock, grade 1: four by four, 3.8 seconds per step">
-                                    <span class="puzzle-grade-row__nr" aria-hidden="true">1</span>
-                                    <span class="puzzle-grade-row__main">
-                                        <strong>4×4 · introduction</strong>
-                                        <small>3.8 s per step · 9 of 16 face up</small>
-                                    </span>
-                                </button>
-                                <button class="puzzle-grade-row" type="button" data-action="start-puzzle" data-puzzle="pipes" data-difficulty="2" aria-label="Start circuit lock, grade 2: five by five, 3.8 seconds per step">
-                                    <span class="puzzle-grade-row__nr" aria-hidden="true">2</span>
-                                    <span class="puzzle-grade-row__main">
-                                        <strong>5×5 · bigger board</strong>
-                                        <small>3.8 s per step · 12 of 25 face up</small>
-                                    </span>
-                                </button>
-                                <button class="puzzle-grade-row" type="button" data-action="start-puzzle" data-puzzle="pipes" data-difficulty="3" aria-label="Start circuit lock, grade 3: five by five, winding route">
-                                    <span class="puzzle-grade-row__nr" aria-hidden="true">3</span>
-                                    <span class="puzzle-grade-row__main">
-                                        <strong>5×5 · winding route</strong>
-                                        <small>4 s per step · 11 of 25 face up</small>
-                                    </span>
-                                </button>
-                                <button class="puzzle-grade-row" type="button" data-action="start-puzzle" data-puzzle="pipes" data-difficulty="4" aria-label="Start circuit lock, grade 4: six by six with two welded conductors">
-                                    <span class="puzzle-grade-row__nr" aria-hidden="true">4</span>
-                                    <span class="puzzle-grade-row__main">
-                                        <strong>6×6 · welded conductors</strong>
-                                        <small>5.2 s per step · 2 fixed anchors</small>
-                                    </span>
-                                    <span class="puzzle-grade-row__tag" aria-hidden="true">NYTT</span>
-                                </button>
-                                <button class="puzzle-grade-row" type="button" data-action="start-puzzle" data-puzzle="pipes" data-difficulty="5" aria-label="Start circuit lock, grade 5: six by six with three welded conductors, most hidden">
-                                    <span class="puzzle-grade-row__nr" aria-hidden="true">5</span>
-                                    <span class="puzzle-grade-row__main">
-                                        <strong>6×6 · most hidden</strong>
-                                        <small>4.8 s per step · 3 anchors · 12 of 36 face up</small>
-                                    </span>
-                                    <span class="puzzle-grade-row__tag" aria-hidden="true">NYTT</span>
-                                </button>
-                                <button class="puzzle-grade-row" type="button" data-action="start-puzzle" data-puzzle="pipes" data-difficulty="6" aria-label="Start circuit lock, grade 6: branching circuit that must feed two outlets">
-                                    <span class="puzzle-grade-row__nr" aria-hidden="true">6</span>
-                                    <span class="puzzle-grade-row__main">
-                                        <strong>6×6 · tee and two outlets</strong>
-                                        <small>The current splits and both outlets must be fed</small>
-                                    </span>
-                                    <span class="puzzle-grade-row__tag" aria-hidden="true">NYTT</span>
-                                </button>
-                            </div>
+                            <div class="puzzle-grade-list" id="lockCampaignRows" role="group" aria-label="Lock Campaign, pick a lock"></div>
                         </article>
                         <article class="puzzle-mode-card" data-puzzle="wires">
                             <span class="puzzle-mode-card__icon" aria-hidden="true">✂</span>
@@ -4088,10 +4059,10 @@
     <!-- Bump v on every change to these files. It stayed at 15 through a
          release that rewrote game.js, so returning players kept running the
          old file from cache: same URL, guaranteed hit. -->
-    <script src="sounds.js?v=24"></script>
-    <script src="levels.js?v=24"></script>
-    <script src="puzzles.js?v=24"></script>
-    <script src="trophies.js?v=24"></script>
-    <script src="game.js?v=24"></script>
+    <script src="sounds.js?v=25"></script>
+    <script src="levels.js?v=25"></script>
+    <script src="puzzles.js?v=25"></script>
+    <script src="trophies.js?v=25"></script>
+    <script src="game.js?v=25"></script>
 </body>
 </html>

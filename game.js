@@ -1086,6 +1086,7 @@ class GameUI {
         this.refreshTrophies();
         this.refreshTimes();
         this.refreshFinale();
+        this.refreshPuzzleSelect();
         this.syncMute();
 
         // Every button in the game arrives here. A throw inside one action
@@ -1580,7 +1581,20 @@ class GameUI {
             `Best ${result.previousBest.toFixed(1)}s`;
         this.puzzleWonBest.classList.toggle('is-record', result.isBest);
 
-        const stats = [['Grade', result.difficulty.toString()]];
+        const stats = [[
+            result.lockCampaign ? 'Lock' : 'Grade',
+            result.lockCampaign ?
+                `${result.difficulty} of ${LOCK_CAMPAIGN.length}` :
+                result.difficulty.toString(),
+        ]];
+        if (result.medal) {
+            const medalNames = {
+                gold: 'Gold', silver: 'Silver', bronze: 'Bronze',
+            };
+            stats.push(['Medal', medalNames[result.medal]]);
+        } else if (result.goldTarget) {
+            stats.push(['Gold at', `${result.goldTarget}s`]);
+        }
         if (result.cutsUsed !== null) {
             stats.push([
                 'Cuts',
@@ -1609,9 +1623,14 @@ class GameUI {
         }));
 
         this.puzzleWonActions.replaceChildren();
-        if (result.difficulty < MAX_PIPE_DIFFICULTY) {
+        const nextLimit = result.lockCampaign ?
+            LOCK_CAMPAIGN.length :
+            MAX_PIPE_DIFFICULTY;
+        if (result.difficulty < nextLimit) {
             this.puzzleWonActions.append(this.createPuzzleButton(
-                `Grade ${result.difficulty + 1}`,
+                result.lockCampaign ?
+                    `Lock ${result.difficulty + 1}` :
+                    `Grade ${result.difficulty + 1}`,
                 'puzzle-next',
                 { primary: true }
             ));
@@ -1620,6 +1639,64 @@ class GameUI {
             this.createPuzzleButton('Run it again', 'puzzle-again'),
             this.createPuzzleButton('Back to the puzzles', 'puzzles')
         );
+    }
+
+    /** The Lock Campaign list: 24 rows, unlock chain, best time, medal. */
+    refreshPuzzleSelect() {
+        const host = document.getElementById('lockCampaignRows');
+        if (!host) return;
+
+        host.replaceChildren(...LOCK_CAMPAIGN.map(entry => {
+            const unlocked = this.game.isLockUnlocked(entry.lock);
+            const best = this.game.getPuzzleBest('pipes', entry.lock);
+            const medal = best > 0 ? lockMedal(entry, best) : null;
+
+            const traits = [`${entry.size}×${entry.size}`];
+            if (entry.branching) traits.push('two outlets');
+            else if (entry.turnChance > 0) traits.push('winding');
+            if (entry.welded > 0) {
+                traits.push(`${entry.welded} weld${entry.welded === 1 ? '' : 's'}`);
+            }
+
+            const row = document.createElement('button');
+            row.type = 'button';
+            row.className = 'puzzle-grade-row';
+            row.dataset.action = 'start-puzzle';
+            row.dataset.puzzle = 'pipes';
+            row.dataset.difficulty = String(entry.lock);
+            row.disabled = !unlocked;
+            row.classList.toggle('is-locked', !unlocked);
+            row.setAttribute('aria-label', unlocked ?
+                `Start lock ${entry.lock}: ${traits.join(', ')}` :
+                `Lock ${entry.lock}, locked. Solve lock ${entry.lock - 1} first.`);
+
+            const nr = document.createElement('span');
+            nr.className = 'puzzle-grade-row__nr';
+            nr.setAttribute('aria-hidden', 'true');
+            nr.textContent = String(entry.lock);
+
+            const main = document.createElement('span');
+            main.className = 'puzzle-grade-row__main';
+            const title = document.createElement('strong');
+            title.textContent = traits.join(' · ');
+            const sub = document.createElement('small');
+            sub.textContent = unlocked ?
+                (best > 0 ?
+                    `Best ${best.toFixed(1)}s · gold ${entry.gold}s` :
+                    `Gold at ${entry.gold}s`) :
+                `Solve lock ${entry.lock - 1} first`;
+            main.append(title, sub);
+
+            const badge = document.createElement('span');
+            badge.className = 'puzzle-grade-row__medal ' +
+                (medal ? `is-${medal}` : 'is-none');
+            badge.textContent = medal ?
+                medal.toUpperCase() :
+                (best > 0 ? 'CLEAR' : (unlocked ? '' : '🔒'));
+
+            row.append(nr, main, badge);
+            return row;
+        }));
     }
 
     /** The cabinet: one shelf per group, in the order they are defined. */
@@ -1783,8 +1860,11 @@ class GameUI {
             const completed = this.game.isLevelCompleted(levelIndex);
             const bestAir = this.game.getLevelBestAir(levelIndex);
             const reward = level.reward;
-            const safeLabel = `${SAFE_TYPE_LABELS[level.safe.type]} ` +
-                `${level.safe.difficulty}`;
+            // Dig level N carries Lock Campaign entry N, so the card names
+            // the lock the same way the puzzle menu does.
+            const safeLabel = level.safe.type === 'pipes' ?
+                `${SAFE_TYPE_LABELS[level.safe.type]} ${levelIndex + 1}` :
+                `${SAFE_TYPE_LABELS[level.safe.type]} ${level.safe.difficulty}`;
             const card = document.createElement('button');
             card.type = 'button';
             card.className = 'level-card';
@@ -2530,9 +2610,12 @@ class GameUI {
                 'conductors until a route runs from IN to OUT. The next ' +
                 'lock runs at full speed.' :
                 meta.copy;
-            this.puzzleDifficulty.textContent = state.teaching ?
-                `Lock grade ${state.difficulty} · slow current` :
+            const lockLabel = state.lockCampaign ?
+                `Lock ${state.difficulty} of ${LOCK_CAMPAIGN.length}` :
                 `Lock grade ${state.difficulty}`;
+            this.puzzleDifficulty.textContent = state.teaching ?
+                `${lockLabel} · slow current` :
+                lockLabel;
             this.puzzleStatus.textContent = state.status;
             this.puzzleStatus.classList.toggle('is-success', state.solved);
             this.puzzleStatus.classList.toggle('is-critical', false);
@@ -4036,11 +4119,19 @@ class Game {
         // The very first lock a player ever reaches is a lesson, not a test.
         // Its current crawls; every one after it runs at the normal pace.
         const teaching = !this.hasSeenLock();
+        // Dig level N carries Lock Campaign entry N. The safes used to
+        // repeat each of the six grades twice; now all twelve are distinct
+        // boards, and the same board under the same number is what the
+        // standalone Lock Campaign runs — solving it there or here is the
+        // same achievement.
+        const lockEntry = this.safe.type === 'pipes' ?
+            LOCK_CAMPAIGN[this.currentLevelIndex] ?? null :
+            null;
         this.safePuzzle.start(
             this.safe.type,
-            this.safe.difficulty,
-            this.currentLevel.id,
-            { teaching }
+            lockEntry ? lockEntry.lock : this.safe.difficulty,
+            lockEntry ? lockEntry.seed : this.currentLevel.id,
+            { teaching, balance: lockEntry }
         );
         if (teaching) this.markLockSeen();
         this.gameState = 'puzzle';
@@ -4130,13 +4221,28 @@ class Game {
         this.puzzleContext = null;
         this.gameState = 'puzzle-select';
         this.lastRenderedState = null;
+        // Rebuilt on entry, because campaign play may have solved locks
+        // and shifted bests since the menu was last on screen.
+        this.ui?.refreshPuzzleSelect?.();
         return true;
+    }
+
+    // A lock unlocks when the one before it has been solved anywhere —
+    // in the dig campaign or in the menu; both record to the same key.
+    isLockUnlocked(lockNumber) {
+        if (lockNumber <= 1) return true;
+        return this.getPuzzleBest('pipes', lockNumber - 1) > 0;
     }
 
     startStandalonePuzzle(type, difficulty) {
         const puzzleType = String(type || '');
         const puzzleDifficulty = Number(difficulty);
-        const maximumDifficulty = MAX_PIPE_DIFFICULTY;
+        // The circuit runs the 24-entry Lock Campaign; the wire bank keeps
+        // its six freestanding grades.
+        const isLock = puzzleType === 'pipes';
+        const maximumDifficulty = isLock ?
+            LOCK_CAMPAIGN.length :
+            MAX_PIPE_DIFFICULTY;
         if (
             this.gameState !== 'puzzle-select' ||
             !Object.prototype.hasOwnProperty.call(
@@ -4147,17 +4253,28 @@ class Game {
             puzzleDifficulty < 1 ||
             puzzleDifficulty > maximumDifficulty
         ) return false;
+        if (isLock && !this.isLockUnlocked(puzzleDifficulty)) return false;
 
         this.clearKeyboardInput();
         this.puzzleContext = 'standalone';
         this.standalonePuzzleRun++;
-        this.safePuzzle.start(
-            puzzleType,
-            puzzleDifficulty,
-            `standalone:${puzzleType}:${puzzleDifficulty}:${
-                this.standalonePuzzleRun
-            }`
-        );
+        if (isLock) {
+            // Fixed seed: a lock is one specific board, the same for every
+            // player and every retry. That is what makes its medal a time
+            // worth chasing rather than a dice roll.
+            const entry = LOCK_CAMPAIGN[puzzleDifficulty - 1];
+            this.safePuzzle.start('pipes', entry.lock, entry.seed, {
+                balance: entry,
+            });
+        } else {
+            this.safePuzzle.start(
+                puzzleType,
+                puzzleDifficulty,
+                `standalone:${puzzleType}:${puzzleDifficulty}:${
+                    this.standalonePuzzleRun
+                }`
+            );
+        }
         this.gameState = 'puzzle';
         this.lastRenderedState = null;
         this.sound.playTone(260, 430, 0.12, 0.035, 'square');
@@ -4224,6 +4341,22 @@ class Game {
             return true;
         }
 
+        // A campaign solve is a Lock Campaign solve: same board, same
+        // number. Recording the time here is what unlocks the next lock
+        // in the standalone menu without the player redoing it there.
+        const solvedState = this.safePuzzle.state;
+        if (solvedState.lockCampaign) {
+            const seconds = Math.round(solvedState.elapsed * 10) / 10;
+            const previous = this.getPuzzleBest(
+                solvedState.type, solvedState.difficulty
+            );
+            if (previous === 0 || seconds < previous) {
+                this.setPuzzleBest(
+                    solvedState.type, solvedState.difficulty, seconds
+                );
+            }
+        }
+
         this.puzzleBonus =
             200 + this.safePuzzle.state.difficulty * 100;
         this.score += this.puzzleBonus;
@@ -4243,12 +4376,19 @@ class Game {
         const isBest = previous === 0 || seconds < previous;
         if (isBest) this.setPuzzleBest(state.type, state.difficulty, seconds);
 
+        const lockEntry = state.lockCampaign ?
+            LOCK_CAMPAIGN[state.difficulty - 1] ?? null :
+            null;
+
         return {
             type: state.type,
             difficulty: state.difficulty,
             seconds,
             previousBest: previous,
             isBest,
+            lockCampaign: state.lockCampaign === true,
+            medal: lockEntry ? lockMedal(lockEntry, seconds) : null,
+            goldTarget: lockEntry ? lockEntry.gold : null,
             // wires only; the circuit has no equivalent to count
             cutsUsed: state.attempts ? state.attempts.length : null,
             cutBudget: WIRE_BALANCE[state.difficulty]?.cuts ?? null,
@@ -4307,12 +4447,15 @@ class Game {
         return this.startStandalonePuzzle(result.type, result.difficulty);
     }
 
-    /** The next grade up, if the player has not run out of them. */
+    /** The next lock or grade up, if the player has not run out of them. */
     advanceStandalonePuzzle() {
         const result = this.lastPuzzleResult;
         if (this.gameState !== 'puzzle-won' || !result) return false;
         const next = result.difficulty + 1;
-        if (next > MAX_PIPE_DIFFICULTY) return false;
+        const limit = result.type === 'pipes' ?
+            LOCK_CAMPAIGN.length :
+            MAX_PIPE_DIFFICULTY;
+        if (next > limit) return false;
         this.gameState = 'puzzle-select';
         return this.startStandalonePuzzle(result.type, next);
     }
