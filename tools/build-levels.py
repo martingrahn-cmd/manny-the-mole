@@ -29,6 +29,8 @@ DRAIN = 1.2           # oxygen per second
 AIR_SLACK = 1.6       # how much longer the tank lasts than a clean descent
 MAX_SEAM = 7          # largest run one bite may remove
 GOLD_PACE = 0.40      # seconds per row a gold run may spend
+MAX_PLUMMET = 11      # longest pure-vertical run a column may offer (one screen)
+ARM_CHANCE = 0.4      # share of ledges that get an X block over their crossing
 
 # Depth is the honest knob for length; character is what keeps the levels
 # from feeling like one shaft cut into twelve pieces.
@@ -244,24 +246,168 @@ def carve_descent(grid, depth, start, target, colors, rng):
 
     The path wanders — it drifts sideways as it falls — so it reads as rock
     like everything else. It only promises that going down and sideways is
-    always enough."""
+    always enough.
+
+    Returns the carved cells as {row: set(columns)}, because the later
+    passes must not undo the promise: a plummet-capping ledge across the
+    path would wall the route, and an armed X block on it would tax the one
+    road every player is guaranteed with twenty air."""
+    path = {}
+
+    def mark(px, py):
+        path.setdefault(py, set()).add(px)
+
+    def dig(px, py):
+        if grid[py][px] in '#=':
+            grid[py][px] = str(rng.randrange(colors))
+
+    # Sweeping diagonals, not a random walk. The first draft homed on the
+    # safe's column and parked there for forty-six rows; the second walked
+    # randomly and clung to the side walls — a random walk loiters, and
+    # any column the path loiters in is a column cap_plummets is forbidden
+    # to wall. So the path now commits to a waypoint on the far side of
+    # the shaft, sweeps toward it, and picks a new one on arrival. No
+    # column keeps the path for more than a few rows, and the guaranteed
+    # route itself becomes the sideways-tunnelling rhythm the threat
+    # design wants.
     x, y = start
+    waypoint = 5 if x <= 3 else 1
     while y < target[1]:
-        if grid[y][x] in '#=':
-            grid[y][x] = str(rng.randrange(colors))
-        # Drift toward the chamber, with some slack so it is not a straight
-        # line down to the safe.
-        if rng.random() < 0.45:
+        mark(x, y)
+        dig(x, y)
+        if target[1] - y <= 8:
             step = 1 if target[0] > x else (-1 if target[0] < x else 0)
-            if rng.random() < 0.3:
-                step = rng.choice((-1, 1))
+        else:
+            if x == waypoint:
+                waypoint = rng.randrange(4, 7) if x <= 3 else rng.randrange(0, 3)
+            step = (1 if waypoint > x else -1) if rng.random() < 0.75 else 0
+        if step:
             nx = min(GRID_W - 1, max(0, x + step))
-            if grid[y][nx] in '#=':
-                grid[y][nx] = str(rng.randrange(colors))
-            x = nx
+            if nx != x:
+                dig(nx, y)
+                x = nx
+                mark(x, y)
         y += 1
-    if grid[y][x] in '#=':
-        grid[y][x] = str(rng.randrange(colors))
+    mark(x, y)
+    dig(x, y)
+    return path
+
+
+def column_runs(grid, column, body_top, body_bottom):
+    """Consecutive bedrock-free spans in one column, as (top, bottom)."""
+    runs, run_start = [], None
+    for y in range(body_top, body_bottom):
+        if grid[y][column] in '#=':
+            if run_start is not None:
+                runs.append((run_start, y - 1))
+                run_start = None
+        elif run_start is None:
+            run_start = y
+    if run_start is not None:
+        runs.append((run_start, body_bottom - 1))
+    return runs
+
+
+def cap_plummets(grid, depth, path, rng):
+    """No column may offer more than MAX_PLUMMET rows of pure descent.
+
+    The threat census was blunt about why the danger never arrives: blocks
+    only fall straight down, the column above a digging player is the shaft
+    they just emptied, and the maps offered up to 84 consecutive rows —
+    seven and a half screens — where nothing ever pushed the player off the
+    vertical. Sideways tunnelling is the only move that puts rock over your
+    head, so every long run gets a ledge cut across its middle.
+
+    The capping ledge is placed like the scattered ones — two or three
+    cells, never closing a row — and never across the carved descent, which
+    must stay a promise."""
+    body_top, body_bottom = HEADROOM, depth - CHAMBER
+    for _ in range(300):
+        over = []
+        for column in range(GRID_W):
+            for top, bottom in column_runs(grid, column, body_top, body_bottom):
+                if bottom - top + 1 > MAX_PLUMMET:
+                    over.append((column, top, bottom))
+        if not over:
+            return
+        # Every over-long run gets one placement attempt per pass. An
+        # earlier draft bailed out of the whole function the first time a
+        # single run could not be capped, which left every other run in the
+        # campaign untouched — the worst shaft only shrank from 55 to 49.
+        progress = False
+        for column, top, bottom in over:
+            mid = (top + bottom) // 2
+            rows = sorted(range(top + 2, bottom - 1), key=lambda r: abs(r - mid))
+            placed = False
+            for row in rows:
+                for width in rng.sample((2, 3), 2):
+                    starts = list(range(max(0, column - width + 1),
+                                        min(GRID_W - width, column) + 1))
+                    rng.shuffle(starts)
+                    for x0 in starts:
+                        cols = set(range(x0, x0 + width))
+                        if path.get(row, set()) & cols:
+                            continue
+                        if any(grid[row][x] == '.' for x in cols):
+                            continue
+                        # Two open cells minimum: one would be the funnel
+                        # this map style exists to avoid.
+                        open_cells = sum(
+                            1 for x in range(GRID_W)
+                            if x not in cols and grid[row][x] not in '#='
+                        )
+                        if open_cells < 2:
+                            continue
+                        for x in cols:
+                            grid[row][x] = '='
+                        placed = True
+                        progress = True
+                        break
+                    if placed:
+                        break
+                if placed:
+                    break
+        if not progress:
+            # The runs that remain are pinned by the carved descent; the
+            # reachability check downstream still guards the level.
+            return
+
+
+def arm_ledges(grid, depth, path, rng):
+    """Rest a heavy block over the crossing path of some ledges.
+
+    Ledge crossings are the one to two cells where the player is forced to
+    tunnel horizontally — the only move that undermines anything overhead.
+    But the colour roofs mostly hover now (larger seams keep support
+    somewhere), so the crossings threaten in theory and shrug in practice.
+    X blocks are the exception: their support is their own cell below and
+    nothing else, so an undermined X always shakes and always drops.
+
+    One X above an end of the crossing tunnel: the player digs through the
+    cell beneath it on the way past, and the ceiling actually moves. Path
+    cells are skipped so the guaranteed route never has to drill an X."""
+    body_top, body_bottom = HEADROOM + 2, depth - CHAMBER
+    for y in range(body_top, body_bottom):
+        x = 0
+        while x < GRID_W:
+            if grid[y][x] != '=':
+                x += 1
+                continue
+            x0 = x
+            while x < GRID_W and grid[y][x] == '=':
+                x += 1
+            x1 = x - 1
+            if x1 - x0 < 1 or rng.random() > ARM_CHANCE:
+                continue
+            # Prefer the ledge ends: every crossing exits over one of them.
+            candidates = [cx for cx in (x0, x1, (x0 + x1) // 2) if
+                          y - 2 >= HEADROOM and
+                          grid[y - 2][cx] in '0123' and
+                          grid[y - 1][cx] in '0123' and
+                          cx not in path.get(y - 2, set()) and
+                          cx not in path.get(y - 1, set())]
+            if candidates:
+                grid[y - 2][rng.choice(candidates)] = 'X'
 
 
 def free_column(grid, depth):
@@ -283,7 +429,9 @@ def make_level(source, seconds, character, seed):
         grid = build_rows(depth, profile, rng)
         start = (source['start']['x'], source['start']['y'])
         safe_cell = (2, depth - CHAMBER + 1)
-        carve_descent(grid, depth, start, safe_cell, profile['colors'], rng)
+        path = carve_descent(grid, depth, start, safe_cell,
+                             profile['colors'], rng)
+        cap_plummets(grid, depth, path, rng)
         split_big_seams(grid, depth, MAX_SEAM, profile['colors'], rng)
         pockets = carve_pockets(grid, depth, tubes + coins, rng)
         if len(pockets) < tubes + coins:
@@ -296,6 +444,9 @@ def make_level(source, seconds, character, seed):
         pockets = [p for p in pockets if p in downhill]
         if len(pockets) < tubes + 1 or safe_cell not in downhill:
             continue
+        # Armed last: X blocks are diggable, so they change none of the
+        # checks above, and only the accepted layout should carry them.
+        arm_ledges(grid, depth, path, rng)
         break
     else:
         raise SystemExit(f"{source['id']}: no layout satisfied the checks")
