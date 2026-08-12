@@ -633,14 +633,19 @@ class SafePuzzleEngine {
     }
 
     getPipeOpeningStatus(state) {
+        // Boards with welds say so up front — the welded conductor is the
+        // one rule the board cannot show by being tapped at.
+        const weldNote = state.anchors?.length ?
+            ' The gold conductors are welded in — route through them.' :
+            '';
         if (state.teaching) {
             return 'The current is barely creeping on this one. ' +
-                'Take your time.';
+                'Take your time.' + weldNote;
         }
         return state.flowFastForward ?
             'The route to OUT is already open — the current races through!' :
             'The current is holding in the first conductor — ' +
-            'uncover a few tiles before it moves.';
+            'uncover a few tiles before it moves.' + weldNote;
     }
 
     getActivePipeStep(state = this.state) {
@@ -962,8 +967,15 @@ class SafePuzzleEngine {
 
         const cell = state.cells[index];
         if (cell.welded) {
-            state.status =
-                'That conductor is welded down. Build on from it instead.';
+            // Both facts in one line, because a play test showed the old
+            // message taught neither: the cell cannot move, AND the route
+            // is required to pass through it. The tick lets the UI shake
+            // the cell and the sound bench answer with a clank, so the
+            // refusal is felt, not just printed.
+            state.status = 'Welded solid — it cannot move, and the ' +
+                'current must pass through it.';
+            state.refusedIndex = index;
+            state.refusalTick = (state.refusalTick || 0) + 1;
             this.touch();
             return true;
         }

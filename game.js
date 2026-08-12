@@ -2290,6 +2290,14 @@ class GameUI {
             );
             button.classList.toggle('is-locked', state.filled.has(index));
             button.classList.toggle('is-welded', cell.welded === true);
+            // One shake per refusal: the class rides exactly one rebuild —
+            // the one the refusing tap itself triggered — and is not
+            // reapplied by later rebuilds of the same board.
+            button.classList.toggle(
+                'is-refused',
+                state.refusedIndex === index &&
+                    state.refusalTick !== this.weldRefusalRendered
+            );
             button.setAttribute(
                 'aria-label',
                 this.game.safePuzzle.getPipeLabel(index)
@@ -2389,6 +2397,7 @@ class GameUI {
             grid.append(button);
             this.pipeCells[index] = button;
         });
+        this.weldRefusalRendered = state.refusalTick;
         const inTerminal = document.createElement('span');
         inTerminal.className =
             'puzzle-pipes__terminal puzzle-pipes__terminal--in';
@@ -2441,7 +2450,7 @@ class GameUI {
             '<span><b>1</b> Uncover</span>' +
             '<span><b>2</b> Swap</span>' +
             '<span class="puzzle-pipes__anchors"><b>!</b> ' +
-            'Route through the gold</span>' :
+            'Gold is welded — can&#39;t move, must be on the route</span>' :
             '<span><b>1</b> Uncover</span>' +
             '<span><b>2</b> Mark</span>' +
             '<span><b>3</b> Swap</span>';
@@ -4289,6 +4298,15 @@ class Game {
         const state = this.safePuzzle.state;
         if (state?.solved) {
             this.sound.playTone(520, 880, 0.18, 0.04, 'square');
+        } else if (
+            state?.refusalTick &&
+            state.refusalTick !== this.lastWeldRefusalTone
+        ) {
+            // A tap on a welded conductor answers with the bedrock clank,
+            // not the cheerful confirm tone — the same sound the drill
+            // makes against the one rock it cannot bite.
+            this.lastWeldRefusalTone = state.refusalTick;
+            this.sound.playBedrockClank();
         } else {
             this.sound.playTone(420, 560, 0.055, 0.018, 'square');
         }
