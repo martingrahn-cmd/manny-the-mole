@@ -345,10 +345,23 @@ class GamepadHandler {
         this.lastDirections = { left: false, right: false, up: false, down: false };
         this.deadzone = 0.3;
         this.preferredIndex = null;
+        this.apiBlocked = false;
     }
-    
+
+    // Embedding iframes (permissions policy) may forbid the Gamepad API entirely,
+    // making navigator.getGamepads() throw a SecurityError on every call.
+    readGamepads() {
+        if (this.apiBlocked || typeof navigator.getGamepads !== 'function') return [];
+        try {
+            return navigator.getGamepads() || [];
+        } catch (err) {
+            this.apiBlocked = true;
+            return [];
+        }
+    }
+
     getGamepadList() {
-        const gamepads = navigator.getGamepads();
+        const gamepads = this.readGamepads();
         const list = [];
         for (let i = 0; i < gamepads.length; i++) {
             if (gamepads[i]) {
@@ -371,7 +384,7 @@ class GamepadHandler {
     }
     
     findBestGamepad() {
-        const gamepads = navigator.getGamepads();
+        const gamepads = this.readGamepads();
         
         if (this.preferredIndex !== null && gamepads[this.preferredIndex]) {
             return gamepads[this.preferredIndex];
