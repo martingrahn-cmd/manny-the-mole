@@ -1719,6 +1719,19 @@ class GameUI {
         );
     }
 
+    /** The menu card's one-liner: pulls toward today's lock until solved. */
+    refreshPuzzleModeHint() {
+        const hint = document.getElementById('puzzleModeEntryHint');
+        if (!hint) return;
+        const info = this.game.getDailyLockInfo();
+        const days = `${info.streak} day${info.streak === 1 ? '' : 's'}`;
+        hint.textContent = info.solvedToday ?
+            `☀ Daily solved · streak ${days} · the 24-lock campaign` :
+            info.streak > 0 ?
+            `☀ Today's lock is waiting — a ${days} streak on the line` :
+            '☀ A new lock every day · the 24-lock campaign';
+    }
+
     /** '2026-08-13' → 'Aug 13', for row labels and the puzzle header. */
     prettyDailyDate(dateKey) {
         const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
@@ -1785,6 +1798,7 @@ class GameUI {
     /** The Lock Campaign list: 24 rows, unlock chain, best time, medal. */
     refreshPuzzleSelect() {
         this.refreshDailyLock();
+        this.refreshPuzzleModeHint();
         const host = document.getElementById('lockCampaignRows');
         if (!host) return;
 
@@ -6245,6 +6259,7 @@ class Game {
             checkpoint: 0,
             state: 'menu',
         });
+        this.ui?.refreshPuzzleModeHint?.();
     }
     
     restart() {
