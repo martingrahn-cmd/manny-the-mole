@@ -2446,12 +2446,13 @@ class GameUI {
                 'WELD BYPASSED' :
                 'CIRCUIT BROKEN';
             const failureHint = document.createElement('small');
-            failureHint.textContent = Number.isInteger(state.flowBlockedIndex) ?
+            failureHint.textContent = (Number.isInteger(state.flowBlockedIndex) ?
                 (missedWeld ? 'The weld is marked at row ' : 'The break is marked at row ') +
                 `${Math.floor(state.flowBlockedIndex / state.size) + 1}` +
                 ', column ' +
-                `${state.flowBlockedIndex % state.size + 1}.` :
-                'Study how the conductors sit before trying again.';
+                `${state.flowBlockedIndex % state.size + 1}. ` :
+                'Study how the conductors sit before trying again. ') +
+                'Same board next try — and the worn mechanism will run slower.';
             failureCopy.append(failureTitle, failureHint);
             failure.append(failureIcon, failureCopy);
             failureBanner = failure;

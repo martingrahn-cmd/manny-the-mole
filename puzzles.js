@@ -8,6 +8,13 @@ const MAX_PIPE_DIFFICULTY = 6;
 const TEACHING_STEP_SCALE = 10;
 const TEACHING_OPENING_SCALE = 2;
 
+// Every retry wears the lock's mechanism down: the current runs 20% slower
+// per attempt, to roughly double speed at the cap. Losing never raises the
+// wall — it lowers it, so a player who keeps trying always gets through,
+// and the medal times stay the reason to come back and do it clean.
+const PIPE_WEAR_SCALE = 1.2;
+const PIPE_WEAR_CAP = 4;
+
 const SAFE_PUZZLE_META = Object.freeze({
     pipes: {
         eyebrow: 'Fuse box',
@@ -148,30 +155,30 @@ const PIPE_FLOW_BALANCE = Object.freeze({
 // player meets identically — a designed level, chased on time. gold is the
 // medal target in seconds; silver and bronze derive from it.
 const LOCK_CAMPAIGN = Object.freeze([
-    { lock: 1,  size: 4, step: 3.8, opening: 6,  safeLead: 2, welded: 0, startRevealed: 0.50, turnChance: 0,    doubleTurnChance: 0,    gold: 12, seed: 'lock-01' },
-    { lock: 2,  size: 4, step: 3.6, opening: 6,  safeLead: 2, welded: 0, startRevealed: 0.42, turnChance: 0.30, doubleTurnChance: 0.10, gold: 13, seed: 'lock-02' },
-    { lock: 3,  size: 5, step: 3.8, opening: 8,  safeLead: 3, welded: 0, startRevealed: 0.45, turnChance: 0,    doubleTurnChance: 0,    gold: 15, seed: 'lock-03' },
-    { lock: 4,  size: 5, step: 3.7, opening: 8,  safeLead: 3, welded: 1, startRevealed: 0.40, turnChance: 0.30, doubleTurnChance: 0.10, gold: 17, seed: 'lock-04' },
-    { lock: 5,  size: 5, step: 4.0, opening: 9,  safeLead: 3, welded: 0, startRevealed: 0.40, turnChance: 0.58, doubleTurnChance: 0.20, gold: 17, seed: 'lock-05' },
-    { lock: 6,  size: 5, step: 3.8, opening: 9,  safeLead: 3, welded: 2, startRevealed: 0.34, turnChance: 0.60, doubleTurnChance: 0.30, gold: 19, seed: 'lock-06' },
-    { lock: 7,  size: 6, step: 5.2, opening: 12, safeLead: 4, welded: 2, startRevealed: 0.30, turnChance: 0.62, doubleTurnChance: 0.45, gold: 22, seed: 'lock-07' },
-    { lock: 8,  size: 6, step: 5.0, opening: 12, safeLead: 4, welded: 3, startRevealed: 0.28, turnChance: 0.65, doubleTurnChance: 0.50, gold: 24, seed: 'lock-08' },
-    { lock: 9,  size: 6, step: 4.8, opening: 13, safeLead: 4, welded: 3, startRevealed: 0.26, turnChance: 0.70, doubleTurnChance: 0.55, gold: 25, seed: 'lock-09' },
-    { lock: 10, size: 6, step: 4.6, opening: 12, safeLead: 3, welded: 4, startRevealed: 0.24, turnChance: 0.72, doubleTurnChance: 0.60, gold: 27, seed: 'lock-10' },
-    { lock: 11, size: 6, step: 5.4, opening: 13, safeLead: 3, welded: 2, startRevealed: 0.34, turnChance: 0,    doubleTurnChance: 0,    branching: true, gold: 28, seed: 'lock-11' },
-    { lock: 12, size: 6, step: 5.2, opening: 13, safeLead: 3, welded: 3, startRevealed: 0.30, turnChance: 0,    doubleTurnChance: 0,    branching: true, gold: 30, seed: 'lock-12' },
-    { lock: 13, size: 7, step: 5.6, opening: 14, safeLead: 4, welded: 2, startRevealed: 0.32, turnChance: 0.60, doubleTurnChance: 0.40, gold: 30, seed: 'lock-13' },
-    { lock: 14, size: 7, step: 5.4, opening: 14, safeLead: 4, welded: 3, startRevealed: 0.30, turnChance: 0.65, doubleTurnChance: 0.45, gold: 32, seed: 'lock-14' },
-    { lock: 15, size: 6, step: 4.4, opening: 11, safeLead: 3, welded: 3, startRevealed: 0.26, turnChance: 0,    doubleTurnChance: 0,    branching: true, gold: 30, seed: 'lock-15' },
-    { lock: 16, size: 7, step: 5.2, opening: 14, safeLead: 3, welded: 4, startRevealed: 0.26, turnChance: 0.70, doubleTurnChance: 0.50, gold: 34, seed: 'lock-16' },
-    { lock: 17, size: 7, step: 5.6, opening: 15, safeLead: 4, welded: 3, startRevealed: 0.30, turnChance: 0,    doubleTurnChance: 0,    branching: true, gold: 36, seed: 'lock-17' },
-    { lock: 18, size: 7, step: 5.0, opening: 13, safeLead: 3, welded: 4, startRevealed: 0.24, turnChance: 0.72, doubleTurnChance: 0.55, gold: 36, seed: 'lock-18' },
-    { lock: 19, size: 7, step: 5.4, opening: 14, safeLead: 3, welded: 4, startRevealed: 0.26, turnChance: 0,    doubleTurnChance: 0,    branching: true, gold: 38, seed: 'lock-19' },
-    { lock: 20, size: 7, step: 4.8, opening: 12, safeLead: 3, welded: 5, startRevealed: 0.22, turnChance: 0.75, doubleTurnChance: 0.60, gold: 38, seed: 'lock-20' },
-    { lock: 21, size: 7, step: 5.2, opening: 13, safeLead: 3, welded: 5, startRevealed: 0.24, turnChance: 0,    doubleTurnChance: 0,    branching: true, gold: 40, seed: 'lock-21' },
-    { lock: 22, size: 7, step: 4.6, opening: 12, safeLead: 2, welded: 5, startRevealed: 0.20, turnChance: 0.78, doubleTurnChance: 0.65, gold: 40, seed: 'lock-22' },
-    { lock: 23, size: 7, step: 5.0, opening: 12, safeLead: 2, welded: 6, startRevealed: 0.22, turnChance: 0,    doubleTurnChance: 0,    branching: true, gold: 42, seed: 'lock-23' },
-    { lock: 24, size: 7, step: 4.4, opening: 12, safeLead: 2, welded: 6, startRevealed: 0.18, turnChance: 0,    doubleTurnChance: 0,    branching: true, gold: 45, seed: 'lock-24' },
+    { lock: 1,  size: 4, step: 5.7, opening: 9,  safeLead: 2, welded: 0, startRevealed: 0.50, turnChance: 0,    doubleTurnChance: 0,    gold: 12, seed: 'lock-01' },
+    { lock: 2,  size: 4, step: 5.4, opening: 9,  safeLead: 2, welded: 0, startRevealed: 0.42, turnChance: 0.30, doubleTurnChance: 0.10, gold: 13, seed: 'lock-02' },
+    { lock: 3,  size: 5, step: 5.7, opening: 12, safeLead: 3, welded: 0, startRevealed: 0.45, turnChance: 0,    doubleTurnChance: 0,    gold: 15, seed: 'lock-03' },
+    { lock: 4,  size: 5, step: 5.6, opening: 12, safeLead: 3, welded: 1, startRevealed: 0.40, turnChance: 0.30, doubleTurnChance: 0.10, gold: 17, seed: 'lock-04' },
+    { lock: 5,  size: 5, step: 6.0, opening: 14, safeLead: 3, welded: 0, startRevealed: 0.40, turnChance: 0.58, doubleTurnChance: 0.20, gold: 17, seed: 'lock-05' },
+    { lock: 6,  size: 5, step: 5.7, opening: 14, safeLead: 3, welded: 2, startRevealed: 0.34, turnChance: 0.60, doubleTurnChance: 0.30, gold: 19, seed: 'lock-06' },
+    { lock: 7,  size: 6, step: 7.8, opening: 18, safeLead: 4, welded: 2, startRevealed: 0.30, turnChance: 0.62, doubleTurnChance: 0.45, gold: 22, seed: 'lock-07' },
+    { lock: 8,  size: 6, step: 7.5, opening: 18, safeLead: 4, welded: 3, startRevealed: 0.28, turnChance: 0.65, doubleTurnChance: 0.50, gold: 24, seed: 'lock-08' },
+    { lock: 9,  size: 6, step: 7.2, opening: 20, safeLead: 4, welded: 3, startRevealed: 0.26, turnChance: 0.70, doubleTurnChance: 0.55, gold: 25, seed: 'lock-09' },
+    { lock: 10, size: 6, step: 6.9, opening: 18, safeLead: 3, welded: 4, startRevealed: 0.24, turnChance: 0.72, doubleTurnChance: 0.60, gold: 27, seed: 'lock-10' },
+    { lock: 11, size: 6, step: 8.1, opening: 20, safeLead: 3, welded: 2, startRevealed: 0.34, turnChance: 0,    doubleTurnChance: 0,    branching: true, gold: 28, seed: 'lock-11' },
+    { lock: 12, size: 6, step: 7.8, opening: 20, safeLead: 3, welded: 3, startRevealed: 0.30, turnChance: 0,    doubleTurnChance: 0,    branching: true, gold: 30, seed: 'lock-12' },
+    { lock: 13, size: 7, step: 8.4, opening: 21, safeLead: 4, welded: 2, startRevealed: 0.32, turnChance: 0.60, doubleTurnChance: 0.40, gold: 30, seed: 'lock-13' },
+    { lock: 14, size: 7, step: 8.1, opening: 21, safeLead: 4, welded: 3, startRevealed: 0.30, turnChance: 0.65, doubleTurnChance: 0.45, gold: 32, seed: 'lock-14' },
+    { lock: 15, size: 6, step: 6.6, opening: 17, safeLead: 3, welded: 3, startRevealed: 0.26, turnChance: 0,    doubleTurnChance: 0,    branching: true, gold: 30, seed: 'lock-15' },
+    { lock: 16, size: 7, step: 7.8, opening: 21, safeLead: 3, welded: 4, startRevealed: 0.26, turnChance: 0.70, doubleTurnChance: 0.50, gold: 34, seed: 'lock-16' },
+    { lock: 17, size: 7, step: 8.4, opening: 23, safeLead: 4, welded: 3, startRevealed: 0.30, turnChance: 0,    doubleTurnChance: 0,    branching: true, gold: 36, seed: 'lock-17' },
+    { lock: 18, size: 7, step: 7.5, opening: 20, safeLead: 3, welded: 4, startRevealed: 0.24, turnChance: 0.72, doubleTurnChance: 0.55, gold: 36, seed: 'lock-18' },
+    { lock: 19, size: 7, step: 8.1, opening: 21, safeLead: 3, welded: 4, startRevealed: 0.26, turnChance: 0,    doubleTurnChance: 0,    branching: true, gold: 38, seed: 'lock-19' },
+    { lock: 20, size: 7, step: 7.2, opening: 18, safeLead: 3, welded: 5, startRevealed: 0.22, turnChance: 0.75, doubleTurnChance: 0.60, gold: 38, seed: 'lock-20' },
+    { lock: 21, size: 7, step: 7.8, opening: 20, safeLead: 3, welded: 5, startRevealed: 0.24, turnChance: 0,    doubleTurnChance: 0,    branching: true, gold: 40, seed: 'lock-21' },
+    { lock: 22, size: 7, step: 6.9, opening: 18, safeLead: 2, welded: 5, startRevealed: 0.20, turnChance: 0.78, doubleTurnChance: 0.65, gold: 40, seed: 'lock-22' },
+    { lock: 23, size: 7, step: 7.5, opening: 18, safeLead: 2, welded: 6, startRevealed: 0.22, turnChance: 0,    doubleTurnChance: 0,    branching: true, gold: 42, seed: 'lock-23' },
+    { lock: 24, size: 7, step: 6.6, opening: 18, safeLead: 2, welded: 6, startRevealed: 0.18, turnChance: 0,    doubleTurnChance: 0,    branching: true, gold: 45, seed: 'lock-24' },
 ]);
 
 const LOCK_MEDAL_SILVER = 1.6;
@@ -198,8 +205,8 @@ class SafePuzzleEngine {
     // to how slow is too slow: the current has to visibly move, or the
     // player is back to wondering what the board is for.
     //
-    // At this scale grade one opens after 12 seconds and then steps every
-    // 38, against 6 and 3.8 normally.
+    // At this scale lock one opens after 18 seconds and then steps every
+    // 57, against 9 and 5.7 normally.
     // balance overrides the grade table lookup with a LOCK_CAMPAIGN entry;
     // difficulty then carries the lock number (1-24) for display and bests,
     // uncapped by MAX_PIPE_DIFFICULTY, which only bounds the legacy grades.
@@ -1034,6 +1041,13 @@ class SafePuzzleEngine {
     resetPipes() {
         const state = this.state;
         if (!state || state.type !== 'pipes' || state.solved) return false;
+        // Wear compounds on the current values, so it stacks the same way
+        // on top of a teaching-scaled clock as on a normal one.
+        if ((state.wear || 0) < PIPE_WEAR_CAP) {
+            state.wear = (state.wear || 0) + 1;
+            state.flowStep *= PIPE_WEAR_SCALE;
+            state.flowOpening *= PIPE_WEAR_SCALE;
+        }
         state.cells.sort((first, second) =>
             first.initialIndex - second.initialIndex
         );
@@ -1060,6 +1074,16 @@ class SafePuzzleEngine {
         this.refreshPipeFastForward(state);
         this.advancePipeFlow(state);
         state.status = this.getPipeOpeningStatus(state);
+        if (state.wear > 0) {
+            const slower = Math.round(
+                (Math.pow(PIPE_WEAR_SCALE, state.wear) - 1) * 100
+            );
+            state.status = `Attempt ${state.wear + 1} — the mechanism is ` +
+                `wearing down. The current takes ${slower}% longer now` +
+                (state.wear >= PIPE_WEAR_CAP ?
+                    ', as slow as it gets.' :
+                    '.');
+        }
         return true;
     }
 
