@@ -192,6 +192,45 @@ function lockMedal(entry, seconds) {
     return null;
 }
 
+// ---- The daily lock ---------------------------------------------------
+// One board a day, the same for every player, because the date is the
+// seed. Templates come from the middle of the campaign curve — locks 5
+// through 20, past the lessons but short of the gauntlet — so a daily is
+// always interesting and never a wall. The daily never touches the
+// campaign chain or its bests; its currency is the streak.
+const DAILY_LOCK_TEMPLATES = Object.freeze(
+    LOCK_CAMPAIGN.filter(entry => entry.lock >= 5 && entry.lock <= 20)
+);
+
+function hashDailyKey(text) {
+    let hash = 2166136261;
+    for (const character of String(text)) {
+        hash ^= character.charCodeAt(0);
+        hash = Math.imul(hash, 16777619);
+    }
+    return hash >>> 0;
+}
+
+/** Local date as 'YYYY-MM-DD' — the daily rolls at the player's midnight. */
+function dailyLockDateKey(now = new Date()) {
+    const pad = value => String(value).padStart(2, '0');
+    return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-` +
+        pad(now.getDate());
+}
+
+/** The calendar day before a date key, as a date key. */
+function dailyLockKeyBefore(dateKey) {
+    const [year, month, day] = String(dateKey).split('-').map(Number);
+    return dailyLockDateKey(new Date(year, month - 1, day - 1));
+}
+
+function dailyLockEntry(dateKey) {
+    const template = DAILY_LOCK_TEMPLATES[
+        hashDailyKey(`daily:${dateKey}`) % DAILY_LOCK_TEMPLATES.length
+    ];
+    return { ...template, seed: `daily-${dateKey}` };
+}
+
 class SafePuzzleEngine {
     constructor() {
         this.state = null;

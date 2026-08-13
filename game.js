@@ -91,6 +91,7 @@ const PROGRESS_STORAGE_KEY = 'manny-the-mole:campaign-progress';
 const MUTE_STORAGE_KEY = 'manny-the-mole:muted';
 const PUZZLE_BEST_STORAGE_KEY = 'manny-the-mole:puzzle-bests';
 const LOCK_SEEN_STORAGE_KEY = 'manny-the-mole:lock-seen';
+const DAILY_LOCK_STORAGE_KEY = 'manny-the-mole:daily-lock';
 
 // Medals rank the descent, not the safe. Air cannot do that job: every
 // level carries roughly ten times the air the route needs, so even a
@@ -1197,6 +1198,9 @@ class GameUI {
                     Number(button.dataset.difficulty)
                 );
             }
+            else if (action === 'start-daily-lock') {
+                this.game.startDailyLock();
+            }
             else if (action === 'puzzle-close') {
                 this.game.cancelSafePuzzle();
             }
@@ -1642,12 +1646,25 @@ class GameUI {
             `Best ${result.previousBest.toFixed(1)}s`;
         this.puzzleWonBest.classList.toggle('is-record', result.isBest);
 
-        const stats = [[
-            result.lockCampaign ? 'Lock' : 'Grade',
-            result.lockCampaign ?
-                `${result.difficulty} of ${LOCK_CAMPAIGN.length}` :
-                result.difficulty.toString(),
-        ]];
+        const stats = [
+            result.daily ?
+                ['Daily lock', this.prettyDailyDate(result.dailyDate)] :
+                [
+                    result.lockCampaign ? 'Lock' : 'Grade',
+                    result.lockCampaign ?
+                        `${result.difficulty} of ${LOCK_CAMPAIGN.length}` :
+                        result.difficulty.toString(),
+                ],
+        ];
+        if (result.daily) {
+            stats.push([
+                'Streak',
+                `${result.streak} day${result.streak === 1 ? '' : 's'}` +
+                (result.bestStreak > result.streak ?
+                    ` · best ${result.bestStreak}` :
+                    ''),
+            ]);
+        }
         if (result.medal) {
             const medalNames = {
                 gold: 'Gold', silver: 'Silver', bronze: 'Bronze',
@@ -1687,7 +1704,7 @@ class GameUI {
         const nextLimit = result.lockCampaign ?
             LOCK_CAMPAIGN.length :
             MAX_PIPE_DIFFICULTY;
-        if (result.difficulty < nextLimit) {
+        if (!result.daily && result.difficulty < nextLimit) {
             this.puzzleWonActions.append(this.createPuzzleButton(
                 result.lockCampaign ?
                     `Lock ${result.difficulty + 1}` :
@@ -1702,8 +1719,72 @@ class GameUI {
         );
     }
 
+    /** '2026-08-13' → 'Aug 13', for row labels and the puzzle header. */
+    prettyDailyDate(dateKey) {
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const [, month, day] = String(dateKey).split('-').map(Number);
+        return `${months[(month || 1) - 1]} ${day || 1}`;
+    }
+
+    /** Today's board, its traits, and where the streak stands. */
+    refreshDailyLock() {
+        const host = document.getElementById('dailyLockRow');
+        if (!host) return;
+        const info = this.game.getDailyLockInfo();
+        const entry = info.entry;
+        const medal = info.solvedToday && info.time > 0 ?
+            lockMedal(entry, info.time) : null;
+
+        const traits = [`${entry.size}×${entry.size}`];
+        if (entry.branching) traits.push('two outlets');
+        else if (entry.turnChance > 0) traits.push('winding');
+        if (entry.welded > 0) {
+            traits.push(`${entry.welded} weld${entry.welded === 1 ? '' : 's'}`);
+        }
+
+        const row = document.createElement('button');
+        row.type = 'button';
+        row.className = 'puzzle-grade-row is-daily';
+        row.dataset.action = 'start-daily-lock';
+
+        const nr = document.createElement('span');
+        nr.className = 'puzzle-grade-row__nr';
+        nr.setAttribute('aria-hidden', 'true');
+        nr.textContent = '☀';
+
+        const main = document.createElement('span');
+        main.className = 'puzzle-grade-row__main';
+        const title = document.createElement('strong');
+        title.textContent =
+            `${this.prettyDailyDate(info.dateKey)} · ${traits.join(' · ')}`;
+        const sub = document.createElement('small');
+        const streakNote = info.streak > 0 ?
+            `streak ${info.streak} day${info.streak === 1 ? '' : 's'}` :
+            'a fresh board every midnight';
+        sub.textContent = info.solvedToday ?
+            `Solved in ${info.time.toFixed(1)}s · ${streakNote}` :
+            `Gold at ${entry.gold}s · ${streakNote}`;
+        main.append(title, sub);
+
+        const badge = document.createElement('span');
+        badge.className = 'puzzle-grade-row__medal ' +
+            (medal ? `is-${medal}` : 'is-none');
+        badge.textContent = medal ?
+            medal.toUpperCase() :
+            (info.solvedToday ? 'CLEAR' : '');
+
+        row.setAttribute('aria-label', info.solvedToday ?
+            `Daily lock, solved in ${info.time.toFixed(1)} seconds. ` +
+            'Play it again for a faster time.' :
+            `Start the daily lock: ${traits.join(', ')}.`);
+        row.append(nr, main, badge);
+        host.replaceChildren(row);
+    }
+
     /** The Lock Campaign list: 24 rows, unlock chain, best time, medal. */
     refreshPuzzleSelect() {
+        this.refreshDailyLock();
         const host = document.getElementById('lockCampaignRows');
         if (!host) return;
 
@@ -2681,7 +2762,9 @@ class GameUI {
                 'conductors until a route runs from IN to OUT. The next ' +
                 'lock runs at full speed.' :
                 meta.copy;
-            const lockLabel = state.lockCampaign ?
+            const lockLabel = state.dailyLock ?
+                `Daily lock · ${this.prettyDailyDate(state.dailyLock)}` :
+                state.lockCampaign ?
                 `Lock ${state.difficulty} of ${LOCK_CAMPAIGN.length}` :
                 `Lock grade ${state.difficulty}`;
             this.puzzleDifficulty.textContent = state.teaching ?
@@ -3022,6 +3105,7 @@ class Game {
         this.gamepadMessageTime = 0;
         this.progress = this.loadProgress();
         this.puzzleBests = this.loadPuzzleBests();
+        this.dailyLock = this.loadDailyLockRecord();
         this.lastPuzzleResult = null;
         // The platform's own mute sits on top of the user's: their site
         // button silences the game without touching the saved preference.
@@ -4449,6 +4533,9 @@ class Game {
     /** Reads a solved board into the numbers its win screen shows. */
     summariseSolvedPuzzle(state) {
         const seconds = Math.round(state.elapsed * 10) / 10;
+        if (state.dailyLock) {
+            return this.summariseDailyLock(state, seconds);
+        }
         const previous = this.getPuzzleBest(state.type, state.difficulty);
         const isBest = previous === 0 || seconds < previous;
         if (isBest) this.setPuzzleBest(state.type, state.difficulty, seconds);
@@ -4477,6 +4564,57 @@ class Game {
         };
     }
 
+    /**
+     * A daily solve banks the streak instead of a campaign best: solving
+     * on consecutive days chains it, a missed day starts over, and a
+     * second solve the same day only ever improves the time. The day is
+     * the one captured when the lock was opened, so a puzzle finished
+     * just past midnight still counts for the day it was started.
+     */
+    summariseDailyLock(state, seconds) {
+        const dateKey = state.dailyLock;
+        const record = this.dailyLock || {};
+        const sameDay = record.date === dateKey;
+        const previous = sameDay && Number.isFinite(record.time) ?
+            record.time : 0;
+        const isBest = previous === 0 || seconds < previous;
+        const streak = sameDay ?
+            (record.streak || 1) :
+            record.date === dailyLockKeyBefore(dateKey) ?
+            (record.streak || 0) + 1 :
+            1;
+        const bestStreak = Math.max(record.best || 0, streak);
+        this.dailyLock = {
+            date: dateKey,
+            time: isBest ? seconds : previous,
+            streak,
+            best: bestStreak,
+        };
+        this.saveDailyLockRecord();
+
+        const entry = dailyLockEntry(dateKey);
+        return {
+            type: state.type,
+            difficulty: state.difficulty,
+            seconds,
+            previousBest: previous,
+            isBest,
+            lockCampaign: false,
+            daily: true,
+            dailyDate: dateKey,
+            streak,
+            bestStreak,
+            medal: lockMedal(entry, seconds),
+            goldTarget: entry.gold,
+            cutsUsed: null,
+            cutBudget: null,
+            terminals: null,
+            boardSize: state.size ?? null,
+            swaps: Number.isFinite(state.moves) ? state.moves : null,
+            branching: state.branching === true,
+        };
+    }
+
     // Remembered across runs, so the free lock is genuinely once per player
     // rather than once per session. A blocked or wiped store simply gives
     // the lesson again, which is the harmless direction to fail in.
@@ -4496,6 +4634,66 @@ class Game {
         } catch {
             return {};
         }
+    }
+
+    loadDailyLockRecord() {
+        try {
+            const raw = VaultStore.getItem(DAILY_LOCK_STORAGE_KEY);
+            const parsed = raw ? JSON.parse(raw) : null;
+            return parsed && typeof parsed === 'object' ? parsed : {};
+        } catch {
+            return {};
+        }
+    }
+
+    saveDailyLockRecord() {
+        try {
+            VaultStore.setItem(
+                DAILY_LOCK_STORAGE_KEY,
+                JSON.stringify(this.dailyLock)
+            );
+        } catch {
+            // still playable today, just unremembered tomorrow
+        }
+    }
+
+    /**
+     * Today's lock and where the player stands with it. A streak is alive
+     * if the last solve was today or yesterday; anything older starts a
+     * new count on the next solve.
+     */
+    getDailyLockInfo(now = new Date()) {
+        const dateKey = dailyLockDateKey(now);
+        const record = this.dailyLock || {};
+        const solvedToday = record.date === dateKey;
+        const streakAlive = solvedToday ||
+            record.date === dailyLockKeyBefore(dateKey);
+        return {
+            dateKey,
+            entry: dailyLockEntry(dateKey),
+            solvedToday,
+            time: solvedToday && Number.isFinite(record.time) ?
+                record.time : 0,
+            streak: streakAlive ? (record.streak || 0) : 0,
+            bestStreak: record.best || 0,
+        };
+    }
+
+    startDailyLock() {
+        if (this.gameState !== 'puzzle-select') return false;
+        const info = this.getDailyLockInfo();
+        this.clearKeyboardInput();
+        this.puzzleContext = 'standalone';
+        this.safePuzzle.start('pipes', info.entry.lock, info.entry.seed, {
+            balance: info.entry,
+        });
+        // The date on the state is what routes the solve into the streak
+        // instead of the campaign bests.
+        this.safePuzzle.state.dailyLock = info.dateKey;
+        this.gameState = 'puzzle';
+        this.lastRenderedState = null;
+        this.sound.playTone(260, 430, 0.12, 0.035, 'square');
+        return true;
     }
 
     getPuzzleBest(type, difficulty) {
@@ -4521,6 +4719,7 @@ class Game {
         const result = this.lastPuzzleResult;
         if (this.gameState !== 'puzzle-won' || !result) return false;
         this.gameState = 'puzzle-select';
+        if (result.daily) return this.startDailyLock();
         return this.startStandalonePuzzle(result.type, result.difficulty);
     }
 

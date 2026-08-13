@@ -2073,6 +2073,22 @@
             opacity: 0.45;
         }
 
+        /* The daily lock row carries the sun: warm border, warm dial. */
+        .puzzle-grade-row.is-daily {
+            border-color: rgba(255, 205, 92, 0.5);
+        }
+
+        .puzzle-grade-row.is-daily:hover:not(:disabled),
+        .puzzle-grade-row.is-daily.is-menu-focused {
+            border-color: rgba(255, 205, 92, 0.85);
+            background: rgba(255, 205, 92, 0.1);
+        }
+
+        .puzzle-grade-row.is-daily .puzzle-grade-row__nr {
+            background: rgba(255, 205, 92, 0.18);
+            color: #ffcd5c;
+        }
+
         .puzzle-grade-row__medal {
             margin-left: auto;
             font-size: max(9px, calc(9px * var(--game-scale)));
@@ -3791,10 +3807,18 @@
                     <p class="eyebrow">Vault Puzzles</p>
                     <h2 id="puzzleSelectTitle">Puzzle mode</h2>
                     <p id="puzzleSelectCopy" class="screen-copy">
-                        The locks from the campaign and twelve beyond it — no digging required.
+                        A fresh lock every day, the campaign's twenty-four, and the wire bank — no digging required.
                     </p>
 
                     <div class="puzzle-mode-list" aria-label="Pick a lock grade">
+                        <article class="puzzle-mode-card puzzle-mode-card--daily" data-puzzle="daily">
+                            <span class="puzzle-mode-card__icon" aria-hidden="true">☀</span>
+                            <div class="puzzle-mode-card__copy">
+                                <h3>Daily lock</h3>
+                                <p>One board a day, the same for everyone. Solve it to keep your streak alive.</p>
+                            </div>
+                            <div class="puzzle-grade-list" id="dailyLockRow" role="group" aria-label="Daily lock"></div>
+                        </article>
                         <article class="puzzle-mode-card" data-puzzle="pipes">
                             <span class="puzzle-mode-card__icon" aria-hidden="true">└─</span>
                             <div class="puzzle-mode-card__copy">
@@ -4101,10 +4125,10 @@
     <!-- Bump v on every change to these files. It stayed at 15 through a
          release that rewrote game.js, so returning players kept running the
          old file from cache: same URL, guaranteed hit. -->
-    <script src="sounds.js?v=29"></script>
-    <script src="levels.js?v=29"></script>
-    <script src="puzzles.js?v=29"></script>
-    <script src="trophies.js?v=29"></script>
-    <script src="game.js?v=29"></script>
+    <script src="sounds.js?v=30"></script>
+    <script src="levels.js?v=30"></script>
+    <script src="puzzles.js?v=30"></script>
+    <script src="trophies.js?v=30"></script>
+    <script src="game.js?v=30"></script>
 </body>
 </html>
