@@ -1719,17 +1719,38 @@ class GameUI {
         );
     }
 
-    /** The menu card's one-liner: pulls toward today's lock until solved. */
+    /** The two menu cards' one-liners: today's lock live, campaign tally. */
     refreshPuzzleModeHint() {
-        const hint = document.getElementById('puzzleModeEntryHint');
-        if (!hint) return;
         const info = this.game.getDailyLockInfo();
         const days = `${info.streak} day${info.streak === 1 ? '' : 's'}`;
-        hint.textContent = info.solvedToday ?
-            `☀ Daily solved · streak ${days} · the 24-lock campaign` :
-            info.streak > 0 ?
-            `☀ Today's lock is waiting — a ${days} streak on the line` :
-            '☀ A new lock every day · the 24-lock campaign';
+
+        const daily = document.getElementById('dailyMenuEntryHint');
+        if (daily) {
+            const entry = info.entry;
+            const traits = [`${entry.size}×${entry.size}`];
+            if (entry.welded > 0) {
+                traits.push(
+                    `${entry.welded} weld${entry.welded === 1 ? '' : 's'}`
+                );
+            }
+            const board = `${this.prettyDailyDate(info.dateKey)} · ` +
+                traits.join(' · ');
+            daily.textContent = info.solvedToday ?
+                `Solved in ${info.time.toFixed(1)}s · streak ${days}` :
+                info.streak > 0 ?
+                `${board} — a ${days} streak on the line` :
+                `${board} · same board for everyone`;
+        }
+
+        const hint = document.getElementById('puzzleModeEntryHint');
+        if (hint) {
+            const cleared = LOCK_CAMPAIGN.filter(
+                entry => this.game.getPuzzleBest('pipes', entry.lock) > 0
+            ).length;
+            hint.textContent = cleared > 0 ?
+                `The 24-lock campaign · ${cleared} cleared · the wire bank` :
+                'The 24-lock campaign and the wire bank';
+        }
     }
 
     /** '2026-08-13' → 'Aug 13', for row labels and the puzzle header. */
@@ -4694,7 +4715,13 @@ class Game {
     }
 
     startDailyLock() {
-        if (this.gameState !== 'puzzle-select') return false;
+        // Reachable both from Puzzle mode and straight off the level
+        // select — the daily is the game's front door for a returning
+        // player, so it must not hide behind an extra screen.
+        if (
+            this.gameState !== 'puzzle-select' &&
+            this.gameState !== 'menu'
+        ) return false;
         const info = this.getDailyLockInfo();
         this.clearKeyboardInput();
         this.puzzleContext = 'standalone';
