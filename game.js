@@ -948,6 +948,25 @@ class ArcadeSound {
         this.playTone(495 + lift * 25, 720 + lift * 35, 0.1, 0.03, 'square', 0.045);
     }
 
+    /**
+     * Blocks clumping into a match and crumbling away. This used to
+     * borrow the circuit-solved chime, whose bright ring read as
+     * shattering glass a dozen times a level. Earth should crumble,
+     * not shatter: the break sample slowed down into a chunky crunch,
+     * a low pop for body, and one restrained high tick so a clear
+     * still reads as a reward. Bigger clumps land deeper and louder.
+     */
+    playMatchClear(size) {
+        const lift = Math.min(5, Math.max(0, size - MATCH_CLEAR_SIZE));
+        this.playSample('block-break', {
+            volume: 0.5 + lift * 0.06,
+            rate: 0.72 - lift * 0.04,
+        });
+        this.playTone(165 + lift * 14, 72, 0.13, 0.05 + lift * 0.007, 'sawtooth');
+        this.playNoise(0.1, 0.03 + lift * 0.006, 340);
+        this.playTone(620 + lift * 40, 620 + lift * 40, 0.05, 0.014, 'sine', 0.05);
+    }
+
     /** One relay throw as the current moves to the next conductor. */
     playCircuitStep() {
         if (this.playSample('circuit-step', { volume: 0.3, rate: 1.25 })) return;
@@ -972,6 +991,35 @@ class ArcadeSound {
         this.playTone(523, 659, 0.12, 0.034, 'square', 0.53);
         this.playTone(659, 784, 0.24, 0.04, 'square', 0.64);
         this.playTone(1047, 1175, 0.3, 0.016, 'sine', 0.72);
+    }
+
+    /**
+     * The small win: boots on the vault ledge. A short major triad —
+     * enough to say "you made it down" — over the door's low mass, sized
+     * so the triumph of actually opening the lock still towers over it.
+     */
+    playSafeReached() {
+        this.playTone(392, 392, 0.09, 0.034, 'square');
+        this.playTone(523, 523, 0.09, 0.034, 'square', 0.09);
+        this.playTone(659, 659, 0.17, 0.04, 'square', 0.18);
+        this.playTone(98, 76, 0.32, 0.03, 'triangle');
+    }
+
+    /**
+     * The big win: the circuit closes and the vault gives up. The surge
+     * chime keeps its puzzle identity, the door sample lands under it,
+     * and a proper four-note fanfare climbs an octave on top — the one
+     * moment in the loop that has earned this much noise.
+     */
+    playVaultTriumph() {
+        this.playClear(11);
+        this.playSample('vault-open', { volume: 0.7, delay: 0.25 });
+        this.playTone(65, 52, 0.5, 0.034, 'triangle', 0.2);
+        this.playTone(523, 523, 0.11, 0.045, 'square', 0.32);
+        this.playTone(659, 659, 0.11, 0.045, 'square', 0.44);
+        this.playTone(784, 784, 0.11, 0.045, 'square', 0.56);
+        this.playTone(1047, 1047, 0.34, 0.048, 'square', 0.68);
+        this.playTone(1319, 1568, 0.4, 0.016, 'sine', 0.74);
     }
 
     playMenuConfirm() {
@@ -4113,8 +4161,7 @@ class Game {
         this.clearKeyboardInput();
         // A short beat at the safe before the panel takes over the screen.
         this.safeIntroTimer = SAFE_INTRO_DURATION;
-        this.sound.playTone(190, 300, 0.22, 0.04, 'square');
-        this.sound.playTone(120, 96, 0.5, 0.03, 'triangle', 0.12);
+        this.sound.playSafeReached();
         return true;
     }
 
@@ -4362,8 +4409,7 @@ class Game {
             this.lastPuzzleResult = this.summariseSolvedPuzzle(
                 this.safePuzzle.state
             );
-            this.sound.playClear(6 + this.safePuzzle.state.difficulty);
-            this.sound.playVaultFind();
+            this.sound.playVaultTriumph();
             this.safePuzzle.clear();
             this.puzzleContext = null;
             this.gameState = 'puzzle-won';
@@ -4392,8 +4438,7 @@ class Game {
         this.puzzleBonus =
             200 + this.safePuzzle.state.difficulty * 100;
         this.score += this.puzzleBonus;
-        this.sound.playClear(6 + this.safePuzzle.state.difficulty);
-        this.sound.playVaultFind();
+        this.sound.playVaultTriumph();
         this.recordCurrentLevelCompletion();
         this.puzzleContext = null;
         this.gameState = 'won';
@@ -5556,7 +5601,7 @@ class Game {
             
             foundMatch = true;
             this.score += cluster.length * MATCH_SCORE;
-            this.sound.playClear(cluster.length);
+            this.sound.playMatchClear(cluster.length);
             
             cluster.forEach(matchBlock => {
                 matchBlock.matchEligible = false;
