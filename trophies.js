@@ -308,6 +308,39 @@ class TrophyCabinet {
         const stored = this.load();
         this.earned = stored.earned;
         this.counters = stored.counters;
+        this.connectGameVolt();
+    }
+
+    /**
+     * Cross-device sync with the GameVolt portal, when its SDK is on the
+     * page. Cloud-earned trophies land on the shelf silently — no toast
+     * for something announced on another device — and newly earned ones
+     * are pushed up from award(). Absent SDK, all of this is a no-op.
+     */
+    connectGameVolt() {
+        if (!window.GameVolt?.achievements) return;
+        try {
+            const backfill = () => {
+                GameVolt.achievements.getUnlockedIds?.()?.then?.(ids => {
+                    if (!ids?.forEach) return;
+                    let changed = false;
+                    ids.forEach(fullId => {
+                        const id = String(fullId)
+                            .replace(/^manny-the-mole-/, '');
+                        if (TROPHY_BY_ID[id] && !this.earned[id]) {
+                            this.earned[id] = true;
+                            changed = true;
+                        }
+                    });
+                    if (changed) {
+                        this.save();
+                        this.game?.ui?.refreshTrophies?.();
+                    }
+                });
+            };
+            GameVolt.auth?.onStateChange?.(user => { if (user) backfill(); });
+            if (GameVolt.auth?.getUser?.()) backfill();
+        } catch { /* the shelf works without the cloud */ }
     }
 
     load() {
@@ -360,6 +393,9 @@ class TrophyCabinet {
         this.earned[id] = true;
         this.pending.push(definition);
         this.save();
+        if (window.GameVolt?.achievements) {
+            try { GameVolt.achievements.unlock(id); } catch { /* bonus */ }
+        }
         this.game?.ui?.refreshTrophies?.();
         return true;
     }

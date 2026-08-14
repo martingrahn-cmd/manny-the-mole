@@ -8673,10 +8673,17 @@ if (window.GameVolt) {
                         [{ score: streak, mode: 'daily-streak' }] :
                         [];
                 },
-                // Trophy sync waits for the 31-achievement mapping; until
-                // the definitions exist server-side there is nothing to
-                // migrate into.
-                getAchievements: () => [],
+                // Everything already on the shelf travels along on first
+                // login. Ids are bare; the SDK prefixes the game slug.
+                getAchievements: local => {
+                    const earned =
+                        local?.['manny-the-mole:trophies']?.earned ?? {};
+                    const now = Date.now();
+                    return Object.keys(earned).map(id => ({
+                        id,
+                        unlocked_at: now,
+                    }));
+                },
             });
         }
     } catch { /* the portal is a bonus, never a blocker */ }
