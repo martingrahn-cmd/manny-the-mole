@@ -4626,6 +4626,13 @@ class Game {
             best: bestStreak,
         };
         this.saveDailyLockRecord();
+        // The streak is the daily lock's global scoreboard — days, not
+        // seconds, so higher is better and no inversion is needed.
+        if (window.GameVolt) {
+            try {
+                GameVolt.leaderboard.submit(streak, { mode: 'daily-streak' });
+            } catch { /* the board is a bonus, never a blocker */ }
+        }
 
         const entry = dailyLockEntry(dateKey);
         return {
@@ -6156,6 +6163,18 @@ class Game {
             0,
             Math.floor(this.score - this.levelStartScore)
         );
+        // The run's accumulated score is the leaderboard entry: it grows
+        // with every level a single run survives, so the board rewards
+        // going deep rather than farming level one. No-op for guests and
+        // outside the GameVolt portal.
+        if (window.GameVolt) {
+            try {
+                GameVolt.leaderboard.submit(
+                    Math.max(0, Math.floor(this.score)),
+                    { mode: 'score' }
+                );
+            } catch { /* the board is a bonus, never a blocker */ }
+        }
         this.newlyUnlockedLevelIndex = null;
         let changed = false;
 
@@ -6229,6 +6248,16 @@ class Game {
             levelIndex >= CAMPAIGN_LEVELS.length ||
             !this.isLevelUnlocked(levelIndex)
         ) return false;
+
+        // GameVolt portal analytics: one tracker session per run. The stub
+        // on the portal page makes these safe; elsewhere the object is
+        // simply absent and nothing happens.
+        try {
+            window.GameVoltTracker?.start?.('Manny the Mole', {
+                level: levelIndex + 1,
+            });
+            window.GameVoltTracker?.play?.();
+        } catch { /* analytics must never stop a dig */ }
 
         this.loadLevel(levelIndex, {
             score: 0,
@@ -8616,3 +8645,39 @@ class Game {
         try { sdk.game?.loadingStop?.(); } catch { /* same */ }
     }
 })();
+
+// GameVolt portal integration. The SDK is present only on gamevolt.io;
+// everywhere else (CrazyGames, the artifact, file://) this whole block is
+// a no-op, which is exactly the portal's own design rule: the SDK must
+// never be required for the game to work.
+if (window.GameVolt) {
+    try {
+        GameVolt.init('manny-the-mole');
+        if (GameVolt.save?.registerMigration) {
+            GameVolt.save.registerMigration({
+                keys: [
+                    PROGRESS_STORAGE_KEY,
+                    PUZZLE_BEST_STORAGE_KEY,
+                    DAILY_LOCK_STORAGE_KEY,
+                    LOCK_SEEN_STORAGE_KEY,
+                    'manny-the-mole:trophies',
+                    MUTE_STORAGE_KEY,
+                ],
+                merge: (local, cloud) => cloud || local || {},
+                // The dig score is never stored locally, so only the daily
+                // streak can be carried into the boards on first login.
+                getScores: local => {
+                    const record = local?.[DAILY_LOCK_STORAGE_KEY];
+                    const streak = record?.streak || 0;
+                    return streak > 0 ?
+                        [{ score: streak, mode: 'daily-streak' }] :
+                        [];
+                },
+                // Trophy sync waits for the 31-achievement mapping; until
+                // the definitions exist server-side there is nothing to
+                // migrate into.
+                getAchievements: () => [],
+            });
+        }
+    } catch { /* the portal is a bonus, never a blocker */ }
+}
