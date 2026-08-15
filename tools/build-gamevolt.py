@@ -232,7 +232,10 @@ resized = art.resize(
 )
 x = (resized.width - 1200) // 2
 y = (resized.height - 630) // 2
-resized.crop((x, y, x + 1200, y + 630)).save(
+cropped = resized.crop((x, y, x + 1200, y + 630))
+# Painterly art as truecolor PNG lands well past a megabyte; a dithered
+# 256-color palette keeps it in line with the portal's other og-images.
+cropped.quantize(256, dither=Image.Dither.FLOYDSTEINBERG).save(
     PORTAL / 'og-image.png', optimize=True
 )
 size = (PORTAL / 'og-image.png').stat().st_size
